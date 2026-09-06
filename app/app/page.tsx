@@ -1,2 +1,3 @@
 import { HomeApp } from "@/components/home-app";
-export default function PersonalAreaPage(){ return <HomeApp/>; }
+import { SupportReport } from "@/components/support-report";
+export default function PersonalAreaPage(){ return <><HomeApp/><SupportReport/></>; }
