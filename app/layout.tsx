@@ -8,11 +8,14 @@ export const metadata: Metadata = {
   description: "פחות דברים להחזיק בראש. משימות, שיחה ותכנון בקצב שלך.",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "מה שכחתי?" },
+  formatDetection: { telephone: false },
   icons: { icon: "/icon-192.png", apple: "/icon-192.png" },
 };
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
   themeColor: "#FAF7F4",
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
