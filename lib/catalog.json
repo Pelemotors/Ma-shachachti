@@ -1,0 +1,1109 @@
+[
+  {
+    "id": "kit-01-01",
+    "title": "פינוי מדיח",
+    "category": "מטבח",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "dishwasher"
+  },
+  {
+    "id": "kit-01-02",
+    "title": "הפעלת מדיח",
+    "category": "מטבח",
+    "workMinutes": 15,
+    "waitMinutes": 60,
+    "effort": 2,
+    "requires": "dishwasher"
+  },
+  {
+    "id": "kit-01-03",
+    "title": "שטיפת כלים",
+    "category": "מטבח",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-01-04",
+    "title": "פינוי משטח העבודה",
+    "category": "מטבח",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-01-05",
+    "title": "ניקוי כיריים",
+    "category": "מטבח",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-01-06",
+    "title": "ניקוי כיור",
+    "category": "מטבח",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-01-07",
+    "title": "ניקוי מקרר",
+    "category": "מטבח",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-01-08",
+    "title": "בדיקת מזון במקרר",
+    "category": "מטבח",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": null
+  },
+  {
+    "id": "kit-01-09",
+    "title": "ניקוי מיקרוגל",
+    "category": "מטבח",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-01-10",
+    "title": "ניקוי תנור",
+    "category": "מטבח",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-01-11",
+    "title": "ניקוי קולט אדים",
+    "category": "מטבח",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-01-12",
+    "title": "הוצאת אשפה",
+    "category": "מטבח",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-02-01",
+    "title": "פינוי שולחן הסלון",
+    "category": "סלון",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-02-02",
+    "title": "סידור הספה",
+    "category": "סלון",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-02-03",
+    "title": "החזרת חפצים למקום",
+    "category": "סלון",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-02-04",
+    "title": "איסוף צעצועים",
+    "category": "סלון",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-02-05",
+    "title": "ניגוב אבק",
+    "category": "סלון",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-02-06",
+    "title": "שאיבת הספה",
+    "category": "סלון",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-02-07",
+    "title": "ניקוי שלט ומתגים",
+    "category": "סלון",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-02-08",
+    "title": "סידור מדף הספרים",
+    "category": "סלון",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-03-01",
+    "title": "מיון כביסה",
+    "category": "כביסה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-03-02",
+    "title": "הפעלת מכונת כביסה",
+    "category": "כביסה",
+    "workMinutes": 15,
+    "waitMinutes": 60,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-03-03",
+    "title": "העברה למייבש",
+    "category": "כביסה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "dryer"
+  },
+  {
+    "id": "kit-03-04",
+    "title": "תליית כביסה",
+    "category": "כביסה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-03-05",
+    "title": "הורדת כביסה",
+    "category": "כביסה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-03-06",
+    "title": "קיפול כביסה",
+    "category": "כביסה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-03-07",
+    "title": "החזרת בגדים לארונות",
+    "category": "כביסה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-03-08",
+    "title": "טיפול בכתמים",
+    "category": "כביסה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-03-09",
+    "title": "ניקוי מסנן מייבש",
+    "category": "כביסה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "dryer"
+  },
+  {
+    "id": "kit-03-10",
+    "title": "ניקוי מגירת מכונת הכביסה",
+    "category": "כביסה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-04-01",
+    "title": "פינוי הרצפה לפני ניקיון",
+    "category": "רצפות",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-04-02",
+    "title": "שאיבת סלון",
+    "category": "רצפות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-04-03",
+    "title": "שאיבת חדרי שינה",
+    "category": "רצפות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-04-04",
+    "title": "שטיפת סלון",
+    "category": "רצפות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-04-05",
+    "title": "שטיפת המטבח",
+    "category": "רצפות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-04-06",
+    "title": "שטיפת חדרים",
+    "category": "רצפות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-04-07",
+    "title": "ניקוי פאנלים",
+    "category": "רצפות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-04-08",
+    "title": "ניקוי שואב האבק",
+    "category": "רצפות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-05-01",
+    "title": "ניקוי אסלה",
+    "category": "מקלחת ושירותים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-05-02",
+    "title": "ניקוי כיור הרחצה",
+    "category": "מקלחת ושירותים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-05-03",
+    "title": "ניקוי מראה",
+    "category": "מקלחת ושירותים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-05-04",
+    "title": "ניקוי המקלחת",
+    "category": "מקלחת ושירותים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-05-05",
+    "title": "שטיפת רצפת מקלחת",
+    "category": "מקלחת ושירותים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-05-06",
+    "title": "החלפת מגבות",
+    "category": "מקלחת ושירותים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-05-07",
+    "title": "מילוי סבון",
+    "category": "מקלחת ושירותים",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-05-08",
+    "title": "בדיקת מלאי נייר טואלט",
+    "category": "מקלחת ושירותים",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": null
+  },
+  {
+    "id": "kit-05-09",
+    "title": "ניקוי ראש מקלחת",
+    "category": "מקלחת ושירותים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-06-01",
+    "title": "הסרת מצעים",
+    "category": "מצעים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-06-02",
+    "title": "כביסת מצעים",
+    "category": "מצעים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-06-03",
+    "title": "ייבוש מצעים",
+    "category": "מצעים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-06-04",
+    "title": "הצעת מיטות",
+    "category": "מצעים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-06-05",
+    "title": "סידור ארון מצעים",
+    "category": "מצעים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-06-06",
+    "title": "כביסת שמיכות",
+    "category": "מצעים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-06-07",
+    "title": "כביסת מגני מזרן",
+    "category": "מצעים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-06-08",
+    "title": "אוורור חדרי שינה",
+    "category": "מצעים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-07-01",
+    "title": "תכנון ארוחות למחר",
+    "category": "ילדים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "children"
+  },
+  {
+    "id": "kit-07-02",
+    "title": "חיתוך ירקות למנה",
+    "category": "ילדים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "children"
+  },
+  {
+    "id": "kit-07-03",
+    "title": "הכנת ארוחת צהריים",
+    "category": "ילדים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "children"
+  },
+  {
+    "id": "kit-07-04",
+    "title": "הכנת ארוחת ערב",
+    "category": "ילדים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "children"
+  },
+  {
+    "id": "kit-07-05",
+    "title": "הכנת ירקות למקפיא",
+    "category": "ילדים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "children"
+  },
+  {
+    "id": "kit-07-06",
+    "title": "שטיפת בקבוקים",
+    "category": "ילדים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "children"
+  },
+  {
+    "id": "kit-07-07",
+    "title": "הכנת תיק לגן",
+    "category": "ילדים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "children"
+  },
+  {
+    "id": "kit-07-08",
+    "title": "בדיקת בגדים במידה מתאימה",
+    "category": "ילדים",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": "children"
+  },
+  {
+    "id": "kit-07-09",
+    "title": "סידור צעצועים",
+    "category": "ילדים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "children"
+  },
+  {
+    "id": "kit-07-10",
+    "title": "הכנת פעילות קצרה",
+    "category": "ילדים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "children"
+  },
+  {
+    "id": "kit-07-11",
+    "title": "בדיקת הודעות מהמסגרת",
+    "category": "ילדים",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": "children"
+  },
+  {
+    "id": "kit-07-12",
+    "title": "הכנת בגדים לבוקר",
+    "category": "ילדים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "children"
+  },
+  {
+    "id": "kit-08-01",
+    "title": "השקיית עציצים",
+    "category": "גינה וחצר",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "garden"
+  },
+  {
+    "id": "kit-08-02",
+    "title": "איסוף כוסות מהגינה",
+    "category": "גינה וחצר",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "garden"
+  },
+  {
+    "id": "kit-08-03",
+    "title": "איסוף אשפה מהגינה",
+    "category": "גינה וחצר",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "garden"
+  },
+  {
+    "id": "kit-08-04",
+    "title": "ניכוש עשבים",
+    "category": "גינה וחצר",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "garden"
+  },
+  {
+    "id": "kit-08-05",
+    "title": "בדיקת מערכת השקיה",
+    "category": "גינה וחצר",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": "garden"
+  },
+  {
+    "id": "kit-08-06",
+    "title": "טאטוא מרפסת",
+    "category": "גינה וחצר",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "garden"
+  },
+  {
+    "id": "kit-08-07",
+    "title": "ניקוי שולחן גינה",
+    "category": "גינה וחצר",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "garden"
+  },
+  {
+    "id": "kit-08-08",
+    "title": "טיפול בגינת הירק",
+    "category": "גינה וחצר",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "garden"
+  },
+  {
+    "id": "kit-09-01",
+    "title": "הכנת רשימת קניות",
+    "category": "קניות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-09-02",
+    "title": "בדיקת מלאי מזווה",
+    "category": "קניות",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": null
+  },
+  {
+    "id": "kit-09-03",
+    "title": "קניית מצרכים",
+    "category": "קניות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-09-04",
+    "title": "הזמנת מצרכים",
+    "category": "קניות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": null
+  },
+  {
+    "id": "kit-09-05",
+    "title": "סידור קניות במקרר",
+    "category": "קניות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-09-06",
+    "title": "סידור קניות במזווה",
+    "category": "קניות",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-09-07",
+    "title": "בדיקת חומרי ניקוי",
+    "category": "קניות",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": null
+  },
+  {
+    "id": "kit-09-08",
+    "title": "בדיקת מוצרי רחצה",
+    "category": "קניות",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": null
+  },
+  {
+    "id": "kit-10-01",
+    "title": "הזמנת אוכל לחיית המחמד",
+    "category": "חיות מחמד",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": "pets"
+  },
+  {
+    "id": "kit-10-02",
+    "title": "מילוי קערת מים",
+    "category": "חיות מחמד",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "pets"
+  },
+  {
+    "id": "kit-10-03",
+    "title": "ניקוי קערות",
+    "category": "חיות מחמד",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "pets"
+  },
+  {
+    "id": "kit-10-04",
+    "title": "טיול עם הכלב",
+    "category": "חיות מחמד",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "pets"
+  },
+  {
+    "id": "kit-10-05",
+    "title": "איסוף צרכים מהחצר",
+    "category": "חיות מחמד",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "pets"
+  },
+  {
+    "id": "kit-10-06",
+    "title": "כביסת מיטת חיית המחמד",
+    "category": "חיות מחמד",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "pets"
+  },
+  {
+    "id": "kit-10-07",
+    "title": "קביעת תור לווטרינר",
+    "category": "חיות מחמד",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "pets"
+  },
+  {
+    "id": "kit-10-08",
+    "title": "בדיקת ציוד לחיית המחמד",
+    "category": "חיות מחמד",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": "pets"
+  },
+  {
+    "id": "kit-11-01",
+    "title": "בדיקת מועד רישוי",
+    "category": "רכב",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": "car"
+  },
+  {
+    "id": "kit-11-02",
+    "title": "קביעת טיפול לרכב",
+    "category": "רכב",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "car"
+  },
+  {
+    "id": "kit-11-03",
+    "title": "תדלוק או טעינה",
+    "category": "רכב",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "car"
+  },
+  {
+    "id": "kit-11-04",
+    "title": "ניקוי פנים הרכב",
+    "category": "רכב",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "car"
+  },
+  {
+    "id": "kit-11-05",
+    "title": "פינוי חפצים מהרכב",
+    "category": "רכב",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "car"
+  },
+  {
+    "id": "kit-11-06",
+    "title": "בדיקת לחץ צמיגים",
+    "category": "רכב",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": "car"
+  },
+  {
+    "id": "kit-11-07",
+    "title": "בדיקת תוקף ביטוח",
+    "category": "רכב",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": "car"
+  },
+  {
+    "id": "kit-11-08",
+    "title": "שטיפת הרכב",
+    "category": "רכב",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": "car"
+  },
+  {
+    "id": "kit-12-01",
+    "title": "קביעת תור",
+    "category": "בריאות ותורים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-12-02",
+    "title": "אישור הגעה לתור",
+    "category": "בריאות ותורים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-12-03",
+    "title": "הכנת מסמכים לתור",
+    "category": "בריאות ותורים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-12-04",
+    "title": "איסוף מרשם",
+    "category": "בריאות ותורים",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-12-05",
+    "title": "קניית תרופות לפי מרשם",
+    "category": "בריאות ותורים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-12-06",
+    "title": "בדיקת הפניה",
+    "category": "בריאות ותורים",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": null
+  },
+  {
+    "id": "kit-12-07",
+    "title": "הוספת תור ליומן",
+    "category": "בריאות ותורים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-12-08",
+    "title": "קביעת תור שיניים",
+    "category": "בריאות ותורים",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-13-01",
+    "title": "תשלום חשבון",
+    "category": "מסמכים ואדמיניסטרציה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-13-02",
+    "title": "מיון דואר",
+    "category": "מסמכים ואדמיניסטרציה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-13-03",
+    "title": "סריקת מסמך",
+    "category": "מסמכים ואדמיניסטרציה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-13-04",
+    "title": "טיפול בטופס",
+    "category": "מסמכים ואדמיניסטרציה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-13-05",
+    "title": "בדיקת תוקף מסמכים",
+    "category": "מסמכים ואדמיניסטרציה",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 1,
+    "requires": null
+  },
+  {
+    "id": "kit-13-06",
+    "title": "שמירת קבלה",
+    "category": "מסמכים ואדמיניסטרציה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-13-07",
+    "title": "מעקב אחרי פנייה פתוחה",
+    "category": "מסמכים ואדמיניסטרציה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-13-08",
+    "title": "ביטול מנוי שלא בשימוש",
+    "category": "מסמכים ואדמיניסטרציה",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-14-01",
+    "title": "איסוף חפצים לסל",
+    "category": "איפוס בית",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-14-02",
+    "title": "החזרת חפצים לחדרים",
+    "category": "איפוס בית",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-14-03",
+    "title": "פינוי משטחים מרכזיים",
+    "category": "איפוס בית",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-14-04",
+    "title": "איסוף אשפה",
+    "category": "איפוס בית",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-14-05",
+    "title": "איסוף כלים",
+    "category": "איפוס בית",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-14-06",
+    "title": "פינוי מעבר הכניסה",
+    "category": "איפוס בית",
+    "workMinutes": 5,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-14-07",
+    "title": "הכנת הבית לבוקר",
+    "category": "איפוס בית",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  },
+  {
+    "id": "kit-14-08",
+    "title": "סידור אזור אחד קטן",
+    "category": "איפוס בית",
+    "workMinutes": 15,
+    "waitMinutes": 0,
+    "effort": 2,
+    "requires": null
+  }
+]

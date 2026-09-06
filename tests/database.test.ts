@@ -1,0 +1,90 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { PGlite } from "@electric-sql/pglite";
+import { emptyState } from "../lib/model";
+import { applyActions } from "../lib/engine";
+const one = "10000000-0000-4000-8000-000000000001",
+  two = "20000000-0000-4000-8000-000000000002";
+test("database ownership, atomic revision checks, reminder sync and server-only quota", async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(
+      `create role anon; create role authenticated; create role service_role bypassrls; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; grant usage on schema auth to authenticated,service_role; grant select on auth.users to authenticated,service_role; insert into auth.users values('${one}'),('${two}');`,
+    );
+    await db.exec(
+      await readFile(
+        new URL("../database/schema.sql", import.meta.url),
+        "utf8",
+      ),
+    );
+    await db.exec(
+      `set role authenticated; select set_config('request.jwt.claim.sub','${one}',false);`,
+    );
+    let s = applyActions(emptyState(), [
+      { type: "task.create", task: { title: "מטבח" } },
+    ]);
+    s = applyActions(s, [
+      {
+        type: "reminder.add",
+        title: "בדיקה",
+        dueAt: "2030-01-01T10:00:00Z",
+        taskId: s.tasks[0].id,
+      },
+    ]);
+    const saved = await db.query<{ save_app_state: number }>(
+      "select save_app_state($1::jsonb,0)",
+      [JSON.stringify(s)],
+    );
+    assert.equal(Number(saved.rows[0].save_app_state), 1);
+    await assert.rejects(
+      db.query("select save_app_state($1::jsonb,0)", [JSON.stringify(s)]),
+      /revision_conflict/,
+    );
+    const revision = await db.query<{ revision: number }>(
+      "select revision from app_states",
+    );
+    assert.equal(Number(revision.rows[0].revision), 1);
+    assert.equal(
+      (await db.query("select * from reminder_queue")).rows.length,
+      1,
+    );
+    await db.exec(`select set_config('request.jwt.claim.sub','${two}',false)`);
+    assert.equal((await db.query("select * from app_states")).rows.length, 0);
+    assert.equal(
+      (await db.query("select * from reminder_queue")).rows.length,
+      0,
+    );
+    await assert.rejects(
+      db.query("insert into app_states(owner_id,data) values($1,$2)", [
+        one,
+        JSON.stringify(s),
+      ]),
+      /row-level security/,
+    );
+    await assert.rejects(
+      db.query("select consume_ai_budget($1,$2,2)", [two, "chat"]),
+      /permission denied/,
+    );
+    await db.exec(`select set_config('request.jwt.claim.sub','${one}',false)`);
+    s = applyActions(s, [
+      { type: "task.status", id: s.tasks[0].id, status: "done" },
+    ]);
+    await db.query("select save_app_state($1::jsonb,1)", [JSON.stringify(s)]);
+    assert.equal(
+      (await db.query<{ status: string }>("select status from reminder_queue"))
+        .rows[0].status,
+      "cancelled",
+    );
+    await db.exec("reset role; set role service_role;");
+    for (let i = 0; i < 3; i++) {
+      const result = await db.query<{ consume_ai_budget: boolean }>(
+        "select consume_ai_budget($1,$2,2)",
+        [one, "chat"],
+      );
+      assert.equal(result.rows[0].consume_ai_budget, i < 2);
+    }
+  } finally {
+    await db.close();
+  }
+});

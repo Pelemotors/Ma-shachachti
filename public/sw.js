@@ -1,0 +1,3 @@
+// Deliberately no runtime caching: never cache authenticated API responses or household data.
+self.addEventListener('push',event=>{let data={};try{data=event.data?.json()??{};}catch{}event.waitUntil(self.registration.showNotification(data.title||'מה שכחתי?',{body:data.body||'יש עדכון חדש',tag:data.tag||'home',icon:'/icon-192.png',data:{url:'/?view=reminders'}}));});
+self.addEventListener('notificationclick',event=>{event.notification.close();event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(async windows=>{for(const client of windows){if(new URL(client.url).origin===self.location.origin){await client.navigate('/?view=reminders');return client.focus();}}return clients.openWindow('/?view=reminders');}));});
