@@ -1,14 +1,500 @@
-import { ActionBatch, AppState, Action, Task, StateSchema, normalize } from "./model";
-import { nextDayStart, addCalendarDays } from "./time";
-export function requiresConfirmation(actions: Action[]) { return actions.filter((a)=>a.type!=="message.add").length>5 || actions.some((a)=>["history.clear","fact.remove","shopping.remove"].includes(a.type)||(a.type==="task.status"&&a.status==="cancelled")||(a.type==="profile.update"&&(a.patch.aiConsent!==undefined||a.patch.autoApply!==undefined))); }
-export function applyActions(state:AppState,raw:Action[],now=new Date(),confirmed=false):AppState{const actions=ActionBatch.parse(raw);if(requiresConfirmation(actions)&&!confirmed)throw new Error("נדרש אישור לפעולה הזאת.");const s=structuredClone(state),stamp=now.toISOString();const task=(id:string)=>{const t=s.tasks.find(t=>t.id===id);if(!t)throw new Error("המשימה לא נמצאה.");return t;};for(const action of actions){switch(action.type){case"task.create":{const input=action.task;const duplicate=s.tasks.find(t=>t.status==="open"&&normalize(t.title)===normalize(input.title)&&t.kind===(input.kind??"task")&&t.dueAt===(input.dueAt??null));if(duplicate)break;s.tasks.push({id:crypto.randomUUID(),title:input.title.trim(),category:input.category??"שונות / לא מסווג",kind:input.kind??"task",status:"open",createdAt:stamp,updatedAt:stamp,dueAt:input.dueAt??null,hiddenUntil:input.hiddenUntil??null,workMinutes:input.workMinutes??15,waitMinutes:input.waitMinutes??0,effort:input.effort??2,priority:input.priority??1,dependsOn:input.dependsOn??[],steps:input.steps??[],templateId:input.templateId??null,recurrenceDays:input.recurrenceDays??null,occurrenceOf:null,notes:input.notes??"",completedAt:null,actualWorkMinutes:null});break;}case"task.update":Object.assign(task(action.id),action.patch,{updatedAt:stamp});break;case"task.defer":{const t=task(action.id);t.hiddenUntil=nextDayStart(now,s.profile.timezone);t.updatedAt=stamp;break;}case"task.step":{const t=task(action.id),step=t.steps.find(x=>x.id===action.stepId);if(!step)throw new Error("השלב לא נמצא.");step.done=action.done;t.updatedAt=stamp;break;}case"task.status":{const t=task(action.id);if(t.status===action.status)break;t.status=action.status;t.updatedAt=stamp;t.completedAt=action.status==="done"?stamp:null;t.actualWorkMinutes=action.status==="done"?(action.actualWorkMinutes??null):null;if(action.status==="done"||action.status==="cancelled")s.reminders.filter(r=>r.taskId===t.id&&r.status==="pending").forEach(r=>r.status="cancelled");if(action.status==="done"&&t.recurrenceDays&&!s.tasks.some(x=>x.occurrenceOf===t.id)){const next=addCalendarDays(t.dueAt&&new Date(t.dueAt)>now?t.dueAt:stamp,t.recurrenceDays,s.profile.timezone);s.tasks.push({...structuredClone(t),id:crypto.randomUUID(),status:"open",createdAt:stamp,updatedAt:stamp,completedAt:null,actualWorkMinutes:null,occurrenceOf:t.id,dueAt:next,hiddenUntil:next,steps:t.steps.map(x=>({...x,done:false})),dependsOn:[]});}if(action.status==="open")s.tasks=s.tasks.filter(x=>!(x.occurrenceOf===t.id&&x.status==="open"));break;}case"shopping.add":{const existing=s.shopping.find(i=>!i.purchasedAt&&normalize(i.title)===normalize(action.title));if(existing){if(action.quantity)existing.quantity=action.quantity;}else s.shopping.push({id:crypto.randomUUID(),title:action.title.trim(),quantity:action.quantity??"",purchasedAt:null,createdAt:stamp});break;}case"shopping.check":{const item=s.shopping.find(x=>x.id===action.id);if(!item)throw new Error("הפריט לא נמצא.");item.purchasedAt=action.checked?stamp:null;break;}case"shopping.remove":s.shopping=s.shopping.filter(x=>x.id!==action.id);break;case"fact.add":{if(action.kind==="temporary"&&(!action.expiresAt||new Date(action.expiresAt)<=now))throw new Error("מידע זמני צריך תוקף עתידי.");if(!s.facts.some(f=>normalize(f.text)===normalize(action.text)&&f.expiresAt===action.expiresAt))s.facts.push({id:crypto.randomUUID(),...action,createdAt:stamp,source:"user"});break;}case"fact.remove":s.facts=s.facts.filter(x=>x.id!==action.id);break;case"reminder.add":{if(new Date(action.dueAt)<=now)throw new Error("מועד התזכורת צריך להיות בעתיד.");if(action.taskId)task(action.taskId);if(!s.reminders.some(r=>r.status==="pending"&&r.title===action.title&&r.dueAt===action.dueAt))s.reminders.push({id:crypto.randomUUID(),title:action.title,dueAt:action.dueAt,taskId:action.taskId,status:"pending"});break;}case"reminder.cancel":{const r=s.reminders.find(r=>r.id===action.id);if(r)r.status="cancelled";break;}case"profile.update":Object.assign(s.profile,action.patch);break;case"template.exclude":if(!s.excludedTemplates.includes(action.id))s.excludedTemplates.push(action.id);break;case"template.restore":s.excludedTemplates=s.excludedTemplates.filter(x=>x!==action.id);break;case"message.add":s.messages.push({id:crypto.randomUUID(),role:action.role,text:action.text,createdAt:stamp});s.messages=s.messages.slice(-200);break;case"history.clear":s.messages=[];s.events=[];break;}if(action.type!=="message.add"&&action.type!=="history.clear")s.events.push({id:crypto.randomUUID(),at:stamp,type:action.type,summary:action.type});}const visited=new Set<string>();const visit=(id:string,path:Set<string>)=>{if(visited.has(id))return;if(path.size>100)throw new Error("שרשרת התלות ארוכה מדי.");if(path.has(id))throw new Error("התלות יוצרת מעגל בין משימות.");const t=task(id);for(const dep of t.dependsOn)visit(dep,new Set([...path,id]));visited.add(id);};s.tasks.forEach(t=>visit(t.id,new Set()));s.events=s.events.slice(-500);return StateSchema.parse(s);}
-export function activeFacts(s:AppState,now=new Date()){return s.facts.filter(f=>!f.expiresAt||new Date(f.expiresAt)>now);}
-export function estimatedMinutes(t:Task,s:AppState){const samples=s.tasks.filter(x=>x.status==="done"&&x.actualWorkMinutes&&(t.templateId?x.templateId===t.templateId:normalize(x.title)===normalize(t.title))).map(x=>x.actualWorkMinutes!).slice(-10).sort((a,b)=>a-b);return samples.length>=3?samples[Math.floor(samples.length/2)]:t.workMinutes;}
-export function visible(t:Task,now=new Date()){return(t.status==="open"||t.status==="unknown")&&(!t.hiddenUntil||new Date(t.hiddenUntil)<=now);}
-export function score(t:Task,s:AppState,now=new Date()){let n=t.priority*10;if(t.kind==="idea")n-=35;if(t.dueAt){const hours=(new Date(t.dueAt).getTime()-now.getTime())/3600000;n+=hours<0?100:hours<24?70:hours<72?30:0;}n+=s.tasks.filter(x=>x.status==="open"&&x.dependsOn.includes(t.id)).length*15;return n;}
-export function whatMatters(s:AppState,now=new Date()){return s.tasks.filter(t=>visible(t,now)&&t.kind==="task").sort((a,b)=>score(b,s,now)-score(a,s,now)).slice(0,6);}
-export function blocked(t:Task,s:AppState){return t.dependsOn.some(id=>s.tasks.find(x=>x.id===id)?.status!=="done");}
-function deadlineAllows(t:Task,end:number,now:Date){if(!t.dueAt)return true;const available=(new Date(t.dueAt).getTime()-now.getTime())/60000;return available>=0&&end<=available;}
-export function opportunities(s:AppState,minutes:number,effort:number,now=new Date()){const candidates=s.tasks.filter(t=>visible(t,now)&&t.status==="open"&&!blocked(t,s)&&t.effort<=effort&&(estimatedMinutes(t,s)+t.waitMinutes)*1.15<=minutes&&deadlineAllows(t,estimatedMinutes(t,s)+t.waitMinutes,now)).sort((a,b)=>score(b,s,now)-score(a,s,now));const important=whatMatters(s,now).filter(t=>t.dueAt&&new Date(t.dueAt).getTime()-now.getTime()<86400000&&!candidates.includes(t));return{candidates:candidates.slice(0,4),important};}
-export function planDay(s:AppState,minutes:number,effort:number,now=new Date()){const remaining=s.tasks.filter(t=>visible(t,now)&&t.status==="open"&&t.kind==="task"&&t.effort<=effort).sort((a,b)=>score(b,s,now)-score(a,s,now));const selected:{task:Task;start:number;end:number}[]=[];let workCursor=0;const finished=new Map<string,number>(s.tasks.filter(t=>t.status==="done").map(t=>[t.id,0]));for(let pass=0;pass<s.tasks.length&&remaining.length;pass++){let progress=false;for(let i=0;i<remaining.length;i++){const t=remaining[i];if(t.dependsOn.some(id=>!finished.has(id)))continue;const dependencyReady=Math.max(0,...t.dependsOn.map(id=>finished.get(id)??0));const start=Math.max(workCursor,dependencyReady);const work=estimatedMinutes(t,s);const end=start+work+t.waitMinutes;if((start+work)*1.15>minutes||end>minutes||!deadlineAllows(t,end,now))continue;selected.push({task:t,start,end});finished.set(t.id,end);workCursor=start+work+Math.ceil(work*.15);remaining.splice(i--,1);progress=true;}if(!progress)break;}return{selected,remaining};}
-export function learning(s:AppState){const groups=new Map<string,Task[]>();s.tasks.filter(t=>t.status==="done"&&t.completedAt).forEach(t=>{const key=t.templateId??normalize(t.title);groups.set(key,[...(groups.get(key)??[]),t]);});return[...groups.values()].filter(g=>g.length>=4).map(g=>{const sorted=g.sort((a,b)=>a.completedAt!.localeCompare(b.completedAt!));const intervals=sorted.slice(1).map((t,i)=>(Date.parse(t.completedAt!)-Date.parse(sorted[i].completedAt!))/86400000);const median=[...intervals].sort((a,b)=>a-b)[Math.floor(intervals.length/2)];const consistent=median>=1&&intervals.filter(x=>Math.abs(x-median)<=median*.3).length>=3;return{title:g[0].title,templateId:g[0].templateId,days:Math.round(median),samples:g.length,consistent};}).filter(x=>x.consistent);}
+import {
+  ActionBatch,
+  AppState,
+  Action,
+  Task,
+  StateSchema,
+  normalize,
+} from "./model";
+import { nextDayStart, addCalendarDays, dayKey } from "./time";
+
+export function requiresConfirmation(actions: Action[]) {
+  return (
+    actions.filter((a) => a.type !== "message.add").length > 5 ||
+    actions.some(
+      (a) =>
+        ["history.clear", "fact.remove", "shopping.remove"].includes(a.type) ||
+        (a.type === "task.status" && a.status === "cancelled") ||
+        (a.type === "profile.update" &&
+          (a.patch.aiConsent !== undefined || a.patch.autoApply !== undefined)),
+    )
+  );
+}
+
+export function applyActions(
+  state: AppState,
+  raw: Action[],
+  now = new Date(),
+  confirmed = false,
+): AppState {
+  const actions = ActionBatch.parse(raw);
+  if (requiresConfirmation(actions) && !confirmed)
+    throw new Error("נדרש אישור לפעולה הזאת.");
+  const s = StateSchema.parse(structuredClone(state));
+  const stamp = now.toISOString();
+  const task = (id: string) => {
+    const t = s.tasks.find((x) => x.id === id);
+    if (!t) throw new Error("המשימה לא נמצאה.");
+    return t;
+  };
+
+  for (const action of actions) {
+    switch (action.type) {
+      case "task.create": {
+        const input = action.task;
+        const duplicate = s.tasks.find(
+          (t) =>
+            t.status === "open" &&
+            normalize(t.title) === normalize(input.title) &&
+            t.kind === (input.kind ?? "task") &&
+            t.dueAt === (input.dueAt ?? null),
+        );
+        if (duplicate) break;
+        s.tasks.push({
+          id: crypto.randomUUID(),
+          title: input.title.trim(),
+          category: input.category ?? "שונות / לא מסווג",
+          kind: input.kind ?? "task",
+          status: "open",
+          createdAt: stamp,
+          updatedAt: stamp,
+          dueAt: input.dueAt ?? null,
+          hiddenUntil: input.hiddenUntil ?? null,
+          workMinutes: input.workMinutes ?? 15,
+          waitMinutes: input.waitMinutes ?? 0,
+          effort: input.effort ?? 2,
+          priority: input.priority ?? 1,
+          dependsOn: input.dependsOn ?? [],
+          steps: input.steps ?? [],
+          templateId: input.templateId ?? null,
+          recurrenceDays: input.recurrenceDays ?? null,
+          occurrenceOf: null,
+          notes: input.notes ?? "",
+          completedAt: null,
+          actualWorkMinutes: null,
+        });
+        break;
+      }
+      case "task.update":
+        Object.assign(task(action.id), action.patch, { updatedAt: stamp });
+        break;
+      case "task.defer": {
+        const t = task(action.id);
+        t.hiddenUntil = nextDayStart(now, s.profile.timezone);
+        t.updatedAt = stamp;
+        break;
+      }
+      case "task.step": {
+        const t = task(action.id);
+        const step = t.steps.find((x) => x.id === action.stepId);
+        if (!step) throw new Error("השלב לא נמצא.");
+        step.done = action.done;
+        t.updatedAt = stamp;
+        break;
+      }
+      case "task.status": {
+        const t = task(action.id);
+        if (t.status === action.status) break;
+        t.status = action.status;
+        t.updatedAt = stamp;
+        t.completedAt = action.status === "done" ? stamp : null;
+        t.actualWorkMinutes =
+          action.status === "done" ? (action.actualWorkMinutes ?? null) : null;
+        if (action.status === "done" || action.status === "cancelled")
+          s.reminders
+            .filter((r) => r.taskId === t.id && r.status === "pending")
+            .forEach((r) => (r.status = "cancelled"));
+        if (
+          action.status === "done" &&
+          t.recurrenceDays &&
+          !s.tasks.some((x) => x.occurrenceOf === t.id)
+        ) {
+          const next = addCalendarDays(
+            t.dueAt && new Date(t.dueAt) > now ? t.dueAt : stamp,
+            t.recurrenceDays,
+            s.profile.timezone,
+          );
+          s.tasks.push({
+            ...structuredClone(t),
+            id: crypto.randomUUID(),
+            status: "open",
+            createdAt: stamp,
+            updatedAt: stamp,
+            completedAt: null,
+            actualWorkMinutes: null,
+            occurrenceOf: t.id,
+            dueAt: next,
+            hiddenUntil: next,
+            steps: t.steps.map((x) => ({ ...x, done: false })),
+            dependsOn: [],
+          });
+        }
+        if (action.status === "open")
+          s.tasks = s.tasks.filter(
+            (x) => !(x.occurrenceOf === t.id && x.status === "open"),
+          );
+        break;
+      }
+      case "shopping.add": {
+        const existing = s.shopping.find(
+          (i) => !i.purchasedAt && normalize(i.title) === normalize(action.title),
+        );
+        if (existing) {
+          if (action.quantity) existing.quantity = action.quantity;
+        } else
+          s.shopping.push({
+            id: crypto.randomUUID(),
+            title: action.title.trim(),
+            quantity: action.quantity ?? "",
+            purchasedAt: null,
+            createdAt: stamp,
+          });
+        break;
+      }
+      case "shopping.check": {
+        const item = s.shopping.find((x) => x.id === action.id);
+        if (!item) throw new Error("הפריט לא נמצא.");
+        item.purchasedAt = action.checked ? stamp : null;
+        break;
+      }
+      case "shopping.remove":
+        s.shopping = s.shopping.filter((x) => x.id !== action.id);
+        break;
+      case "fact.add": {
+        if (
+          action.kind === "temporary" &&
+          (!action.expiresAt || new Date(action.expiresAt) <= now)
+        )
+          throw new Error("מידע זמני צריך תוקף עתידי.");
+        if (
+          !s.facts.some(
+            (f) =>
+              normalize(f.text) === normalize(action.text) &&
+              f.expiresAt === action.expiresAt,
+          )
+        )
+          s.facts.push({
+            id: crypto.randomUUID(),
+            text: action.text,
+            kind: action.kind,
+            expiresAt: action.expiresAt,
+            createdAt: stamp,
+            source: "user",
+          });
+        break;
+      }
+      case "fact.update": {
+        const fact = s.facts.find((x) => x.id === action.id);
+        if (!fact) throw new Error("הפרט לא נמצא בזיכרון.");
+        const nextKind = action.patch.kind ?? fact.kind;
+        const nextExpiry =
+          action.patch.expiresAt === undefined
+            ? fact.expiresAt
+            : action.patch.expiresAt;
+        if (
+          nextKind === "temporary" &&
+          (!nextExpiry || new Date(nextExpiry) <= now)
+        )
+          throw new Error("מידע זמני צריך תוקף עתידי.");
+        Object.assign(fact, action.patch);
+        break;
+      }
+      case "fact.remove":
+        s.facts = s.facts.filter((x) => x.id !== action.id);
+        break;
+      case "reminder.add": {
+        if (new Date(action.dueAt) <= now)
+          throw new Error("מועד התזכורת צריך להיות בעתיד.");
+        if (action.taskId) task(action.taskId);
+        if (
+          !s.reminders.some(
+            (r) =>
+              r.status === "pending" &&
+              r.title === action.title &&
+              r.dueAt === action.dueAt,
+          )
+        )
+          s.reminders.push({
+            id: crypto.randomUUID(),
+            title: action.title,
+            dueAt: action.dueAt,
+            taskId: action.taskId,
+            status: "pending",
+          });
+        break;
+      }
+      case "reminder.cancel": {
+        const r = s.reminders.find((x) => x.id === action.id);
+        if (r) r.status = "cancelled";
+        break;
+      }
+      case "planning.set":
+        s.planning.today = action.constraint;
+        break;
+      case "planning.clear":
+        s.planning.today = null;
+        break;
+      case "profile.update":
+        Object.assign(s.profile, action.patch);
+        break;
+      case "template.exclude":
+        if (!s.excludedTemplates.includes(action.id))
+          s.excludedTemplates.push(action.id);
+        break;
+      case "template.restore":
+        s.excludedTemplates = s.excludedTemplates.filter((x) => x !== action.id);
+        break;
+      case "message.add":
+        s.messages.push({
+          id: crypto.randomUUID(),
+          role: action.role,
+          text: action.text,
+          createdAt: stamp,
+        });
+        s.messages = s.messages.slice(-200);
+        break;
+      case "history.clear":
+        s.messages = [];
+        s.events = [];
+        break;
+    }
+
+    if (action.type !== "message.add" && action.type !== "history.clear")
+      s.events.push({
+        id: crypto.randomUUID(),
+        at: stamp,
+        type: action.type,
+        summary: action.type,
+      });
+  }
+
+  const visited = new Set<string>();
+  const visit = (id: string, path: Set<string>) => {
+    if (visited.has(id)) return;
+    if (path.size > 100) throw new Error("שרשרת התלות ארוכה מדי.");
+    if (path.has(id)) throw new Error("התלות יוצרת מעגל בין משימות.");
+    const t = task(id);
+    for (const dep of t.dependsOn) visit(dep, new Set([...path, id]));
+    visited.add(id);
+  };
+  s.tasks.forEach((t) => visit(t.id, new Set()));
+  s.events = s.events.slice(-500);
+  return StateSchema.parse(s);
+}
+
+export function activeFacts(s: AppState, now = new Date()) {
+  return s.facts.filter((f) => !f.expiresAt || new Date(f.expiresAt) > now);
+}
+
+export function estimatedMinutes(t: Task, s: AppState) {
+  const samples = s.tasks
+    .filter(
+      (x) =>
+        x.status === "done" &&
+        x.actualWorkMinutes &&
+        (t.templateId
+          ? x.templateId === t.templateId
+          : normalize(x.title) === normalize(t.title)),
+    )
+    .map((x) => x.actualWorkMinutes!)
+    .slice(-10)
+    .sort((a, b) => a - b);
+  return samples.length >= 3
+    ? samples[Math.floor(samples.length / 2)]
+    : t.workMinutes;
+}
+
+export function visible(t: Task, now = new Date()) {
+  return (
+    (t.status === "open" || t.status === "unknown") &&
+    (!t.hiddenUntil || new Date(t.hiddenUntil) <= now)
+  );
+}
+
+export function score(t: Task, s: AppState, now = new Date()) {
+  let n = t.priority * 10;
+  if (t.kind === "idea") n -= 35;
+  if (t.dueAt) {
+    const hours = (new Date(t.dueAt).getTime() - now.getTime()) / 3600000;
+    n += hours < 0 ? 100 : hours < 24 ? 70 : hours < 72 ? 30 : 0;
+  }
+  n += s.tasks.filter(
+    (x) => x.status === "open" && x.dependsOn.includes(t.id),
+  ).length * 15;
+  return n;
+}
+
+export function whatMatters(s: AppState, now = new Date()) {
+  return s.tasks
+    .filter((t) => visible(t, now) && t.kind === "task")
+    .sort((a, b) => score(b, s, now) - score(a, s, now))
+    .slice(0, 6);
+}
+
+export function blocked(t: Task, s: AppState) {
+  return t.dependsOn.some(
+    (id) => s.tasks.find((x) => x.id === id)?.status !== "done",
+  );
+}
+
+function deadlineAllows(t: Task, end: number, now: Date) {
+  if (!t.dueAt) return true;
+  const available = (new Date(t.dueAt).getTime() - now.getTime()) / 60000;
+  return available >= 0 && end <= available;
+}
+
+export function opportunities(
+  s: AppState,
+  minutes: number,
+  effort: number,
+  now = new Date(),
+) {
+  const candidates = s.tasks
+    .filter(
+      (t) =>
+        visible(t, now) &&
+        t.status === "open" &&
+        !blocked(t, s) &&
+        t.effort <= effort &&
+        (estimatedMinutes(t, s) + t.waitMinutes) * 1.15 <= minutes &&
+        deadlineAllows(t, estimatedMinutes(t, s) + t.waitMinutes, now),
+    )
+    .sort((a, b) => score(b, s, now) - score(a, s, now));
+  const important = whatMatters(s, now).filter(
+    (t) =>
+      t.dueAt &&
+      new Date(t.dueAt).getTime() - now.getTime() < 86400000 &&
+      !candidates.includes(t),
+  );
+  return { candidates: candidates.slice(0, 4), important };
+}
+
+type BusyWindow = { start: number; end: number };
+function planConstraint(s: AppState, now: Date) {
+  const constraint = s.planning.today;
+  if (!constraint || constraint.date !== dayKey(now, s.profile.timezone)) return null;
+  return constraint;
+}
+function minuteOffset(iso: string, now: Date) {
+  return (Date.parse(iso) - now.getTime()) / 60000;
+}
+function nextWorkStart(start: number, work: number, busy: BusyWindow[]) {
+  let next = Math.max(0, start);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const window of busy) {
+      if (next < window.end && next + work > window.start) {
+        next = window.end;
+        changed = true;
+        break;
+      }
+    }
+  }
+  return next;
+}
+
+export function planDay(
+  s: AppState,
+  minutes: number,
+  effort: number,
+  now = new Date(),
+) {
+  const constraint = planConstraint(s, now);
+  const startFloor = constraint?.availableFrom
+    ? Math.max(0, minuteOffset(constraint.availableFrom, now))
+    : 0;
+  const availabilityEnd = constraint?.availableUntil
+    ? Math.max(0, minuteOffset(constraint.availableUntil, now))
+    : minutes;
+  const planEnd = Math.min(minutes, availabilityEnd);
+  const allowedEffort = Math.min(effort, constraint?.effort ?? effort);
+  const busy: BusyWindow[] = (constraint?.unavailable ?? [])
+    .map((x) => ({
+      start: minuteOffset(x.start, now),
+      end: minuteOffset(x.end, now),
+    }))
+    .filter((x) => x.end > 0 && x.start < planEnd)
+    .sort((a, b) => a.start - b.start);
+
+  const remaining = s.tasks
+    .filter(
+      (t) =>
+        visible(t, now) &&
+        t.status === "open" &&
+        t.kind === "task" &&
+        t.effort <= allowedEffort,
+    )
+    .sort((a, b) => score(b, s, now) - score(a, s, now));
+  const selected: { task: Task; start: number; end: number }[] = [];
+  let workCursor = startFloor;
+  const finished = new Map<string, number>(
+    s.tasks.filter((t) => t.status === "done").map((t) => [t.id, 0]),
+  );
+
+  for (let pass = 0; pass < s.tasks.length && remaining.length; pass++) {
+    let progress = false;
+    for (let i = 0; i < remaining.length; i++) {
+      const t = remaining[i];
+      if (t.dependsOn.some((id) => !finished.has(id))) continue;
+      const dependencyReady = Math.max(
+        startFloor,
+        ...t.dependsOn.map((id) => finished.get(id) ?? startFloor),
+      );
+      const work = estimatedMinutes(t, s);
+      const rawStart = Math.max(workCursor, dependencyReady);
+      const start = nextWorkStart(rawStart, work, busy);
+      const end = start + work + t.waitMinutes;
+      const bufferedWorkEnd = start + work + Math.ceil(work * 0.15);
+      if (
+        bufferedWorkEnd > planEnd ||
+        end > planEnd ||
+        !deadlineAllows(t, end, now)
+      )
+        continue;
+      selected.push({ task: t, start, end });
+      finished.set(t.id, end);
+      workCursor = bufferedWorkEnd;
+      remaining.splice(i--, 1);
+      progress = true;
+    }
+    if (!progress) break;
+  }
+  return { selected, remaining };
+}
+
+export function learning(s: AppState) {
+  const groups = new Map<string, Task[]>();
+  s.tasks
+    .filter((t) => t.status === "done" && t.completedAt)
+    .forEach((t) => {
+      const key = t.templateId ?? normalize(t.title);
+      groups.set(key, [...(groups.get(key) ?? []), t]);
+    });
+  return [...groups.values()]
+    .filter((g) => g.length >= 4)
+    .map((g) => {
+      const sorted = g.sort((a, b) => a.completedAt!.localeCompare(b.completedAt!));
+      const intervals = sorted
+        .slice(1)
+        .map(
+          (t, i) =>
+            (Date.parse(t.completedAt!) - Date.parse(sorted[i].completedAt!)) /
+            86400000,
+        );
+      const median = [...intervals].sort((a, b) => a - b)[
+        Math.floor(intervals.length / 2)
+      ];
+      const consistent =
+        median >= 1 &&
+        intervals.filter((x) => Math.abs(x - median) <= median * 0.3).length >= 3;
+      return {
+        title: g[0].title,
+        templateId: g[0].templateId,
+        days: Math.round(median),
+        samples: g.length,
+        consistent,
+      };
+    })
+    .filter((x) => x.consistent);
+}
