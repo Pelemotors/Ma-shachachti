@@ -1,6 +1,7 @@
 -- Allow AppState schemaVersion 2 (taxonomy / DailyPlan / members) while keeping V1 writes valid during rollout.
 -- Preserves W reminder-queue sync (including cancel-stale-pending) from save_app_state.
 -- pending_proposals table DDL lives in 20260908_pending_proposals_table.sql (domain 1).
+-- Applied on Production as migration save_app_state_accept_schema_v2.
 
 create or replace function public.save_app_state(p_data jsonb, p_expected_revision bigint)
 returns bigint

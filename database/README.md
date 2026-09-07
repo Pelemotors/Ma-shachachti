@@ -13,4 +13,4 @@ The repository is the source of truth for schema reconstruction.
 
 Production migrations applied on 2026-09-07 are represented by the repository migrations. The final RLS helper functions live in the non-exposed `private` schema. The legacy three-argument action idempotency RPC is removed after the hashed four-argument variant is deployed.
 
-`pending_proposals` (domain 1) is created by `20260908_pending_proposals_table.sql` and was applied on Production as `pending_proposals_table`. State V2 acceptance in `save_app_state` remains in `20260907_state_v2_pending_proposals.sql` for the next domain.
+`pending_proposals` (domain 1) is created by `20260908_pending_proposals_table.sql` and was applied on Production as `pending_proposals_table`. State V2 acceptance in `save_app_state` is in `20260907_state_v2_pending_proposals.sql` and was applied on Production as `save_app_state_accept_schema_v2`. Existing `app_states` rows may remain `schemaVersion` 1 until the next successful cloud save; reads migrate V1→V2 in memory via `migrateState`.
