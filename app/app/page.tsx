@@ -1,3 +1,5 @@
-import { HomeApp } from "@/components/home-app";
-import { SupportReport } from "@/components/support-report";
-export default function PersonalAreaPage(){ return <><HomeApp/><SupportReport/></>; }
+import { PersonalAreaGate } from "@/components/personal-area-gate";
+
+export default function PersonalAreaPage() {
+  return <PersonalAreaGate />;
+}
