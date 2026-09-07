@@ -59,6 +59,7 @@ test("clean install can apply every audit migration and enforce approved access"
       "20260907_zz_chat_idempotency.sql",
       "20260907_zzz_rls_policy_hardening.sql",
       "20260907_zzzz_action_receipt_hash.sql",
+      "20260907_zzzzz_remove_legacy_action_rpc.sql",
     ];
     for (const name of migrations)
       await db.exec(await readFile(new URL(`../database/migrations/${name}`, import.meta.url), "utf8"));
@@ -72,30 +73,31 @@ test("clean install can apply every audit migration and enforce approved access"
 
     await db.exec(`select set_config('request.jwt.claim.sub','${one}',false);`);
     const s = applyActions(emptyState(), [{ type: "task.create", task: { title: "בדיקת מיגרציה" } }]);
-    const key = "30000000-0000-4000-8000-000000000003";
-    const first = await db.query<{ idempotent_save_app_state: { revision: number } }>("select idempotent_save_app_state($1::jsonb,0,$2::uuid)", [JSON.stringify(s), key]);
-    const second = await db.query<{ idempotent_save_app_state: { revision: number } }>("select idempotent_save_app_state($1::jsonb,0,$2::uuid)", [JSON.stringify(s), key]);
-    assert.equal(Number(first.rows[0].idempotent_save_app_state.revision), 1);
-    assert.equal(Number(second.rows[0].idempotent_save_app_state.revision), 1);
-
     const hashedKey = "50000000-0000-4000-8000-000000000005";
     const hashedFirst = await db.query<{ idempotent_save_app_state: { revision: number } }>(
-      "select idempotent_save_app_state($1::jsonb,1,$2::uuid,$3::text)",
+      "select idempotent_save_app_state($1::jsonb,0,$2::uuid,$3::text)",
       [JSON.stringify(s), hashedKey, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
     );
     const hashedReplay = await db.query<{ idempotent_save_app_state: { revision: number } }>(
-      "select idempotent_save_app_state($1::jsonb,1,$2::uuid,$3::text)",
+      "select idempotent_save_app_state($1::jsonb,0,$2::uuid,$3::text)",
       [JSON.stringify(s), hashedKey, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
     );
-    assert.equal(Number(hashedFirst.rows[0].idempotent_save_app_state.revision), 2);
-    assert.equal(Number(hashedReplay.rows[0].idempotent_save_app_state.revision), 2);
+    assert.equal(Number(hashedFirst.rows[0].idempotent_save_app_state.revision), 1);
+    assert.equal(Number(hashedReplay.rows[0].idempotent_save_app_state.revision), 1);
     await assert.rejects(
-      db.query("select idempotent_save_app_state($1::jsonb,1,$2::uuid,$3::text)", [
+      db.query("select idempotent_save_app_state($1::jsonb,0,$2::uuid,$3::text)", [
         JSON.stringify(s),
         hashedKey,
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       ]),
       /idempotency_conflict/,
+    );
+    await assert.rejects(
+      db.query("select idempotent_save_app_state($1::jsonb,1,$2::uuid)", [
+        JSON.stringify(s),
+        "30000000-0000-4000-8000-000000000003",
+      ]),
+      /does not exist|function/i,
     );
 
     await db.query(
