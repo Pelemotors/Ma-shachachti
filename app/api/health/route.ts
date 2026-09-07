@@ -11,10 +11,9 @@ export function GET() {
     "VAPID_SUBJECT",
     "CRON_SECRET",
   ] as const;
-  const env = Object.fromEntries(required.map((key) => [key, Boolean(process.env[key])]));
-  const ready = Object.values(env).every(Boolean);
+  const ready = required.every((key) => Boolean(process.env[key]));
   return Response.json(
-    { status: ready ? "ok" : "configuration_missing", version: "0.1.0", env },
+    { status: ready ? "ok" : "configuration_missing", version: "0.1.0" },
     { status: ready ? 200 : 503, headers: { "Cache-Control": "no-store" } },
   );
 }
