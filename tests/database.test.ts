@@ -105,6 +105,7 @@ test("clean install can apply every audit migration and enforce approved access"
       "20260907_zzz_rls_policy_hardening.sql",
       "20260907_zzzz_action_receipt_hash.sql",
       "20260907_zzzzz_remove_legacy_action_rpc.sql",
+      "20260908_pending_proposals_table.sql",
       "20260907_state_v2_pending_proposals.sql",
     ];
     for (const name of migrations)
