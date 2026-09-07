@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { authorize, readState, fail, jsonBody, ApiError, activity } from "@/lib/server";
 import { ActionBatch, StateSchema } from "@/lib/model";
 import { applyActions } from "@/lib/engine";
@@ -16,8 +17,46 @@ export async function POST(req: Request) {
       })
       .parse(await jsonBody(req));
     const key = body.idempotencyKey ?? crypto.randomUUID();
-    const current = await readState(db, userId);
+    const requestHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          actions: body.actions,
+          revision: body.revision,
+          confirmed: body.confirmed,
+        }),
+      )
+      .digest("hex");
 
+    if (body.idempotencyKey) {
+      const { data: cached, error: cachedError } = await db
+        .from("action_receipts")
+        .select("request_hash,response")
+        .eq("owner_id", userId)
+        .eq("idempotency_key", key)
+        .maybeSingle();
+      if (cachedError)
+        throw new ApiError(
+          503,
+          "לא ניתן לבדוק ניסיון שמירה קודם. אפשר לנסות שוב בעוד רגע.",
+          "action_receipt_unavailable",
+        );
+      if (cached) {
+        if (cached.request_hash && cached.request_hash !== requestHash)
+          throw new ApiError(
+            409,
+            "מזהה ניסיון השמירה כבר שייך לפעולה אחרת.",
+            "action_idempotency_conflict",
+          );
+        return Response.json(cached.response, {
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Idempotent-Replay": "1",
+          },
+        });
+      }
+    }
+
+    const current = await readState(db, userId);
     let proposed;
     try {
       proposed = applyActions(
@@ -38,8 +77,15 @@ export async function POST(req: Request) {
       p_data: StateSchema.parse(proposed),
       p_expected_revision: body.revision,
       p_key: key,
+      p_request_hash: requestHash,
     });
     if (error) {
+      if (error.message.includes("idempotency_conflict"))
+        throw new ApiError(
+          409,
+          "מזהה ניסיון השמירה כבר שייך לפעולה אחרת.",
+          "action_idempotency_conflict",
+        );
       if (error.message.includes("revision_conflict"))
         throw new ApiError(
           409,
