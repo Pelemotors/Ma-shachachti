@@ -9,6 +9,7 @@ import {
   partitionActionsByPolicy,
 } from "@/lib/agent/schema";
 import { filterRunnableActions } from "@/lib/agent/action-validation";
+import { enforceReferentialIntegrity } from "@/lib/agent/semantic";
 import { outputText, type OpenAIResponse } from "@/lib/agent/client";
 import { nextDayStart } from "@/lib/time";
 import type { AppState } from "@/lib/model";
@@ -281,6 +282,7 @@ export async function orchestrateChatTurn(
       lastError ?? new ApiError(502, "הסוכן לא הצליח לענות כרגע.", "ai_failed")
     );
 
+  decision = enforceReferentialIntegrity(state, decision);
   const { accepted, rejected: rejectedApply } = filterRunnableActions(
     state,
     decision.explicitActions,
