@@ -175,6 +175,55 @@ export function useHousehold() {
     [adopt],
   );
 
+  const replaceState = useCallback(
+    async (candidate: unknown) => {
+      if (locked.current) throw new Error("שמירה אחרת עדיין מתבצעת.");
+      const parsed = StateSchema.parse(candidate);
+      locked.current = true;
+      setBusy(true);
+      setError("");
+      const before = ref.current;
+      const requestGeneration = generation.current;
+      try {
+        let revision = before.revision;
+        if (before.mode === "local") {
+          const stored = localStorage.getItem(LOCAL_KEY);
+          if (stored && stored !== fingerprint(before.state))
+            throw new Error("המידע השתנה בחלון אחר. טענו מחדש לפני שחזור.");
+          localStorage.setItem(LOCAL_KEY, fingerprint(parsed));
+          revision++;
+        } else if (before.mode === "cloud") {
+          const res = await authFetch("/api/state", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ state: parsed, revision: before.revision }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          revision = Number(data.revision);
+        } else throw new Error("צריך להתחבר או לפתוח הדגמה לפני שחזור.");
+        if (
+          requestGeneration !== generation.current ||
+          ref.current.mode !== before.mode
+        )
+          throw new Error("החשבון השתנה בזמן השחזור. הנתונים לא הוצגו.");
+        pendingCommit.current = null;
+        setUndo(null);
+        adopt(parsed, revision, before.mode);
+        setNotice("הגיבוי שוחזר לאחר אימות");
+        return parsed;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "השחזור לא הצליח";
+        setError(msg);
+        throw e;
+      } finally {
+        locked.current = false;
+        setBusy(false);
+      }
+    },
+    [adopt],
+  );
+
   const restore = useCallback(async () => {
     if (!undo || locked.current) return;
     locked.current = true;
@@ -244,6 +293,7 @@ export function useHousehold() {
     undo: undo?.state ?? null,
     currentRevision: () => ref.current.revision,
     commit,
+    replaceState,
     restore,
     startLocal,
     cloudLoad,
