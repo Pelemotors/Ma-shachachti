@@ -31,6 +31,9 @@ export async function GET(req: Request) {
     const events = recent.data ?? [];
     const latestAi = events.find((e) => e.event_type.startsWith("ai."));
     const latestCron = events.find((e) => e.event_type.startsWith("cron.reminders."));
+    const supabaseConfigured = Boolean(
+      process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
+    );
     const openaiConfigured = Boolean(
       process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL,
     );
@@ -39,27 +42,39 @@ export async function GET(req: Request) {
         process.env.VAPID_PRIVATE_KEY &&
         process.env.VAPID_SUBJECT,
     );
+    const cronConfigured = Boolean(process.env.CRON_SECRET);
+    const openaiStatus = !openaiConfigured
+      ? "not_configured"
+      : latestAi?.event_type === "ai.success"
+        ? "available"
+        : latestAi?.event_type === "ai.failure"
+          ? "failed"
+          : "unknown";
+    const cronStatus = !cronConfigured
+      ? "not_configured"
+      : latestCron?.event_type === "cron.reminders.success"
+        ? "available"
+        : latestCron?.event_type === "cron.reminders.failure"
+          ? "failed"
+          : "unknown";
 
     return Response.json({
       database: database.error ? "error" : "healthy",
       latencyMs: Date.now() - start,
       services: {
+        supabase: supabaseConfigured && !database.error,
+        openai: openaiStatus === "available",
+        push: pushConfigured,
+        cron: cronStatus === "available",
+      },
+      serviceDetails: {
         supabase: {
-          configured: Boolean(
-            process.env.NEXT_PUBLIC_SUPABASE_URL &&
-              process.env.SUPABASE_SERVICE_ROLE_KEY,
-          ),
+          configured: supabaseConfigured,
           status: database.error ? "failed" : "available",
         },
         openai: {
           configured: openaiConfigured,
-          status: !openaiConfigured
-            ? "not_configured"
-            : latestAi?.event_type === "ai.success"
-              ? "available"
-              : latestAi?.event_type === "ai.failure"
-                ? "failed"
-                : "unknown",
+          status: openaiStatus,
           lastTestedAt: latestAi?.created_at ?? null,
           lastFailureCode:
             latestAi?.event_type === "ai.failure"
@@ -71,13 +86,8 @@ export async function GET(req: Request) {
           status: pushConfigured ? "configured" : "not_configured",
         },
         cron: {
-          configured: Boolean(process.env.CRON_SECRET),
-          status:
-            latestCron?.event_type === "cron.reminders.success"
-              ? "available"
-              : latestCron?.event_type === "cron.reminders.failure"
-                ? "failed"
-                : "unknown",
+          configured: cronConfigured,
+          status: cronStatus,
           lastRunAt: latestCron?.created_at ?? null,
         },
       },
