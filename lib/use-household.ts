@@ -122,7 +122,8 @@ export function useHousehold() {
           setUndo((previous) =>
             previous ? { ...previous, messages: next.messages } : null,
           );
-        setNotice(before.mode === "local" ? "נשמר במכשיר הזה" : "השינוי נשמר");
+        if (remember)
+          setNotice(before.mode === "local" ? "נשמר במכשיר הזה" : "השינוי נשמר");
         return next;
       } catch (e) {
         const msg = e instanceof Error ? e.message : "השמירה לא הצליחה";
