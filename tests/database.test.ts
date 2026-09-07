@@ -58,6 +58,7 @@ test("clean install can apply every audit migration and enforce approved access"
       "20260907_move_auth_helpers_private.sql",
       "20260907_zz_chat_idempotency.sql",
       "20260907_zzz_rls_policy_hardening.sql",
+      "20260907_zzzz_action_receipt_hash.sql",
     ];
     for (const name of migrations)
       await db.exec(await readFile(new URL(`../database/migrations/${name}`, import.meta.url), "utf8"));
@@ -76,6 +77,27 @@ test("clean install can apply every audit migration and enforce approved access"
     const second = await db.query<{ idempotent_save_app_state: { revision: number } }>("select idempotent_save_app_state($1::jsonb,0,$2::uuid)", [JSON.stringify(s), key]);
     assert.equal(Number(first.rows[0].idempotent_save_app_state.revision), 1);
     assert.equal(Number(second.rows[0].idempotent_save_app_state.revision), 1);
+
+    const hashedKey = "50000000-0000-4000-8000-000000000005";
+    const hashedFirst = await db.query<{ idempotent_save_app_state: { revision: number } }>(
+      "select idempotent_save_app_state($1::jsonb,1,$2::uuid,$3::text)",
+      [JSON.stringify(s), hashedKey, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+    );
+    const hashedReplay = await db.query<{ idempotent_save_app_state: { revision: number } }>(
+      "select idempotent_save_app_state($1::jsonb,1,$2::uuid,$3::text)",
+      [JSON.stringify(s), hashedKey, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+    );
+    assert.equal(Number(hashedFirst.rows[0].idempotent_save_app_state.revision), 2);
+    assert.equal(Number(hashedReplay.rows[0].idempotent_save_app_state.revision), 2);
+    await assert.rejects(
+      db.query("select idempotent_save_app_state($1::jsonb,1,$2::uuid,$3::text)", [
+        JSON.stringify(s),
+        hashedKey,
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      ]),
+      /idempotency_conflict/,
+    );
+
     await db.query(
       "insert into chat_receipts(owner_id,idempotency_key,request_hash,response) values($1,$2,$3,$4::jsonb)",
       [one, "40000000-0000-4000-8000-000000000004", "hash", JSON.stringify({ ok: true })],
