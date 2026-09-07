@@ -8,6 +8,12 @@ import { activeFacts, blocked, estimatedMinutes } from "../engine";
 import { isActiveVisibleTask } from "./tasks/visibility";
 import { isLifeAdminTask } from "./notifications/life-admin";
 import { isStampPast, msUntil, stampMs } from "../time";
+import {
+  activeForecasts,
+  forecastActionableNow,
+  type ForecastModel,
+} from "./forecast";
+import { learnedDurationMinutes } from "./learning/pace";
 
 /**
  * Shared structured decision context for WhatForgot / DailyPlan / FreeTime.
@@ -38,6 +44,7 @@ export type SharedDecisionContext = {
   availableMinutes: number | null;
   effort: number | null;
   shoppingOpen: AppState["shopping"];
+  actionableForecasts: ForecastModel[];
 };
 
 function dependencyReady(task: Task, state: AppState): boolean {
@@ -70,7 +77,8 @@ function feasibilityScore(
   availableMinutes: number | null,
 ): number {
   if (!dependencyReady(task, state)) return 0;
-  const duration = estimatedMinutes(task, state);
+  const learned = learnedDurationMinutes(state, task);
+  const duration = learned ?? estimatedMinutes(task, state);
   if (availableMinutes == null) return 50;
   if (duration <= availableMinutes) return 80;
   if (duration <= availableMinutes * 1.25) return 40;
@@ -88,7 +96,8 @@ export function buildSharedDecisionContext(
   const tasks: SharedDecisionTaskView[] = state.tasks
     .filter((t) => t.kind === "task")
     .map((task) => {
-      const deferred = !isActiveVisibleTask(task, now) &&
+      const deferred =
+        !isActiveVisibleTask(task, now) &&
         (task.status === "open" ||
           task.status === "unknown" ||
           task.status === "in_progress");
@@ -96,13 +105,14 @@ export function buildSharedDecisionContext(
       const hoursUntilDue = task.dueAt
         ? msUntil(task.dueAt, now) / 3600000
         : null;
+      const learned = learnedDurationMinutes(state, task);
       return {
         task,
         urgency: urgencyScore(task, now),
         relevance: relevanceScore(task, state),
         feasibility: feasibilityScore(task, state, availableMinutes),
         dependencyReady: dependencyReady(task, state),
-        estimatedDuration: estimatedMinutes(task, state),
+        estimatedDuration: learned ?? estimatedMinutes(task, state),
         overdue,
         hoursUntilDue,
         ageHours: (now.getTime() - stampMs(task.createdAt)) / 3600000,
@@ -122,6 +132,9 @@ export function buildSharedDecisionContext(
     availableMinutes,
     effort,
     shoppingOpen: state.shopping.filter((s) => !s.purchasedAt),
+    actionableForecasts: activeForecasts(state).filter((f) =>
+      forecastActionableNow(f, now),
+    ),
   };
 }
 
