@@ -415,16 +415,26 @@ export function groundInterpretations(
         break;
       }
       case "forecast_event": {
-        // Forecast events are handled by the forecast domain; semantic layer
-        // records evidence as a temporary/stable fact when text is present.
-        const text = interp.payload.text ?? interp.entityHint;
-        if (text) {
+        // Structured evidence only — interval/confidence live in forecast domain.
+        const subject =
+          interp.payload.forecastSubject ??
+          interp.entityHint ??
+          interp.payload.title ??
+          null;
+        const eventType = interp.payload.forecastEventType;
+        if (subject && eventType) {
           actions.push({
             type: "fact.add",
-            text,
+            text: `forecast:${eventType}:${subject}`,
             kind: "inference",
             expiresAt: null,
           });
+        } else {
+          unresolved.push(interp);
+          clarification = clarification ?? {
+            question: "מה בדיוק קרה לגבי המלאי או הצריכה?",
+            unresolvedPart: interp.entityHint,
+          };
         }
         break;
       }

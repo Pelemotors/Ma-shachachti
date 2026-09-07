@@ -15,7 +15,11 @@ import {
 } from "./time";
 import { enrichTaskLocal } from "./enrichment";
 import { applyLifeAdminConfirm } from "./domain/notifications/life-admin";
+import { applyForecastEvent } from "./domain/forecast";
 
+/** Structured marker from semantic forecast_event — not NLP. */
+const FORECAST_FACT_RE =
+  /^forecast:(replenishment|depletion|correction):(.+)$/i;
 export function requiresConfirmation(actions: Action[]) {
   return (
     actions.filter((a) => a.type !== "message.add").length > 5 ||
@@ -244,13 +248,12 @@ export function applyActions(
           (!action.expiresAt || new Date(action.expiresAt) <= now)
         )
           throw new Error("מידע זמני צריך תוקף עתידי.");
-        if (
-          !s.facts.some(
-            (f) =>
-              normalize(f.text) === normalize(action.text) &&
-              f.expiresAt === action.expiresAt,
-          )
-        )
+        const isDup = s.facts.some(
+          (f) =>
+            normalize(f.text) === normalize(action.text) &&
+            f.expiresAt === action.expiresAt,
+        );
+        if (!isDup)
           s.facts.push({
             id: crypto.randomUUID(),
             text: action.text,
@@ -259,6 +262,19 @@ export function applyActions(
             createdAt: stamp,
             source: "user",
           });
+        const forecastMatch = FORECAST_FACT_RE.exec(action.text.trim());
+        if (forecastMatch) {
+          // Structured semantic marker — still apply even if fact text was deduped.
+          const next = applyForecastEvent(s, {
+            type: forecastMatch[1]!.toLowerCase() as
+              | "replenishment"
+              | "depletion"
+              | "correction",
+            subject: forecastMatch[2]!.trim(),
+            occurredAt: stamp,
+          });
+          s.learning = next.learning;
+        }
         break;
       }
       case "fact.update": {
