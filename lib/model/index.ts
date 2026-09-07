@@ -525,23 +525,35 @@ export function migrateV1ToV2(v1: StateV1): AppState {
 export function migrateState(raw: unknown): AppState {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const obj = raw as Record<string, unknown>;
-    if (obj.schemaVersion === 2) {
-      return StateV2Schema.parse(obj);
+    const versionRaw = obj.schemaVersion;
+    const version =
+      versionRaw === undefined || versionRaw === null
+        ? null
+        : typeof versionRaw === "number"
+          ? versionRaw
+          : typeof versionRaw === "string" && /^\d+$/.test(versionRaw)
+            ? Number(versionRaw)
+            : Number.NaN;
+
+    if (version === 2) {
+      return StateV2Schema.parse({ ...obj, schemaVersion: 2 });
     }
+
+    if (version !== null && version !== 1 && !Number.isNaN(version)) {
+      throw new Error(`unsupported_schema_version:${version}`);
+    }
+    if (Number.isNaN(version)) {
+      throw new Error("unsupported_schema_version:invalid");
+    }
+
     // V1 or legacy without version / missing planning
-    const withVersion = {
-      schemaVersion: 1 as const,
-      ...obj,
-      schemaVersionFixed: undefined,
-    };
-    // Force schemaVersion 1 for parse
-    const candidate = { ...obj, schemaVersion: 1 };
+    const candidate = { ...obj, schemaVersion: 1 as const };
     const v1 = StateV1Schema.safeParse(candidate);
     if (v1.success) return StateV2Schema.parse(migrateV1ToV2(v1.data));
     // Soft repair: empty planning
     const repaired = {
       ...candidate,
-      planning: (obj as any).planning ?? { today: null },
+      planning: (obj as { planning?: unknown }).planning ?? { today: null },
     };
     const v1b = StateV1Schema.parse(repaired);
     return StateV2Schema.parse(migrateV1ToV2(v1b));
