@@ -6,6 +6,13 @@ import { validPushEndpoint } from "@/lib/push";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+type Urgency = "urgent" | "medium" | "low";
+const pushOptions: Record<Urgency, { TTL: number; urgency: "high" | "normal" | "low" }> = {
+  urgent: { TTL: 1800, urgency: "high" },
+  medium: { TTL: 3600, urgency: "normal" },
+  low: { TTL: 21600, urgency: "low" },
+};
+
 export async function GET(req: Request) {
   const started = Date.now();
   let db: ReturnType<typeof adminDb> | null = null;
@@ -45,6 +52,14 @@ export async function GET(req: Request) {
             .eq("owner_id", job.owner_id)
             .single();
           const profile = owner?.data?.profile;
+          const reminder = Array.isArray(owner?.data?.reminders)
+            ? owner.data.reminders.find((r: { id?: string }) => r.id === job.id)
+            : null;
+          const urgency: Urgency = ["urgent", "medium", "low"].includes(
+            reminder?.urgency,
+          )
+            ? reminder.urgency
+            : "medium";
           const hour = Number(
             new Intl.DateTimeFormat("en", {
               timeZone: profile?.timezone ?? "Asia/Jerusalem",
@@ -59,7 +74,7 @@ export async function GET(req: Request) {
             (start < end
               ? hour >= start && hour < end
               : hour >= start || hour < end);
-          if (quiet) {
+          if (quiet && urgency !== "urgent") {
             await db!
               .from("reminder_queue")
               .update({
@@ -85,11 +100,15 @@ export async function GET(req: Request) {
                   sub.subscription,
                   JSON.stringify({
                     title: "מה שכחתי?",
-                    body: "יש תזכורת שמחכה לך. אפשר לפתוח כשמתאים.",
+                    body:
+                      urgency === "urgent"
+                        ? "יש תזכורת חשובה שמחכה לך."
+                        : "יש תזכורת שמחכה לך. אפשר לפתוח כשמתאים.",
                     tag: job.id,
                     url: "/app?view=reminders",
+                    urgency,
                   }),
-                  { TTL: 3600, timeout: 8000 },
+                  { ...pushOptions[urgency], timeout: 8000 },
                 );
                 delivered = true;
               } catch (e) {
