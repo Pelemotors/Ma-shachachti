@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
-import { Action, AppState, Task, categories } from "@/lib/model";
+import { Action, AppState, Task } from "@/lib/model";
+import { TASK_CATEGORIES, CategoryId } from "@/lib/taxonomy";
 import { Dialog } from "./dialog";
+
 export function TaskEditor({
   task,
   state,
@@ -13,43 +15,78 @@ export function TaskEditor({
   onSave: (a: Action) => Promise<void>;
   onClose: () => void;
 }) {
-  const [title, setTitle] = useState(task?.title ?? ""),
-    [category, setCategory] = useState<Task["category"]>(
-      task?.category ?? "שונות / לא מסווג",
-    ),
-    [kind, setKind] = useState<Task["kind"]>(task?.kind ?? "task"),
-    [work, setWork] = useState(task?.workMinutes ?? 15),
-    [wait, setWait] = useState(task?.waitMinutes ?? 0),
-    [effort, setEffort] = useState(task?.effort ?? 2),
-    [priority, setPriority] = useState(task?.priority ?? 1),
-    [days, setDays] = useState(task?.recurrenceDays ?? 0),
-    [due, setDue] = useState(""),
-    [clearDue, setClearDue] = useState(false),
-    [notes, setNotes] = useState(task?.notes ?? ""),
-    [steps, setSteps] = useState(
-      task?.steps.map((x) => x.title).join("\n") ?? "",
-    ),
-    [deps, setDeps] = useState(task?.dependsOn ?? []),
-    [saving, setSaving] = useState(false),
-    [error, setError] = useState("");
+  const [title, setTitle] = useState(task?.title ?? "");
+  const [hasDeadline, setHasDeadline] = useState(Boolean(task?.dueAt));
+  const [dueDate, setDueDate] = useState(
+    task?.dueAt ? task.dueAt.slice(0, 10) : "",
+  );
+  const [dueTime, setDueTime] = useState(
+    task?.dueAt
+      ? new Date(task.dueAt).toLocaleTimeString("en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: state.profile.timezone,
+        })
+      : "12:00",
+  );
+  const [more, setMore] = useState(false);
+  const [categoryId, setCategoryId] = useState<CategoryId>(
+    task?.categoryId ?? "unclassified",
+  );
+  const [kind, setKind] = useState<Task["kind"]>(task?.kind ?? "task");
+  const [work, setWork] = useState(task?.workMinutes ?? 15);
+  const [wait, setWait] = useState(task?.waitMinutes ?? 0);
+  const [effort, setEffort] = useState(task?.effort ?? 2);
+  const [priority, setPriority] = useState(task?.priority ?? 1);
+  const [days, setDays] = useState(task?.recurrenceDays ?? 0);
+  const [notes, setNotes] = useState(task?.notes ?? "");
+  const [steps, setSteps] = useState(
+    task?.steps.map((x) => x.title).join("\n") ?? "",
+  );
+  const [deps, setDeps] = useState(task?.dependsOn ?? []);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!title.trim()) {
+      setError("צריך כותרת למשימה.");
+      return;
+    }
+    if (hasDeadline && (!dueDate || !dueTime)) {
+      setError("כשמופעל דדליין צריך תאריך ושעה.");
+      return;
+    }
     setSaving(true);
+    setError("");
     try {
+      const dueAt = hasDeadline
+        ? new Date(`${dueDate}T${dueTime}:00`).toISOString()
+        : null;
+      const userChangedCategory =
+        Boolean(task) && task!.categoryId !== categoryId;
       const patch = {
         title: title.trim(),
-        category,
+        categoryId,
+        detailTypeId: task?.detailTypeId ?? null,
+        classification: {
+          source:
+            userChangedCategory || (!task && categoryId !== "unclassified")
+              ? ("user" as const)
+              : (task?.classification.source ?? "user"),
+          confidence: "high" as const,
+          userOverride:
+            userChangedCategory || Boolean(task?.classification.userOverride),
+        },
+        enrichmentStatus: task?.enrichmentStatus ?? "pending",
         kind,
         workMinutes: work,
         waitMinutes: wait,
         effort,
         priority,
         recurrenceDays: days || null,
-        dueAt: clearDue
-          ? null
-          : due
-            ? new Date(due).toISOString()
-            : (task?.dueAt ?? null),
+        dueAt,
         notes,
         dependsOn: deps,
         steps: steps
@@ -57,10 +94,10 @@ export function TaskEditor({
           .map((x) => x.trim())
           .filter(Boolean)
           .map(
-            (title) =>
-              task?.steps.find((s) => s.title === title) ?? {
+            (stepTitle) =>
+              task?.steps.find((s) => s.title === stepTitle) ?? {
                 id: crypto.randomUUID(),
-                title,
+                title: stepTitle,
                 done: false,
               },
           ),
@@ -71,170 +108,191 @@ export function TaskEditor({
           : { type: "task.create", task: patch },
       );
       onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "לא נשמר");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "לא נשמר");
     } finally {
       setSaving(false);
     }
   }
+
   return (
-    <Dialog
-      title={task ? "פרטי המשימה" : "להוריד משהו מהראש"}
-      onClose={onClose}
-    >
-      <form onSubmit={submit} className="stack">
-        <label>
-          מה צריך לעשות?
+    <Dialog title={task ? "עריכת משימה" : "משימה חדשה"} onClose={onClose}>
+      <form className="stack gap" onSubmit={submit}>
+        <label className="stack tight">
+          <span>מה צריך לעשות?</span>
           <input
-            autoFocus
-            required
-            maxLength={200}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            required
+            autoFocus
+            aria-label="מה צריך לעשות"
           />
         </label>
-        <div className="form-grid">
-          <label>
-            תחום
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as Task["category"])}
-            >
-              {categories.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            איך לשמור?
-            <select
-              value={kind}
-              onChange={(e) => setKind(e.target.value as Task["kind"])}
-            >
-              <option value="task">משימה</option>
-              <option value="idea">רעיון, אם יתאים</option>
-            </select>
-          </label>
-          <label>
-            זמן עבודה בדקות
-            <input
-              type="number"
-              min={1}
-              max={1440}
-              value={work}
-              onChange={(e) => setWork(+e.target.value)}
-            />
-          </label>
-          <label>
-            זמן המתנה בדקות
-            <input
-              type="number"
-              min={0}
-              max={1440}
-              value={wait}
-              onChange={(e) => setWait(+e.target.value)}
-            />
-          </label>
-          <label>
-            כוח שנדרש
-            <select value={effort} onChange={(e) => setEffort(+e.target.value)}>
-              <option value={1}>מעט</option>
-              <option value={2}>בינוני</option>
-              <option value={3}>הרבה</option>
-            </select>
-          </label>
-          <label>
-            חשיבות
-            <select
-              value={priority}
-              onChange={(e) => setPriority(+e.target.value)}
-            >
-              <option value={0}>כשיתאפשר</option>
-              <option value={1}>רגילה</option>
-              <option value={2}>חשובה</option>
-              <option value={3}>דחופה</option>
-            </select>
-          </label>
-        </div>
-        <details>
-          <summary>מועד, חזרה ושלבים</summary>
-          <div className="stack">
-            <label>
-              מועד אמיתי, אם יש
+
+        <label className="row gap align-center">
+          <input
+            type="checkbox"
+            checked={hasDeadline}
+            onChange={(e) => setHasDeadline(e.target.checked)}
+          />
+          <span>יש דדליין?</span>
+        </label>
+        {hasDeadline ? (
+          <div className="row gap wrap">
+            <label className="stack tight grow">
+              <span>תאריך</span>
               <input
-                type="datetime-local"
-                value={due}
-                onChange={(e) => setDue(e.target.value)}
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                required={hasDeadline}
               />
             </label>
-            <small>המועד מוזן לפי השעה במכשיר. בלי מועד — אין דדליין.</small>
-            {task?.dueAt && (
-              <label className="check-line">
+            <label className="stack tight grow">
+              <span>שעה</span>
+              <input
+                type="time"
+                value={dueTime}
+                onChange={(e) => setDueTime(e.target.value)}
+                required={hasDeadline}
+              />
+            </label>
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => setMore((v) => !v)}
+        >
+          {more ? "פחות פרטים" : "עוד פרטים"}
+        </button>
+
+        {more ? (
+          <div className="stack gap">
+            <label className="stack tight">
+              <span>סוג</span>
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value as Task["kind"])}
+              >
+                <option value="task">משימה</option>
+                <option value="idea">רעיון</option>
+              </select>
+            </label>
+            <label className="stack tight">
+              <span>קטגוריה</span>
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value as CategoryId)}
+              >
+                {TASK_CATEGORIES.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="row gap wrap">
+              <label className="stack tight">
+                <span>זמן עבודה</span>
                 <input
-                  type="checkbox"
-                  checked={clearDue}
-                  onChange={(e) => setClearDue(e.target.checked)}
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={work}
+                  onChange={(e) => setWork(Number(e.target.value))}
                 />
-                הסרת המועד הקיים
               </label>
-            )}
-            <label>
-              חזרה בכל כמה ימים? 0 = חד־פעמי
+              <label className="stack tight">
+                <span>זמן המתנה</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={1440}
+                  value={wait}
+                  onChange={(e) => setWait(Number(e.target.value))}
+                />
+              </label>
+              <label className="stack tight">
+                <span>כוח</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={3}
+                  value={effort}
+                  onChange={(e) => setEffort(Number(e.target.value))}
+                />
+              </label>
+              <label className="stack tight">
+                <span>עדיפות</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={3}
+                  value={priority}
+                  onChange={(e) => setPriority(Number(e.target.value))}
+                />
+              </label>
+            </div>
+            <label className="stack tight">
+              <span>חזרה כל כמה ימים</span>
               <input
                 type="number"
                 min={0}
                 max={366}
                 value={days}
-                onChange={(e) => setDays(+e.target.value)}
+                onChange={(e) => setDays(Number(e.target.value))}
               />
             </label>
-            <label>
-              שלבי ביצוע — שלב בכל שורה
+            <label className="stack tight">
+              <span>שלבים (שורה לכל שלב)</span>
               <textarea
                 value={steps}
                 onChange={(e) => setSteps(e.target.value)}
                 rows={3}
               />
             </label>
-            <label>
-              הערות
+            <label className="stack tight">
+              <span>הערות</span>
               <textarea
-                maxLength={2000}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                rows={2}
               />
             </label>
-            <fieldset>
-              <legend>מה צריך להסתיים קודם?</legend>
-              {state.tasks
-                .filter((t) => t.id !== task?.id && t.status === "open")
-                .map((t) => (
-                  <label key={t.id} className="check-line">
-                    <input
-                      type="checkbox"
-                      checked={deps.includes(t.id)}
-                      onChange={(e) =>
-                        setDeps(
-                          e.target.checked
-                            ? [...deps, t.id]
-                            : deps.filter((id) => id !== t.id),
-                        )
-                      }
-                    />
-                    {t.title}
-                  </label>
-                ))}
-            </fieldset>
+            <label className="stack tight">
+              <span>תלויות</span>
+              <select
+                multiple
+                value={deps}
+                onChange={(e) =>
+                  setDeps(
+                    Array.from(e.target.selectedOptions).map((o) => o.value),
+                  )
+                }
+              >
+                {state.tasks
+                  .filter((t) => t.id !== task?.id && t.status !== "done")
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+              </select>
+            </label>
           </div>
-        </details>
-        {error && (
-          <p role="alert" className="error">
-            {error}
-          </p>
-        )}
-        <button className="primary" disabled={saving}>
-          {saving ? "שומר…" : "שמירה"}
-        </button>
+        ) : null}
+
+        {error ? <p className="error">{error}</p> : null}
+        <div className="row gap">
+          <button type="submit" className="primary" disabled={saving}>
+            שמירה
+          </button>
+          <button type="button" className="text-button" onClick={onClose}>
+            ביטול
+          </button>
+        </div>
       </form>
     </Dialog>
   );

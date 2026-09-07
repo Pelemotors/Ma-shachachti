@@ -18,9 +18,16 @@ export async function GET(req: Request) {
     const { db } = await requireAdmin(req);
     const users = [];
     for (let page = 1; page <= 50; page++) {
-      const { data, error } = await db.auth.admin.listUsers({ page, perPage: 200 });
+      const { data, error } = await db.auth.admin.listUsers({
+        page,
+        perPage: 200,
+      });
       if (error)
-        throw new ApiError(503, "לא ניתן לקרוא משתמשים.", "admin_users_read_failed");
+        throw new ApiError(
+          503,
+          "לא ניתן לקרוא משתמשים.",
+          "admin_users_read_failed",
+        );
       users.push(...data.users);
       if (data.users.length < 200) break;
     }
@@ -28,7 +35,11 @@ export async function GET(req: Request) {
       .from("user_roles")
       .select("user_id,role,approved");
     if (rolesError)
-      throw new ApiError(503, "לא ניתן לקרוא הרשאות משתמשים.", "admin_roles_read_failed");
+      throw new ApiError(
+        503,
+        "לא ניתן לקרוא הרשאות משתמשים.",
+        "admin_roles_read_failed",
+      );
     const roleMap = new Map((roles ?? []).map((r) => [r.user_id, r]));
     return Response.json({
       users: users.map((u) => ({
@@ -67,11 +78,11 @@ export async function PATCH(req: Request) {
     const role =
       body.role === "admin" || body.role === "user"
         ? body.role
-        : current?.role ?? "user";
+        : (current?.role ?? "user");
     const approved =
       typeof body.approved === "boolean"
         ? body.approved
-        : current?.approved ?? false;
+        : (current?.approved ?? false);
 
     if (
       body.userId === actorId &&

@@ -30,17 +30,20 @@ export async function GET(req: Request) {
 
     const events = recent.data ?? [];
     const latestAi = events.find((e) => e.event_type.startsWith("ai."));
-    const latestCron = events.find((e) => e.event_type.startsWith("cron.reminders."));
+    const latestCron = events.find((e) =>
+      e.event_type.startsWith("cron.reminders."),
+    );
     const supabaseConfigured = Boolean(
-      process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
     );
     const openaiConfigured = Boolean(
       process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL,
     );
     const pushConfigured = Boolean(
       process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY &&
-        process.env.VAPID_PRIVATE_KEY &&
-        process.env.VAPID_SUBJECT,
+      process.env.VAPID_PRIVATE_KEY &&
+      process.env.VAPID_SUBJECT,
     );
     const cronConfigured = Boolean(process.env.CRON_SECRET);
     const openaiStatus = !openaiConfigured
@@ -78,7 +81,7 @@ export async function GET(req: Request) {
           lastTestedAt: latestAi?.created_at ?? null,
           lastFailureCode:
             latestAi?.event_type === "ai.failure"
-              ? latestAi.metadata?.code ?? "unknown"
+              ? (latestAi.metadata?.code ?? "unknown")
               : null,
         },
         push: {

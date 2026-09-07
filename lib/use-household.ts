@@ -1,6 +1,12 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { AppState, Action, emptyState, StateSchema } from "./model";
+import {
+  AppState,
+  Action,
+  emptyState,
+  StateSchema,
+  migrateState,
+} from "./model";
 import { applyActions } from "./engine";
 import { supabase, authFetch } from "./supabase-browser";
 
@@ -10,8 +16,20 @@ type UndoEntry = {
   revision: number;
   mode: string;
   afterFingerprint: string;
+  turnId?: string | null;
 };
 type PendingCommit = { signature: string; key: string };
+type TurnAnchor = {
+  turnId: string;
+  state: AppState;
+  revision: number;
+  mode: string;
+};
+type CommitOptions = {
+  turnId?: string;
+  /** Seal the turn and expose one undo for the whole operation */
+  sealTurn?: boolean;
+};
 const fingerprint = (state: AppState) => JSON.stringify(state);
 
 export function useHousehold() {
@@ -27,12 +45,16 @@ export function useHousehold() {
   const ref = useRef({ state: emptyState(), revision: 0, mode: "choose" }),
     locked = useRef(false),
     generation = useRef(0),
-    pendingCommit = useRef<PendingCommit | null>(null);
+    pendingCommit = useRef<PendingCommit | null>(null),
+    turnAnchor = useRef<TurnAnchor | null>(null);
 
-  const adopt = useCallback((state: AppState, revision: number, mode: string) => {
-    ref.current = { state, revision, mode };
-    setState(state);
-  }, []);
+  const adopt = useCallback(
+    (state: AppState, revision: number, mode: string) => {
+      ref.current = { state, revision, mode };
+      setState(state);
+    },
+    [],
+  );
 
   const cloudLoad = useCallback(async () => {
     const requestGeneration = generation.current;
@@ -40,8 +62,9 @@ export function useHousehold() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     if (requestGeneration !== generation.current) return;
-    adopt(StateSchema.parse(data.state), data.revision, "cloud");
+    adopt(migrateState(data.state), data.revision, "cloud");
     pendingCommit.current = null;
+    turnAnchor.current = null;
     setUndo(null);
     setMode("cloud");
   }, [adopt]);
@@ -70,6 +93,7 @@ export function useHousehold() {
       if (event === "SIGNED_OUT" && alive) {
         generation.current++;
         pendingCommit.current = null;
+        turnAnchor.current = null;
         adopt(emptyState(), 0, "choose");
         setMode("choose");
         setUndo(null);
@@ -84,8 +108,9 @@ export function useHousehold() {
   const startLocal = useCallback(() => {
     try {
       const raw = localStorage.getItem(LOCAL_KEY);
-      adopt(raw ? StateSchema.parse(JSON.parse(raw)) : emptyState(), 0, "local");
+      adopt(raw ? migrateState(JSON.parse(raw)) : emptyState(), 0, "local");
       pendingCommit.current = null;
+      turnAnchor.current = null;
       setUndo(null);
       setMode("local");
       setError("");
@@ -97,15 +122,33 @@ export function useHousehold() {
   }, [adopt]);
 
   const commit = useCallback(
-    async (actions: Action[], confirmed = false, remember = true) => {
-      if (locked.current)
-        throw new Error("רגע, השמירה הקודמת עדיין מתבצעת.");
+    async (
+      actions: Action[],
+      confirmed = false,
+      remember = true,
+      opts: CommitOptions = {},
+    ) => {
+      if (locked.current) throw new Error("רגע, השמירה הקודמת עדיין מתבצעת.");
       locked.current = true;
       setBusy(true);
       setError("");
       const before = ref.current,
         requestGeneration = generation.current;
       try {
+        if (opts.turnId) {
+          if (
+            !turnAnchor.current ||
+            turnAnchor.current.turnId !== opts.turnId
+          ) {
+            turnAnchor.current = {
+              turnId: opts.turnId,
+              state: before.state,
+              revision: before.revision,
+              mode: before.mode,
+            };
+          }
+        }
+
         let next: AppState,
           revision = before.revision;
         if (before.mode === "local") {
@@ -122,10 +165,13 @@ export function useHousehold() {
             actions,
             revision: before.revision,
             confirmed,
+            turnId: opts.turnId ?? null,
           });
           const existing = pendingCommit.current;
           const key =
-            existing?.signature === signature ? existing.key : crypto.randomUUID();
+            existing?.signature === signature
+              ? existing.key
+              : crypto.randomUUID();
           pendingCommit.current = { signature, key };
           const res = await authFetch("/api/actions", {
             method: "POST",
@@ -139,7 +185,7 @@ export function useHousehold() {
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error);
-          next = StateSchema.parse(data.state);
+          next = migrateState(data.state);
           revision = data.revision;
           pendingCommit.current = null;
         } else throw new Error("צריך לבחור איך להתחיל.");
@@ -150,18 +196,38 @@ export function useHousehold() {
         )
           throw new Error("החשבון השתנה בזמן השמירה. השינוי לא הוצג.");
         adopt(next, revision, before.mode);
-        if (remember)
-          setUndo({
-            state: before.state,
-            revision,
-            mode: before.mode,
-            afterFingerprint: fingerprint(next),
-          });
-        else setUndo(null);
-        if (remember)
-          setNotice(
-            before.mode === "local" ? "נשמר במכשיר הזה" : "השינוי נשמר",
-          );
+
+        if (remember) {
+          if (opts.turnId && !opts.sealTurn) {
+            // Mid-turn: keep undo unset until seal
+          } else if (opts.sealTurn && turnAnchor.current) {
+            const anchor = turnAnchor.current;
+            setUndo({
+              state: anchor.state,
+              revision,
+              mode: anchor.mode,
+              afterFingerprint: fingerprint(next),
+              turnId: anchor.turnId,
+            });
+            turnAnchor.current = null;
+            setNotice(
+              before.mode === "local" ? "נשמר במכשיר הזה" : "השינוי נשמר",
+            );
+          } else {
+            setUndo({
+              state: before.state,
+              revision,
+              mode: before.mode,
+              afterFingerprint: fingerprint(next),
+              turnId: opts.turnId ?? null,
+            });
+            setNotice(
+              before.mode === "local" ? "נשמר במכשיר הזה" : "השינוי נשמר",
+            );
+          }
+        } else if (!opts.turnId) {
+          setUndo(null);
+        }
         return next;
       } catch (e) {
         const msg = e instanceof Error ? e.message : "השמירה לא הצליחה";
@@ -178,7 +244,7 @@ export function useHousehold() {
   const replaceState = useCallback(
     async (candidate: unknown) => {
       if (locked.current) throw new Error("שמירה אחרת עדיין מתבצעת.");
-      const parsed = StateSchema.parse(candidate);
+      const parsed = migrateState(candidate);
       locked.current = true;
       setBusy(true);
       setError("");
@@ -208,6 +274,7 @@ export function useHousehold() {
         )
           throw new Error("החשבון השתנה בזמן השחזור. הנתונים לא הוצגו.");
         pendingCommit.current = null;
+        turnAnchor.current = null;
         setUndo(null);
         adopt(parsed, revision, before.mode);
         setNotice("הגיבוי שוחזר לאחר אימות");
@@ -251,16 +318,22 @@ export function useHousehold() {
         const res = await authFetch("/api/state", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ state: undo.state, revision: current.revision }),
+          body: JSON.stringify({
+            state: undo.state,
+            revision: current.revision,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         revision = data.revision;
       }
       pendingCommit.current = null;
+      turnAnchor.current = null;
       adopt(undo.state, revision, current.mode);
       setUndo(null);
-      setNotice("הפעולה האחרונה בוטלה");
+      setNotice(
+        undo.turnId ? "פעולת השיחה האחרונה בוטלה" : "הפעולה האחרונה בוטלה",
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "הביטול לא הצליח");
     } finally {
@@ -272,6 +345,7 @@ export function useHousehold() {
   const signOut = async () => {
     generation.current++;
     pendingCommit.current = null;
+    turnAnchor.current = null;
     setUndo(null);
     if (supabase && mode === "cloud") {
       const { error } = await supabase.auth.signOut();
@@ -291,6 +365,7 @@ export function useHousehold() {
     error,
     notice,
     undo: undo?.state ?? null,
+    undoTurnId: undo?.turnId ?? null,
     currentRevision: () => ref.current.revision,
     commit,
     replaceState,

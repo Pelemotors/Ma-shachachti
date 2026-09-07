@@ -54,9 +54,7 @@ export default function BackupPage() {
     <main className="welcome">
       <p className="eyebrow">גיבוי אישי</p>
       <h1>שחזור גיבוי</h1>
-      <p>
-        הקובץ נבדק לפני החלפה. שום דבר לא משתנה עד לאישור הסופי.
-      </p>
+      <p>הקובץ נבדק לפני החלפה. שום דבר לא משתנה עד לאישור הסופי.</p>
       <section className="panel stack">
         <label>
           בחירת קובץ JSON
@@ -70,9 +68,10 @@ export default function BackupPage() {
           <div role="status">
             <h2>תצוגה מקדימה</h2>
             <p>
-              {candidate.tasks.length} משימות · {candidate.facts.length} פרטי זיכרון ·{" "}
-              {candidate.shopping.length} רשומות קניות · {candidate.reminders.length} תזכורות ·{" "}
-              {candidate.messages.length} הודעות
+              {candidate.tasks.length} משימות · {candidate.facts.length} פרטי
+              זיכרון · {candidate.shopping.length} רשומות קניות ·{" "}
+              {candidate.reminders.length} תזכורות · {candidate.messages.length}{" "}
+              הודעות
             </p>
             <p>
               השחזור יחליף את המצב הנוכחי ב־
@@ -102,7 +101,10 @@ export default function BackupPage() {
           </div>
         )}
         {(message || h.error) && (
-          <p role="alert" className={message.includes("הושלם") ? "muted" : "error"}>
+          <p
+            role="alert"
+            className={message.includes("הושלם") ? "muted" : "error"}
+          >
             {message || h.error}
           </p>
         )}

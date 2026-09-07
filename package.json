@@ -9,6 +9,12 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
+    "lint": "tsc --noEmit",
+    "format:check": "prettier --check . --ignore-path .gitignore",
+    "format": "prettier --write . --ignore-path .gitignore",
+    "e2e": "playwright test",
+    "deps:check": "node scripts/check-dep-boundaries.mjs",
+    "agent:eval": "node --import tsx scripts/agent-eval.ts",
     "check": "npm run typecheck && npm test && npm run build"
   },
   "engines": {
@@ -26,6 +32,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
+    "@playwright/test": "1.55.0",
     "@types/node": "26.4.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",

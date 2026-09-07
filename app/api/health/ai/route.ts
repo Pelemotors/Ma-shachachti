@@ -13,7 +13,10 @@ export async function POST(req: Request) {
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
       signal: AbortSignal.timeout(15000),
       body: JSON.stringify({
         model,
@@ -25,11 +28,40 @@ export async function POST(req: Request) {
     const raw = await response.text();
     if (!response.ok) {
       let code = "upstream_error";
-      try { code = JSON.parse(raw)?.error?.code ?? JSON.parse(raw)?.error?.type ?? code; } catch {}
-      return Response.json({ ok: false, provider: "openai", model, status: response.status, code, latencyMs: Date.now()-started }, { status: 502 });
+      try {
+        code =
+          JSON.parse(raw)?.error?.code ?? JSON.parse(raw)?.error?.type ?? code;
+      } catch {}
+      return Response.json(
+        {
+          ok: false,
+          provider: "openai",
+          model,
+          status: response.status,
+          code,
+          latencyMs: Date.now() - started,
+        },
+        { status: 502 },
+      );
     }
     const data = JSON.parse(raw);
-    const text = (data.output ?? []).flatMap((x:any)=>x.content ?? []).filter((x:any)=>x.type==="output_text").map((x:any)=>x.text??"").join("").trim();
-    return Response.json({ ok: data.status === "completed" && text === "OK", provider: "openai", model, upstreamStatus: data.status, latencyMs: Date.now()-started }, { headers: { "Cache-Control": "no-store" } });
-  } catch (e) { return fail(e); }
+    const text = (data.output ?? [])
+      .flatMap((x: any) => x.content ?? [])
+      .filter((x: any) => x.type === "output_text")
+      .map((x: any) => x.text ?? "")
+      .join("")
+      .trim();
+    return Response.json(
+      {
+        ok: data.status === "completed" && text === "OK",
+        provider: "openai",
+        model,
+        upstreamStatus: data.status,
+        latencyMs: Date.now() - started,
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (e) {
+    return fail(e);
+  }
 }

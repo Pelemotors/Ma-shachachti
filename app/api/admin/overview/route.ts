@@ -19,9 +19,16 @@ export async function GET(req: Request) {
     const since7 = new Date(Date.now() - 7 * 864e5).toISOString();
     const users = [];
     for (let page = 1; page <= 50; page++) {
-      const { data, error } = await db.auth.admin.listUsers({ page, perPage: 200 });
+      const { data, error } = await db.auth.admin.listUsers({
+        page,
+        perPage: 200,
+      });
       if (error)
-        throw new ApiError(503, "קריאת משתמשים נכשלה.", "admin_users_read_failed");
+        throw new ApiError(
+          503,
+          "קריאת משתמשים נכשלה.",
+          "admin_users_read_failed",
+        );
       users.push(...data.users);
       if (data.users.length < 200) break;
     }
@@ -41,7 +48,11 @@ export async function GET(req: Request) {
         .gte("due_at", since7),
     ]);
     if (roles.error || states.error || events.error || reminders.error)
-      throw new ApiError(503, "קריאת נתוני הניהול נכשלה.", "admin_metrics_read_failed");
+      throw new ApiError(
+        503,
+        "קריאת נתוני הניהול נכשלה.",
+        "admin_metrics_read_failed",
+      );
 
     const rr = roles.data ?? [],
       ss = states.data ?? [],
@@ -59,7 +70,9 @@ export async function GET(req: Request) {
     let taskCount = 0,
       completed = 0;
     for (const s of ss) {
-      const d = s.data as { tasks?: Array<{ status?: string; completed?: boolean }> };
+      const d = s.data as {
+        tasks?: Array<{ status?: string; completed?: boolean }>;
+      };
       const tasks = Array.isArray(d?.tasks) ? d.tasks : [];
       taskCount += tasks.length;
       completed += tasks.filter(
@@ -73,7 +86,9 @@ export async function GET(req: Request) {
         .map((e) => Number((e.metadata as { latencyMs?: number })?.latencyMs))
         .filter(Number.isFinite),
       aiAverageLatencyMs = aiLatencies.length
-        ? Math.round(aiLatencies.reduce((n, x) => n + x, 0) / aiLatencies.length)
+        ? Math.round(
+            aiLatencies.reduce((n, x) => n + x, 0) / aiLatencies.length,
+          )
         : null;
 
     const byDay: Record<

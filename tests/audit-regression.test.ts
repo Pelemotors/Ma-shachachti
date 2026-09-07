@@ -18,7 +18,7 @@ test("legacy states receive an empty planning model without data loss", () => {
     applyActions(emptyState(), [create("כביסה")], now).tasks[0],
   );
   const parsed = StateSchema.parse(legacy);
-  assert.deepEqual(parsed.planning, { today: null });
+  assert.deepEqual(parsed.planning, { today: null, plan: null });
   assert.equal(parsed.tasks[0].title, "כביסה");
 });
 
@@ -191,8 +191,7 @@ test("agent contract allows explicit planning and memory correction", () => {
   const id = crypto.randomUUID();
   const output = AgentOutput.parse({
     reply: "התאמתי את ההצעה ליום שתיארת.",
-    confidence: "high",
-    actions: [
+    explicitActions: [
       {
         type: "planning.set",
         constraint: {
@@ -206,16 +205,21 @@ test("agent contract allows explicit planning and memory correction", () => {
       },
       { type: "fact.update", id, patch: { text: "פרט מתוקן" } },
     ],
+    clarification: null,
+    proposal: null,
+    affectsToday: true,
   });
-  assert.equal(output.actions.length, 2);
+  assert.equal(output.explicitActions.length, 2);
 });
 
 test("agent contract still blocks profile and permission changes", () => {
   assert.throws(() =>
     AgentOutput.parse({
-      reply: "",
-      confidence: "high",
-      actions: [{ type: "profile.update", patch: { aiConsent: true } }],
+      reply: "אין שינוי.",
+      explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],
+      clarification: null,
+      proposal: null,
+      affectsToday: false,
     }),
   );
 });
@@ -245,27 +249,133 @@ test("unknown status remains explicit and is never silently completed", () => {
   assert.equal(s.tasks[0].completedAt, null);
 });
 
+const decision = (
+  reply: string,
+  explicitActions: unknown[] = [],
+  opts: { clarify?: boolean; affectsToday?: boolean } = {},
+) => ({
+  reply,
+  explicitActions,
+  clarification: opts.clarify
+    ? { question: reply, unresolvedPart: null }
+    : null,
+  proposal: null,
+  affectsToday: opts.affectsToday ?? false,
+});
+
 const contractCases: Array<{ phrase: string; output: unknown }> = [
-  { phrase: "צריך לקפל כביסה", output: { reply: "אפשר להוסיף.", confidence: "high", actions: [{ type: "task.create", task: { title: "לקפל כביסה", kind: "task" } }] } },
-  { phrase: "אולי להכין פשטידה", output: { reply: "כרעיון.", confidence: "high", actions: [{ type: "task.create", task: { title: "להכין פשטידה", kind: "idea" } }] } },
-  { phrase: "לקנות חלב", output: { reply: "לקניות.", confidence: "high", actions: [{ type: "shopping.add", title: "חלב" }] } },
-  { phrase: "תזכיר לי בעוד שעה", output: { reply: "תזכורת.", confidence: "high", actions: [{ type: "reminder.add", title: "תזכורת", dueAt: plus(60), taskId: null }] } },
-  { phrase: "אני לבד היום", output: { reply: "מידע זמני.", confidence: "high", actions: [{ type: "fact.add", text: "לבד היום", kind: "temporary", expiresAt: plus(600) }] } },
-  { phrase: "זה לא נכון יותר", output: { reply: "צריך לזהות איזה פרט.", confidence: "clarify", actions: [] } },
-  { phrase: "סיימתי", output: { reply: "צריך לזהות מה.", confidence: "clarify", actions: [] } },
-  { phrase: "עזוב את זה היום", output: { reply: "צריך לזהות את המשימה.", confidence: "clarify", actions: [] } },
-  { phrase: "אין לי כוח", output: { reply: "נבחר משהו קל.", confidence: "high", actions: [] } },
-  { phrase: "כל הבית בלגן", output: { reply: "נתחיל מדבר אחד.", confidence: "high", actions: [] } },
-  { phrase: "מחר יש תור", output: { reply: "צריך שעה כדי לחסום חלון.", confidence: "clarify", actions: [] } },
-  { phrase: "היום פנויה מ-14 עד 16", output: { reply: "חלון להיום.", confidence: "high", actions: [{ type: "planning.set", constraint: { date: "2026-09-06", availableFrom: plus(60), availableUntil: plus(180), unavailable: [], effort: null, note: "פנויה בחלון מוגדר" } }] } },
-  { phrase: "היום חזר כרגיל", output: { reply: "חזרה לשגרה.", confidence: "high", actions: [{ type: "planning.clear" }] } },
-  { phrase: "מחק הכל", output: { reply: "לא מבצע מחיקה רחבה דרך הסוכן.", confidence: "clarify", actions: [] } },
-  { phrase: "תשנה לי הרשאות", output: { reply: "אין לי הרשאה לזה.", confidence: "clarify", actions: [] } },
-  { phrase: "לא יודעת אם עשיתי כביסה", output: { reply: "לא אניח שבוצע.", confidence: "high", actions: [] } },
-  { phrase: "יש לי 20 דקות", output: { reply: "אפשר לבחור מתוך המשימות הקיימות.", confidence: "high", actions: [] } },
-  { phrase: "תקן שהחוג בשלישי", output: { reply: "צריך מזהה של הזיכרון.", confidence: "clarify", actions: [] } },
-  { phrase: "הילדה ישנה עכשיו", output: { reply: "מידע זמני קצר.", confidence: "high", actions: [{ type: "fact.add", text: "הילדה ישנה", kind: "temporary", expiresAt: plus(60) }] } },
-  { phrase: "תעשה לי קניות ותזכורת", output: { reply: "אפשר להציע את שתי הפעולות.", confidence: "high", actions: [{ type: "shopping.add", title: "פריט" }, { type: "reminder.add", title: "תזכורת", dueAt: plus(60), taskId: null }] } },
+  {
+    phrase: "צריך לקפל כביסה",
+    output: decision("אפשר להוסיף.", [
+      { type: "task.create", task: { title: "לקפל כביסה", kind: "task" } },
+    ]),
+  },
+  {
+    phrase: "אולי להכין פשטידה",
+    output: decision("כרעיון.", [
+      { type: "task.create", task: { title: "להכין פשטידה", kind: "idea" } },
+    ]),
+  },
+  {
+    phrase: "לקנות חלב",
+    output: decision("לקניות.", [{ type: "shopping.add", title: "חלב" }]),
+  },
+  {
+    phrase: "תזכיר לי בעוד שעה",
+    output: decision("תזכורת.", [
+      { type: "reminder.add", title: "תזכורת", dueAt: plus(60), taskId: null },
+    ]),
+  },
+  {
+    phrase: "אני לבד היום",
+    output: decision("מידע זמני.", [
+      {
+        type: "fact.add",
+        text: "לבד היום",
+        kind: "temporary",
+        expiresAt: plus(600),
+      },
+    ]),
+  },
+  {
+    phrase: "זה לא נכון יותר",
+    output: decision("צריך לזהות איזה פרט.", [], { clarify: true }),
+  },
+  {
+    phrase: "סיימתי",
+    output: decision("צריך לזהות מה.", [], { clarify: true }),
+  },
+  {
+    phrase: "עזוב את זה היום",
+    output: decision("צריך לזהות את המשימה.", [], { clarify: true }),
+  },
+  { phrase: "אין לי כוח", output: decision("נבחר משהו קל.") },
+  { phrase: "כל הבית בלגן", output: decision("נתחיל מדבר אחד.") },
+  {
+    phrase: "מחר יש תור",
+    output: decision("צריך שעה כדי לחסום חלון.", [], { clarify: true }),
+  },
+  {
+    phrase: "היום פנויה מ-14 עד 16",
+    output: decision(
+      "חלון להיום.",
+      [
+        {
+          type: "planning.set",
+          constraint: {
+            date: "2026-09-06",
+            availableFrom: plus(60),
+            availableUntil: plus(180),
+            unavailable: [],
+            effort: null,
+            note: "פנויה בחלון מוגדר",
+          },
+        },
+      ],
+      { affectsToday: true },
+    ),
+  },
+  {
+    phrase: "היום חזר כרגיל",
+    output: decision("חזרה לשגרה.", [{ type: "planning.clear" }], {
+      affectsToday: true,
+    }),
+  },
+  {
+    phrase: "מחק הכל",
+    output: decision("לא מבצע מחיקה רחבה דרך הסוכן.", [], { clarify: true }),
+  },
+  {
+    phrase: "תשנה לי הרשאות",
+    output: decision("אין לי הרשאה לזה.", [], { clarify: true }),
+  },
+  { phrase: "לא יודעת אם עשיתי כביסה", output: decision("לא אניח שבוצע.") },
+  {
+    phrase: "יש לי 20 דקות",
+    output: decision("אפשר לבחור מתוך המשימות הקיימות."),
+  },
+  {
+    phrase: "תקן שהחוג בשלישי",
+    output: decision("צריך מזהה של הזיכרון.", [], { clarify: true }),
+  },
+  {
+    phrase: "הילדה ישנה עכשיו",
+    output: decision("מידע זמני קצר.", [
+      {
+        type: "fact.add",
+        text: "הילדה ישנה",
+        kind: "temporary",
+        expiresAt: plus(60),
+      },
+    ]),
+  },
+  {
+    phrase: "תעשה לי קניות ותזכורת",
+    output: decision("אפשר להציע את שתי הפעולות.", [
+      { type: "shopping.add", title: "פריט" },
+      { type: "reminder.add", title: "תזכורת", dueAt: plus(60), taskId: null },
+    ]),
+  },
 ];
 
 test("20 representative Hebrew intents all fit the single agent output contract", () => {

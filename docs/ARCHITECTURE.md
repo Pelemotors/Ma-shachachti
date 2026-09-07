@@ -1,20 +1,74 @@
 # Architecture
 
+## Layered application structure
+
+```text
+React Views
+    ↓
+Controllers (hooks/)
+    ↓
+Domain Services (lib/domain/)
+    ↓
+Action Reducer (applyActions)
+    ↓
+AppState V2 (lib/model/)
+    ↓
+Repository (lib/persistence/)
+    ↓
+Supabase / localStorage
+```
+
+```text
+Chat API
+↓
+Agent Orchestrator (lib/agent/orchestration.ts)
+↓
+AgentDecision
+↓
+Policy partition
+↓
+Actions / Proposals
+↓
+Client commit → AppState
+```
+
+UI and views must not call `migrateState`, Supabase clients, or OpenAI directly.
+Controllers own turnId / idempotency / proposal session storage.
+Domain modules are pure (no React, no fetch, no Supabase).
+
 ## Data path
 
 UI → action schema → deterministic domain reducer → persistence adapter → shared AppState.
 
 Local mode stores one versioned schema in this browser and rejects conflicting writes. Cloud mode validates JWT with Supabase getUser, uses the user's token for RLS, reads current revision, and invokes save_app_state in one database transaction. The owner id is derived from auth.uid(), never from model output or request body.
 
+`useHousehold` remains the client persistence orchestrator (load / commit / undo / modes). `lib/persistence` exposes a thin `StateRepository` interface (`LocalStateRepository` / `CloudStateRepository`) for clarification and future adapters — it is not a mandatory rewrite of the hook.
+
 The first release deliberately stores a bounded state document per account. This simplifies atomic multi-object actions and undo. Queue/subscription/quota rows are separate. A max 2 MB database constraint and bounded Zod arrays limit growth. This is a pilot architecture, not a claim of indefinite history or many-user collaborative editing.
+
+Migration boundary: raw DB JSON → `migrateState()` → State V2 only. Business code never branches on schemaVersion 1.
 
 ## AI
 
-/api/chat loads consent and current state on the server. It sends active facts, relevant tasks, recent conversation and an optional task context to the OpenAI Responses API, with store:false. The Hebrew instruction file is the source of behavior. Generated JSON is parsed and validated, then dry-run through the same reducer to reject invented identifiers, cycles and invalid times. The model cannot change consent, profile, history or exclusions.
+`/api/chat` authorizes, checks idempotency receipts, budgets, then calls `orchestrateChatTurn`. Orchestration loads consent and state context, calls the OpenAI Responses API with `store:false`, parses AgentDecision with per-action isolation, dry-runs actions, and partitions policy. The Hebrew instruction file is the source of behavior. The model cannot change consent, profile, history or exclusions.
 
-The client applies permitted small actions according to the user's auto-apply preference. Broad/destructive actions appear for confirmation. The reply never serves as proof of persistence; the application displays a success notice after the actual save.
+The client applies permitted small actions according to the user's auto-apply preference. Broad/destructive actions and AI-invented proposals appear for confirmation. The reply never serves as proof of persistence; the application displays a success notice after the actual save. turnId ties user message, AI response, actions and retries.
 
 No provider key is exposed. Rate budgets are database-backed and callable only by the server service role. If budget configuration is absent, paid AI calls fail closed. Quota is per hour and counts failed provider calls to bound abuse.
+
+## Module map
+
+| Layer           | Location                    |
+| --------------- | --------------------------- |
+| Views           | `components/views/*`        |
+| Controllers     | `hooks/use-*-controller.ts` |
+| Domain          | `lib/domain/*`              |
+| Model / migrate | `lib/model/*`               |
+| Server          | `lib/server/*`              |
+| Persistence     | `lib/persistence/*`         |
+| Contracts       | `lib/contracts/*`           |
+| Agent           | `lib/agent/*`               |
+| Errors          | `lib/errors/*`              |
 
 ## Audio
 

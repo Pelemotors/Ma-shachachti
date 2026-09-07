@@ -36,8 +36,7 @@ test("agent contract accepts urgency but still rejects permission changes", () =
   assert.doesNotThrow(() =>
     AgentOutput.parse({
       reply: "תזכורת חשובה.",
-      confidence: "high",
-      actions: [
+      explicitActions: [
         {
           type: "reminder.add",
           title: "בדיקה",
@@ -46,13 +45,18 @@ test("agent contract accepts urgency but still rejects permission changes", () =
           urgency: "urgent",
         },
       ],
+      clarification: null,
+      proposal: null,
+      affectsToday: false,
     }),
   );
   assert.throws(() =>
     AgentOutput.parse({
       reply: "לא.",
-      confidence: "high",
-      actions: [{ type: "profile.update", patch: { aiConsent: true } }],
+      explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],
+      clarification: null,
+      proposal: null,
+      affectsToday: false,
     }),
   );
 });

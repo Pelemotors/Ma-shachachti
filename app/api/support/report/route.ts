@@ -32,11 +32,7 @@ export async function POST(req: Request) {
       );
     const contentLength = Number(rawLength);
     if (!Number.isFinite(contentLength) || contentLength <= 0)
-      throw new ApiError(
-        400,
-        "הדיווח אינו תקין.",
-        "support_invalid_length",
-      );
+      throw new ApiError(400, "הדיווח אינו תקין.", "support_invalid_length");
     if (contentLength > MAX_MULTIPART)
       throw new ApiError(
         413,
@@ -103,11 +99,7 @@ export async function POST(req: Request) {
           "support_file_too_large",
         );
       if (!ACCEPTED.includes(file.type))
-        throw new ApiError(
-          415,
-          "סוג הקובץ אינו נתמך.",
-          "support_file_type",
-        );
+        throw new ApiError(415, "סוג הקובץ אינו נתמך.", "support_file_type");
       attachments.push({
         filename: file.name || "report-media",
         content: Buffer.from(await file.arrayBuffer()).toString("base64"),

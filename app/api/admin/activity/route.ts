@@ -17,7 +17,10 @@ export async function GET(req: Request) {
   try {
     const db = await admin(req);
     const url = new URL(req.url);
-    const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit")) || 100));
+    const limit = Math.max(
+      1,
+      Math.min(200, Number(url.searchParams.get("limit")) || 100),
+    );
     const before = url.searchParams.get("before");
     let query = db
       .from("activity_events")
@@ -27,11 +30,16 @@ export async function GET(req: Request) {
     if (before) query = query.lt("created_at", before);
     const { data, error } = await query;
     if (error)
-      throw new ApiError(503, "לא ניתן לקרוא פעילות.", "admin_activity_read_failed");
+      throw new ApiError(
+        503,
+        "לא ניתן לקרוא פעילות.",
+        "admin_activity_read_failed",
+      );
     const rows = data ?? [];
     return Response.json({
       events: rows.slice(0, limit),
-      nextBefore: rows.length > limit ? rows[limit - 1]?.created_at ?? null : null,
+      nextBefore:
+        rows.length > limit ? (rows[limit - 1]?.created_at ?? null) : null,
     });
   } catch (e) {
     return fail(e);

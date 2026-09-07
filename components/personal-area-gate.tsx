@@ -14,11 +14,9 @@ export function PersonalAreaGate() {
   useEffect(() => {
     let alive = true;
     async function check() {
+      // No cloud config → HomeApp choose/local demo (README: device-local demonstration).
       if (!supabase) {
-        if (alive) {
-          setMessage("החיבור לחשבון עדיין לא הוגדר.");
-          setState("error");
-        }
+        if (alive) setState("ready");
         return;
       }
       const { data } = await supabase.auth.getSession();
@@ -72,7 +70,10 @@ export function PersonalAreaGate() {
         <p className="eyebrow">מה שכחתי?</p>
         <h1>החשבון עדיין ממתין לאישור.</h1>
         <p>המידע האישי לא נטען עד שהגישה מאושרת.</p>
-        <button className="secondary" onClick={() => void supabase?.auth.signOut()}>
+        <button
+          className="secondary"
+          onClick={() => void supabase?.auth.signOut()}
+        >
           יציאה
         </button>
       </main>
@@ -83,7 +84,9 @@ export function PersonalAreaGate() {
       <main className="welcome">
         <div className="brand-mark">מ׳</div>
         <h1>לא הצלחנו לפתוח את החשבון.</h1>
-        <p role="alert" className="error">{message}</p>
+        <p role="alert" className="error">
+          {message}
+        </p>
         <button className="secondary" onClick={() => location.reload()}>
           ניסיון נוסף
         </button>

@@ -714,10 +714,89 @@ details .stack {
   border-radius: 14px;
   color: var(--accent);
   flex-shrink: 0;
+  gap: 4px;
 }
 .voice.recording {
   color: #fff;
   background: var(--accent);
+  width: auto;
+  padding: 0 12px;
+  min-height: 44px;
+}
+.composer:has(.voice-recorder--active) > textarea,
+.composer:has(.voice-recorder--active) > .send {
+  display: none;
+}
+.composer:has(.voice-recorder--active) .voice-recorder--active {
+  flex: 1;
+  width: 100%;
+}
+.voice-recorder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.voice-recorder--panel {
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--rose);
+  border: 1px solid #e2d5dc;
+}
+.voice-recorder--active {
+  direction: rtl;
+}
+.voice-recorder--recording {
+  background: color-mix(in srgb, var(--rose) 70%, #fff);
+}
+.voice-waveform {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 28px;
+  flex: 1;
+  min-width: 72px;
+}
+.voice-waveform__bar {
+  flex: 1;
+  max-width: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  min-height: 4px;
+  transition: height 60ms linear;
+}
+.voice-recorder__clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-dark);
+  font-weight: 600;
+  min-width: 3.2em;
+}
+.voice-recorder__error {
+  color: #8a2f45;
+  font-size: 13px;
+  margin: 0;
+  flex: 1 1 100%;
+}
+.voice-recorder__send {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: auto;
+}
+.voice-recorder__finish-label {
+  font-size: 13px;
+}
+.consent-banner {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--rose);
+  border: 1px solid #e2d5dc;
+}
+.error-inline {
+  color: #8a2f45;
+  margin: 0;
 }
 .send {
   display: flex;
@@ -1430,4 +1509,36 @@ dialog::backdrop {
   h2 {
     break-after: avoid;
   }
+}
+
+.duration-wheel-col {
+  max-height: 140px;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  border: 1px solid color-mix(in srgb, var(--plum) 18%, transparent);
+  border-radius: 12px;
+  padding: 6px;
+}
+.duration-wheel-col button {
+  display: block;
+  width: 100%;
+  scroll-snap-align: center;
+  border: 0;
+  background: transparent;
+  padding: 8px;
+}
+.duration-wheel-col button.active {
+  background: color-mix(in srgb, var(--rose) 22%, transparent);
+  font-weight: 700;
+}
+.plan-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--cream) 70%, transparent);
+  z-index: 40;
+}
+.text-start {
+  text-align: start;
 }

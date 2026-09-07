@@ -38,7 +38,7 @@ returns bigint language plpgsql security invoker set search_path=public,pg_temp 
 declare v_revision bigint; v_owner uuid:=auth.uid();
 begin
  if v_owner is null then raise exception 'unauthorized'; end if;
- if p_data->>'schemaVersion'<>'1' or jsonb_typeof(p_data->'reminders')<>'array' then raise exception 'invalid_state'; end if;
+ if p_data->>'schemaVersion' not in ('1','2') or jsonb_typeof(p_data->'reminders')<>'array' then raise exception 'invalid_state'; end if;
  if p_expected_revision=0 then
   insert into app_states(owner_id,data,revision) values(v_owner,p_data,1) on conflict do nothing returning revision into v_revision;
  else
@@ -83,4 +83,24 @@ $$;
 revoke all on function public.claim_due_reminders() from public,anon,authenticated;
 grant execute on function public.claim_due_reminders() to service_role;
 grant all on public.app_states,public.reminder_queue,public.push_subscriptions to service_role;
+
+create table if not exists public.pending_proposals (
+ id uuid primary key default gen_random_uuid(),
+ owner_id uuid not null references auth.users(id) on delete cascade,
+ turn_id uuid,
+ type text not null,
+ payload jsonb not null,
+ source_revision bigint not null default 0,
+ status text not null default 'pending'
+  check (status in ('pending','accepted','partial','declined','expired')),
+ created_at timestamptz not null default now(),
+ expires_at timestamptz not null default (now() + interval '24 hours')
+);
+create index if not exists pending_proposals_owner_idx
+ on public.pending_proposals(owner_id,status,expires_at);
+alter table public.pending_proposals enable row level security;
+create policy pending_proposals_owner_all on public.pending_proposals for all to authenticated
+ using ((select auth.uid())=owner_id) with check ((select auth.uid())=owner_id);
+grant select,insert,update,delete on public.pending_proposals to authenticated;
+grant all on public.pending_proposals to service_role;
 commit;

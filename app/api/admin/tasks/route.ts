@@ -18,7 +18,11 @@ export async function GET(req: Request) {
     const db = await admin(req);
     const { data, error } = await db.from("app_states").select("data");
     if (error)
-      throw new ApiError(503, "לא ניתן לקרוא נתוני משימות.", "admin_tasks_read_failed");
+      throw new ApiError(
+        503,
+        "לא ניתן לקרוא נתוני משימות.",
+        "admin_tasks_read_failed",
+      );
     const byStatus: Record<string, number> = {};
     const byCategory: Record<string, number> = {};
     let total = 0;
@@ -27,7 +31,9 @@ export async function GET(req: Request) {
       for (const task of tasks) {
         total++;
         const status = String(task?.status ?? "unknown");
-        const category = String(task?.category ?? "שונות / לא מסווג");
+        const category = String(
+          task?.categoryId ?? task?.category ?? "unclassified",
+        );
         byStatus[status] = (byStatus[status] ?? 0) + 1;
         byCategory[category] = (byCategory[category] ?? 0) + 1;
       }
