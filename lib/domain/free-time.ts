@@ -19,12 +19,7 @@ export type FreeTimeInput = {
 export function freeTime(input: FreeTimeInput) {
   const now = input.now ?? new Date();
   const ctx = buildSharedDecisionContext(input.state, now);
-  const result = freeTimeV2(
-    input.state,
-    input.duration,
-    input.effort,
-    now,
-  );
+  const result = freeTimeV2(input.state, input.duration, input.effort, now);
   const feasibleIds = new Set(
     ctx.tasks
       .filter(

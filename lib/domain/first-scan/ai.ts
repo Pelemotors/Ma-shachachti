@@ -1,8 +1,5 @@
 import { z } from "zod";
-import {
-  SemanticScanResultSchema,
-  analyzeFirstScan,
-} from "./semantic";
+import { SemanticScanResultSchema, analyzeFirstScan } from "./semantic";
 import type { FirstScanAnalysis } from "./analyze";
 
 function scanJsonSchema() {

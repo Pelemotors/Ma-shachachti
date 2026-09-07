@@ -11,10 +11,7 @@ import {
   isTaskVisibleNow,
   isActiveTaskStatus,
 } from "./tasks/visibility";
-import {
-  buildSharedDecisionContext,
-  sharedRank,
-} from "./decision-context";
+import { buildSharedDecisionContext, sharedRank } from "./decision-context";
 
 export {
   estimatedMinutes,

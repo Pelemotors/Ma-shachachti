@@ -25,7 +25,10 @@ test("domain9: forecast needs evidence; correction cancels; not a fact", () => {
   assert.ok(active.length >= 1);
   assert.ok(active[0]!.learnedIntervalDays != null);
   assert.ok(
-    forecastActionableNow(active[0]!, new Date(active[0]!.expectedWindowStart!)),
+    forecastActionableNow(
+      active[0]!,
+      new Date(active[0]!.expectedWindowStart!),
+    ),
   );
   s = applyForecastEvent(s, {
     subject,

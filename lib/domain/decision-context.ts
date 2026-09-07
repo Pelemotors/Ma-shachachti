@@ -1,9 +1,4 @@
-import type {
-  AppState,
-  DailyPlanSession,
-  Reminder,
-  Task,
-} from "../model";
+import type { AppState, DailyPlanSession, Task } from "../model";
 import { activeFacts, blocked, estimatedMinutes } from "../engine";
 import { isActiveVisibleTask } from "./tasks/visibility";
 import { isLifeAdminTask } from "./notifications/life-admin";
@@ -37,7 +32,7 @@ export type SharedDecisionContext = {
   now: Date;
   tasks: SharedDecisionTaskView[];
   deferredTaskIds: string[];
-  reminders: Reminder[];
+  reminders: AppState["reminders"];
   temporaryFacts: AppState["facts"];
   members: AppState["members"];
   plan: DailyPlanSession | null;
@@ -65,8 +60,9 @@ function relevanceScore(task: Task, state: AppState): number {
   let n = 0;
   if (task.kind === "idea") n -= 35;
   n +=
-    state.tasks.filter((x) => x.status === "open" && x.dependsOn.includes(task.id))
-      .length * 15;
+    state.tasks.filter(
+      (x) => x.status === "open" && x.dependsOn.includes(task.id),
+    ).length * 15;
   if (isLifeAdminTask(task)) n += 12;
   return n;
 }
@@ -126,7 +122,9 @@ export function buildSharedDecisionContext(
     tasks,
     deferredTaskIds: tasks.filter((t) => t.deferred).map((t) => t.task.id),
     reminders: state.reminders.filter((r) => r.status === "pending"),
-    temporaryFacts: activeFacts(state, now).filter((f) => f.kind === "temporary"),
+    temporaryFacts: activeFacts(state, now).filter(
+      (f) => f.kind === "temporary",
+    ),
     members: state.members,
     plan,
     availableMinutes,

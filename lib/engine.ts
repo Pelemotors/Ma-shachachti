@@ -267,9 +267,7 @@ export function applyActions(
           // Structured semantic marker — still apply even if fact text was deduped.
           const next = applyForecastEvent(s, {
             type: forecastMatch[1]!.toLowerCase() as
-              | "replenishment"
-              | "depletion"
-              | "correction",
+              "replenishment" | "depletion" | "correction",
             subject: forecastMatch[2]!.trim(),
             occurredAt: stamp,
           });

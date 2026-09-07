@@ -63,7 +63,8 @@ function stripInventions(scan: SemanticScanResult): FirstScanAnalysis {
     observations: scan.observations,
     proposedTasks: scan.proposedTasks.map((t) => ({
       title: t.title,
-      categoryId: t.categoryId as FirstScanAnalysis["proposedTasks"][number]["categoryId"],
+      categoryId:
+        t.categoryId as FirstScanAnalysis["proposedTasks"][number]["categoryId"],
       detailTypeId: t.detailTypeId,
       homeAreaNames: t.homeAreaNames,
       dependsOnTitles: t.dependsOnTitles,

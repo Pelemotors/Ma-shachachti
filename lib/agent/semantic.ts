@@ -130,7 +130,8 @@ export function resolveTaskCandidates(
     const t = byId.get(id);
     if (t && !fromIds.some((x) => x.id === t.id)) fromIds.push(t);
   }
-  if (fromIds.length === 1) return { matches: fromIds, unambiguous: fromIds[0] };
+  if (fromIds.length === 1)
+    return { matches: fromIds, unambiguous: fromIds[0] };
   if (fromIds.length > 1) return { matches: fromIds, unambiguous: null };
 
   const hint = input.entityHint?.trim();
@@ -142,8 +143,7 @@ export function resolveTaskCandidates(
     const title = normalize(t.title);
     return title === needle || title.includes(needle) || needle.includes(title);
   });
-  if (matches.length === 1)
-    return { matches, unambiguous: matches[0] };
+  if (matches.length === 1) return { matches, unambiguous: matches[0] };
   return { matches, unambiguous: null };
 }
 
@@ -199,7 +199,9 @@ function clarificationFor(
  */
 export function groundInterpretations(
   state: AppState,
-  interpretations: SemanticInterpretation[],
+  interpretations: Array<
+    z.input<typeof SemanticInterpretationSchema> | SemanticInterpretation
+  >,
   now: Date = new Date(),
 ): GroundingResult {
   const actions: Action[] = [];
@@ -371,7 +373,10 @@ export function groundInterpretations(
         break;
       }
       case "correction": {
-        if (interp.targetId && state.facts.some((f) => f.id === interp.targetId)) {
+        if (
+          interp.targetId &&
+          state.facts.some((f) => f.id === interp.targetId)
+        ) {
           groundedIds.push(interp.targetId);
           const patch: {
             text?: string;

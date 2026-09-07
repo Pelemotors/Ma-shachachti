@@ -10,10 +10,7 @@ import { join } from "node:path";
 const FORBIDDEN_PATTERNS = [
   {
     file: "lib/agent/semantic.ts",
-    mustNotMatch: [
-      /text\.includes\(/,
-      /סיימתי|גמרתי עם|תזכירי לי/,
-    ],
+    mustNotMatch: [/text\.includes\(/, /סיימתי|גמרתי עם|תזכירי לי/],
   },
   {
     file: "lib/domain/forecast/index.ts",

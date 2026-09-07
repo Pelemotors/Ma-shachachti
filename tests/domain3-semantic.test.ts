@@ -6,7 +6,7 @@ import {
   enforceReferentialIntegrity,
   groundInterpretations,
   semanticFingerprint,
-  type SemanticInterpretation,
+  SemanticInterpretationSchema,
 } from "../lib/agent/semantic";
 
 const now = new Date("2026-09-08T10:00:00.000+03:00");
@@ -21,7 +21,11 @@ function stateWithLaundry() {
       },
       {
         type: "task.create",
-        task: { title: "פינוי מדיח", kind: "task", categoryId: "kitchen_dishes" },
+        task: {
+          title: "פינוי מדיח",
+          kind: "task",
+          categoryId: "kitchen_dishes",
+        },
       },
       {
         type: "member.upsert",
@@ -35,32 +39,32 @@ function stateWithLaundry() {
 test("domain3: paraphrase complete intents ground to same action", () => {
   const state = stateWithLaundry();
   const laundry = state.tasks.find((t) => t.title === "כביסה")!;
-  const paraphrases: SemanticInterpretation[] = [
+  const paraphrases = [
     {
-      intent: "complete_task",
-      targetEntityType: "task",
+      intent: "complete_task" as const,
+      targetEntityType: "task" as const,
       entityHint: "כביסה",
       evidence: "סיימתי את הכביסה",
     },
     {
-      intent: "complete_task",
-      targetEntityType: "task",
+      intent: "complete_task" as const,
+      targetEntityType: "task" as const,
       entityHint: "כביסה",
       evidence: "הכביסה כבר מאחוריי",
     },
     {
-      intent: "complete_task",
-      targetEntityType: "task",
+      intent: "complete_task" as const,
+      targetEntityType: "task" as const,
       targetId: laundry.id,
       evidence: "אפשר לסמן כביסה כבוצע",
     },
     {
-      intent: "complete_task",
-      targetEntityType: "task",
+      intent: "complete_task" as const,
+      targetEntityType: "task" as const,
       candidateIds: [laundry.id],
       evidence: "גמרתי עם הכביסה",
     },
-  ].map((p) => p as SemanticInterpretation);
+  ];
 
   const fingerprints = paraphrases.map((p) => {
     const g = groundInterpretations(state, [p], now);
@@ -70,7 +74,10 @@ test("domain3: paraphrase complete intents ground to same action", () => {
       assert.equal(g.actions[0].id, laundry.id);
       assert.equal(g.actions[0].status, "done");
     }
-    return semanticFingerprint(p, laundry.id);
+    return semanticFingerprint(
+      SemanticInterpretationSchema.parse(p),
+      laundry.id,
+    );
   });
   assert.equal(new Set(fingerprints.map((f) => f.split("|")[0])).size, 1);
   assert.ok(fingerprints.every((f) => f.includes(laundry.id)));

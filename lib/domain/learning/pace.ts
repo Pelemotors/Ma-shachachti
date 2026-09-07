@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { AppState, Task } from "../../model";
 
 export type DurationSample = {
@@ -64,9 +63,14 @@ export function updateDurationModel(
     typicalMinutes,
     variance,
     count,
-    confidence: count >= 8 && variance < typicalMinutes * 0.4 ? "high" : "medium",
+    confidence:
+      count >= 8 && variance < typicalMinutes * 0.4 ? "high" : "medium",
     lastUpdatedAt: sample.at,
-    source: opts.explicit ? "explicit" : previous?.source === "explicit" ? "explicit" : "learned",
+    source: opts.explicit
+      ? "explicit"
+      : previous?.source === "explicit"
+        ? "explicit"
+        : "learned",
   };
 }
 
@@ -97,8 +101,7 @@ export function recordTaskDurationSample(
         count: existing.samples,
         confidence: existing.confidence,
         lastUpdatedAt: existing.lastObservedAt,
-        source:
-          existing.payload.source === "explicit" ? "explicit" : "learned",
+        source: existing.payload.source === "explicit" ? "explicit" : "learned",
       }
     : null;
 
@@ -109,12 +112,16 @@ export function recordTaskDurationSample(
 
   const model = updateDurationModel(
     previous,
-    { minutes, at: now.toISOString(), source: opts.explicit ? "user_report" : "completion" },
+    {
+      minutes,
+      at: now.toISOString(),
+      source: opts.explicit ? "user_report" : "completion",
+    },
     opts,
   );
 
   const insight = {
-    id: existing?.id ?? randomUUID(),
+    id: existing?.id ?? crypto.randomUUID(),
     kind: "duration" as const,
     key,
     payload: { ...model },
@@ -137,7 +144,9 @@ export function learnedDurationMinutes(
   task: Task,
 ): number | null {
   const key = `duration:${task.detailTypeId ?? task.categoryId}:${task.title}`;
-  const hit = state.learning.find((x) => x.kind === "duration" && x.key === key);
+  const hit = state.learning.find(
+    (x) => x.kind === "duration" && x.key === key,
+  );
   if (!hit || hit.samples < MIN_DURATION_SAMPLES) return null;
   const typical = hit.payload.typicalMinutes;
   return typeof typical === "number" ? typical : null;

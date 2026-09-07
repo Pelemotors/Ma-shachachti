@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { AppState } from "../../model";
 
 export type ForecastEventType = "replenishment" | "depletion" | "correction";
@@ -58,7 +57,7 @@ export function applyForecastEvent(
 
   if (event.type === "correction") {
     const insight = {
-      id: existing?.id ?? randomUUID(),
+      id: existing?.id ?? crypto.randomUUID(),
       kind: "forecast" as const,
       key,
       payload: {
@@ -99,11 +98,13 @@ export function applyForecastEvent(
 
   if (evidenceCount >= MIN_EVIDENCE && intervals.length >= 2) {
     learnedIntervalDays = median(intervals);
-    const spread =
-      Math.max(...intervals) - Math.min(...intervals);
+    const spread = Math.max(...intervals) - Math.min(...intervals);
     confidence = Math.max(
       0.2,
-      Math.min(0.95, 0.35 + evidenceCount * 0.08 - spread / (learnedIntervalDays * 4)),
+      Math.min(
+        0.95,
+        0.35 + evidenceCount * 0.08 - spread / (learnedIntervalDays * 4),
+      ),
     );
     status = confidence >= 0.55 ? "active" : "weak";
     const last = Date.parse(stamps[stamps.length - 1]!);
@@ -114,7 +115,7 @@ export function applyForecastEvent(
   }
 
   const insight = {
-    id: existing?.id ?? randomUUID(),
+    id: existing?.id ?? crypto.randomUUID(),
     kind: "forecast" as const,
     key,
     payload: {
@@ -134,7 +135,11 @@ export function applyForecastEvent(
     },
     samples: evidenceCount,
     confidence:
-      confidence >= 0.7 ? ("high" as const) : confidence >= 0.4 ? ("medium" as const) : ("low" as const),
+      confidence >= 0.7
+        ? ("high" as const)
+        : confidence >= 0.4
+          ? ("medium" as const)
+          : ("low" as const),
     lastObservedAt: event.occurredAt,
   };
 
@@ -147,31 +152,38 @@ export function applyForecastEvent(
 }
 
 export function activeForecasts(state: AppState): ForecastModel[] {
-  return state.learning
+  const models: ForecastModel[] = state.learning
     .filter((x) => x.kind === "forecast")
     .map((x) => {
       const p = x.payload;
+      const status: ForecastModel["status"] =
+        p.status === "active" || p.status === "cancelled" ? p.status : "weak";
+      const source: ForecastModel["source"] =
+        p.source === "explicit" ? "explicit" : "learned";
       return {
         id: x.id,
         subject: String(p.subject ?? x.key.replace(/^forecast:/, "")),
         type: "consumption" as const,
         expectedWindowStart:
-          typeof p.expectedWindowStart === "string" ? p.expectedWindowStart : null,
+          typeof p.expectedWindowStart === "string"
+            ? p.expectedWindowStart
+            : null,
         expectedWindowEnd:
           typeof p.expectedWindowEnd === "string" ? p.expectedWindowEnd : null,
         confidence: typeof p.confidence === "number" ? p.confidence : 0,
         evidenceCount: x.samples,
         lastEventAt: typeof p.lastEventAt === "string" ? p.lastEventAt : null,
         learnedIntervalDays:
-          typeof p.learnedIntervalDays === "number" ? p.learnedIntervalDays : null,
-        source: p.source === "explicit" ? "explicit" : "learned",
-        status:
-          p.status === "active" || p.status === "cancelled" ? p.status : "weak",
+          typeof p.learnedIntervalDays === "number"
+            ? p.learnedIntervalDays
+            : null,
+        source,
+        status,
         recheckAt: typeof p.recheckAt === "string" ? p.recheckAt : null,
         expiresAt: typeof p.expiresAt === "string" ? p.expiresAt : null,
       };
-    })
-    .filter((f) => f.status === "active" && f.confidence >= 0.55);
+    });
+  return models.filter((f) => f.status === "active" && f.confidence >= 0.55);
 }
 
 /** WhatForgot may surface a forecast only when proximate and confident. */
