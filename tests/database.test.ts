@@ -57,6 +57,7 @@ test("clean install can apply every audit migration and enforce approved access"
       "20260907_idempotent_action_saves.sql",
       "20260907_move_auth_helpers_private.sql",
       "20260907_zz_chat_idempotency.sql",
+      "20260907_zzz_rls_policy_hardening.sql",
     ];
     for (const name of migrations)
       await db.exec(await readFile(new URL(`../database/migrations/${name}`, import.meta.url), "utf8"));
