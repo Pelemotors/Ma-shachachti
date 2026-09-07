@@ -18,6 +18,7 @@ export const categories = [
 ] as const;
 export const CategorySchema = z.enum(categories);
 export const StatusSchema = z.enum(["open", "done", "cancelled", "unknown"]);
+export const ReminderUrgencySchema = z.enum(["urgent", "medium", "low"]);
 const Stamp = z.string().datetime({ offset: true });
 const DateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -77,6 +78,7 @@ export const ReminderSchema = z.object({
   dueAt: Stamp,
   status: z.enum(["pending", "cancelled", "sent", "failed"]),
   taskId: z.string().uuid().nullable(),
+  urgency: ReminderUrgencySchema.default("medium"),
 });
 
 export const ProfileSchema = z.object({
@@ -264,6 +266,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
     title: z.string().min(1).max(200),
     dueAt: Stamp,
     taskId: z.string().uuid().nullable(),
+    urgency: ReminderUrgencySchema.optional(),
   }),
   z.object({ type: z.literal("reminder.cancel"), id: z.string().uuid() }),
   z.object({
