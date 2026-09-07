@@ -2,9 +2,13 @@ import webpush from "web-push";
 import { timingSafeEqual } from "node:crypto";
 import { adminDb, ApiError, fail } from "@/lib/server";
 import { validPushEndpoint } from "@/lib/push";
+
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
 export async function GET(req: Request) {
+  const started = Date.now();
+  let db: ReturnType<typeof adminDb> | null = null;
   try {
     const expected = process.env.CRON_SECRET,
       actual = req.headers.get("authorization");
@@ -14,26 +18,28 @@ export async function GET(req: Request) {
       Buffer.byteLength(actual) !== Buffer.byteLength(`Bearer ${expected}`) ||
       !timingSafeEqual(Buffer.from(actual), Buffer.from(`Bearer ${expected}`))
     )
-      throw new ApiError(401, "Unauthorized");
+      throw new ApiError(401, "Unauthorized", "cron_unauthorized");
     if (
       !process.env.VAPID_PRIVATE_KEY ||
       !process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
       !process.env.VAPID_SUBJECT
     )
-      throw new ApiError(503, "Push not configured");
+      throw new ApiError(503, "Push not configured", "push_not_configured");
+
     webpush.setVapidDetails(
       process.env.VAPID_SUBJECT,
       process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
       process.env.VAPID_PRIVATE_KEY,
     );
-    const db = adminDb();
+    db = adminDb();
     const { data: jobs, error } = await db.rpc("claim_due_reminders");
-    if (error) throw new ApiError(503, "Queue unavailable");
+    if (error) throw new ApiError(503, "Queue unavailable", "queue_unavailable");
+
     let sent = 0;
     await Promise.all(
       (jobs ?? []).map(
         async (job: { id: string; owner_id: string; attempts: number }) => {
-          const { data: owner } = await db
+          const { data: owner } = await db!
             .from("app_states")
             .select("data")
             .eq("owner_id", job.owner_id)
@@ -54,7 +60,7 @@ export async function GET(req: Request) {
               ? hour >= start && hour < end
               : hour >= start || hour < end);
           if (quiet) {
-            await db
+            await db!
               .from("reminder_queue")
               .update({
                 lease_until: new Date(Date.now() + 15 * 60000).toISOString(),
@@ -64,7 +70,8 @@ export async function GET(req: Request) {
               .eq("status", "pending");
             return;
           }
-          const { data: subs } = await db
+
+          const { data: subs } = await db!
             .from("push_subscriptions")
             .select("subscription,endpoint")
             .eq("owner_id", job.owner_id)
@@ -88,7 +95,7 @@ export async function GET(req: Request) {
               } catch (e) {
                 const status = (e as { statusCode?: number }).statusCode;
                 if (status === 404 || status === 410)
-                  await db
+                  await db!
                     .from("push_subscriptions")
                     .delete()
                     .eq("owner_id", job.owner_id)
@@ -96,6 +103,7 @@ export async function GET(req: Request) {
               }
             }),
           );
+
           const patch = delivered
             ? {
                 status: "sent",
@@ -115,22 +123,42 @@ export async function GET(req: Request) {
                     ? "delivery_failed"
                     : "no_subscription",
                 };
-          const { error: updateError } = await db
+          const { error: updateError } = await db!
             .from("reminder_queue")
             .update(patch)
             .eq("id", job.id)
             .eq("status", "pending");
-          if (updateError) throw new ApiError(503, "Queue update failed");
+          if (updateError)
+            throw new ApiError(503, "Queue update failed", "queue_update_failed");
           if (delivered) sent++;
         },
       ),
     );
+
     await db
       .from("ai_budgets")
       .delete()
-      .lt("bucket", new Date(Date.now() - 2 * 86400000).toISOString());
+      .lt("bucket", new Date(Date.now() - 8 * 86400000).toISOString());
+    await db.from("activity_events").insert({
+      owner_id: null,
+      event_type: "cron.reminders.success",
+      metadata: {
+        processed: jobs?.length ?? 0,
+        sent,
+        latencyMs: Date.now() - started,
+      },
+    });
     return Response.json({ processed: jobs?.length ?? 0, sent });
   } catch (e) {
+    if (db)
+      await db.from("activity_events").insert({
+        owner_id: null,
+        event_type: "cron.reminders.failure",
+        metadata: {
+          code: e instanceof ApiError ? e.code : "internal_error",
+          latencyMs: Date.now() - started,
+        },
+      });
     return fail(e);
   }
 }
