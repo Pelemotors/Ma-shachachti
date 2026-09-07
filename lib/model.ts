@@ -18,7 +18,10 @@ export const categories = [
 ] as const;
 export const CategorySchema = z.enum(categories);
 export const StatusSchema = z.enum(["open", "done", "cancelled", "unknown"]);
+export const ReminderUrgencySchema = z.enum(["urgent", "medium", "low"]);
 const Stamp = z.string().datetime({ offset: true });
+const DateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
 export const TaskSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1).max(200),
@@ -51,6 +54,7 @@ export const TaskSchema = z.object({
   actualWorkMinutes: z.number().int().min(1).max(1440).nullable(),
 });
 export type Task = z.infer<typeof TaskSchema>;
+
 export const FactSchema = z.object({
   id: z.string().uuid(),
   text: z.string().min(1).max(500),
@@ -59,6 +63,7 @@ export const FactSchema = z.object({
   createdAt: Stamp,
   source: z.enum(["user", "agent"]),
 });
+
 export const ShoppingSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1).max(150),
@@ -66,13 +71,16 @@ export const ShoppingSchema = z.object({
   purchasedAt: Stamp.nullable(),
   createdAt: Stamp,
 });
+
 export const ReminderSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1).max(200),
   dueAt: Stamp,
   status: z.enum(["pending", "cancelled", "sent", "failed"]),
   taskId: z.string().uuid().nullable(),
+  urgency: ReminderUrgencySchema.optional(),
 });
+
 export const ProfileSchema = z.object({
   name: z.string().max(80),
   addressAs: z.enum(["feminine", "masculine", "neutral"]),
@@ -98,12 +106,35 @@ export const ProfileSchema = z.object({
   quietStart: z.number().int().min(0).max(23),
   quietEnd: z.number().int().min(0).max(23),
 });
+
+const BusyWindowSchema = z
+  .object({ start: Stamp, end: Stamp })
+  .refine((x) => Date.parse(x.end) > Date.parse(x.start), "Invalid busy window");
+export const PlanningConstraintSchema = z
+  .object({
+    date: DateKey,
+    availableFrom: Stamp.nullable(),
+    availableUntil: Stamp.nullable(),
+    unavailable: z.array(BusyWindowSchema).max(20),
+    effort: z.number().int().min(1).max(3).nullable(),
+    note: z.string().max(500),
+  })
+  .refine(
+    (x) =>
+      !x.availableFrom ||
+      !x.availableUntil ||
+      Date.parse(x.availableUntil) > Date.parse(x.availableFrom),
+    "Invalid availability window",
+  );
+export type PlanningConstraint = z.infer<typeof PlanningConstraintSchema>;
+
 export const MessageSchema = z.object({
   id: z.string().uuid(),
   role: z.enum(["user", "assistant"]),
   text: z.string().max(12000),
   createdAt: Stamp,
 });
+
 export const StateSchema = z.object({
   schemaVersion: z.literal(1),
   profile: ProfileSchema,
@@ -113,6 +144,9 @@ export const StateSchema = z.object({
   reminders: z.array(ReminderSchema).max(500),
   messages: z.array(MessageSchema).max(200),
   excludedTemplates: z.array(z.string()).max(500),
+  planning: z
+    .object({ today: PlanningConstraintSchema.nullable() })
+    .default({ today: null }),
   events: z
     .array(
       z.object({
@@ -126,6 +160,7 @@ export const StateSchema = z.object({
 });
 export type AppState = z.infer<typeof StateSchema>;
 export type Profile = z.infer<typeof ProfileSchema>;
+
 export function emptyState(): AppState {
   return {
     schemaVersion: 1,
@@ -153,9 +188,11 @@ export function emptyState(): AppState {
     reminders: [],
     messages: [],
     excludedTemplates: [],
+    planning: { today: null },
     events: [],
   };
 }
+
 const TaskInput = TaskSchema.omit({
   id: true,
   createdAt: true,
@@ -167,6 +204,7 @@ const TaskInput = TaskSchema.omit({
 })
   .partial()
   .extend({ title: z.string().min(1).max(200) });
+
 export const ActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("task.create"), task: TaskInput }),
   z.object({
@@ -217,14 +255,25 @@ export const ActionSchema = z.discriminatedUnion("type", [
     kind: z.enum(["stable", "temporary", "inference"]),
     expiresAt: Stamp.nullable(),
   }),
+  z.object({
+    type: z.literal("fact.update"),
+    id: z.string().uuid(),
+    patch: FactSchema.pick({ text: true, kind: true, expiresAt: true }).partial(),
+  }),
   z.object({ type: z.literal("fact.remove"), id: z.string().uuid() }),
   z.object({
     type: z.literal("reminder.add"),
     title: z.string().min(1).max(200),
     dueAt: Stamp,
     taskId: z.string().uuid().nullable(),
+    urgency: ReminderUrgencySchema.optional(),
   }),
   z.object({ type: z.literal("reminder.cancel"), id: z.string().uuid() }),
+  z.object({
+    type: z.literal("planning.set"),
+    constraint: PlanningConstraintSchema,
+  }),
+  z.object({ type: z.literal("planning.clear") }),
   z.object({
     type: z.literal("profile.update"),
     patch: ProfileSchema.partial(),
@@ -240,6 +289,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
 ]);
 export type Action = z.infer<typeof ActionSchema>;
 export const ActionBatch = z.array(ActionSchema).min(1).max(30);
+
 export function normalize(s: string) {
   return s
     .normalize("NFKC")

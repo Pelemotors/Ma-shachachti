@@ -2,8 +2,18 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AppState, Action, emptyState, StateSchema } from "./model";
 import { applyActions } from "./engine";
-import { supabase, authHeaders } from "./supabase-browser";
+import { supabase, authFetch } from "./supabase-browser";
+
 const LOCAL_KEY = "ma-shachachti:local:v1";
+type UndoEntry = {
+  state: AppState;
+  revision: number;
+  mode: string;
+  afterFingerprint: string;
+};
+type PendingCommit = { signature: string; key: string };
+const fingerprint = (state: AppState) => JSON.stringify(state);
+
 export function useHousehold() {
   const [state, setState] = useState<AppState>(emptyState),
     [mode, setMode] = useState<"loading" | "choose" | "local" | "cloud">(
@@ -12,26 +22,30 @@ export function useHousehold() {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
-    [undo, setUndo] = useState<AppState | null>(null);
+    [undo, setUndo] = useState<UndoEntry | null>(null);
+
   const ref = useRef({ state: emptyState(), revision: 0, mode: "choose" }),
-    locked = useRef(false);
-  const adopt = useCallback(
-    (state: AppState, revision: number, mode: string) => {
-      ref.current = { state, revision, mode };
-      setState(state);
-    },
-    [],
-  );
+    locked = useRef(false),
+    generation = useRef(0),
+    pendingCommit = useRef<PendingCommit | null>(null);
+
+  const adopt = useCallback((state: AppState, revision: number, mode: string) => {
+    ref.current = { state, revision, mode };
+    setState(state);
+  }, []);
+
   const cloudLoad = useCallback(async () => {
-    const res = await fetch("/api/state", {
-      headers: await authHeaders(),
-      cache: "no-store",
-    });
+    const requestGeneration = generation.current;
+    const res = await authFetch("/api/state", { cache: "no-store" });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
+    if (requestGeneration !== generation.current) return;
     adopt(StateSchema.parse(data.state), data.revision, "cloud");
+    pendingCommit.current = null;
+    setUndo(null);
     setMode("cloud");
   }, [adopt]);
+
   useEffect(() => {
     let alive = true;
     async function init() {
@@ -54,6 +68,8 @@ export function useHousehold() {
     void init();
     const listener = supabase?.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT" && alive) {
+        generation.current++;
+        pendingCommit.current = null;
         adopt(emptyState(), 0, "choose");
         setMode("choose");
         setUndo(null);
@@ -64,14 +80,13 @@ export function useHousehold() {
       listener?.data.subscription.unsubscribe();
     };
   }, [adopt, cloudLoad]);
+
   const startLocal = useCallback(() => {
     try {
       const raw = localStorage.getItem(LOCAL_KEY);
-      adopt(
-        raw ? StateSchema.parse(JSON.parse(raw)) : emptyState(),
-        0,
-        "local",
-      );
+      adopt(raw ? StateSchema.parse(JSON.parse(raw)) : emptyState(), 0, "local");
+      pendingCommit.current = null;
+      setUndo(null);
       setMode("local");
       setError("");
     } catch {
@@ -80,50 +95,73 @@ export function useHousehold() {
       );
     }
   }, [adopt]);
+
   const commit = useCallback(
     async (actions: Action[], confirmed = false, remember = true) => {
-      if (locked.current) throw new Error("רגע, השמירה הקודמת עדיין מתבצעת.");
+      if (locked.current)
+        throw new Error("רגע, השמירה הקודמת עדיין מתבצעת.");
       locked.current = true;
       setBusy(true);
       setError("");
-      const before = ref.current;
+      const before = ref.current,
+        requestGeneration = generation.current;
       try {
         let next: AppState,
           revision = before.revision;
         if (before.mode === "local") {
           const stored = localStorage.getItem(LOCAL_KEY);
-          if (stored && stored !== JSON.stringify(before.state))
+          if (stored && stored !== fingerprint(before.state))
             throw new Error(
-              "המידע השתנה בחלון אחר. צריך לצאת מההדגמה ולהיכנס שוב.",
+              "המידע השתנה בחלון אחר. צריך לטעון מחדש לפני שינוי נוסף.",
             );
           next = applyActions(before.state, actions, new Date(), confirmed);
-          localStorage.setItem(LOCAL_KEY, JSON.stringify(next));
+          localStorage.setItem(LOCAL_KEY, fingerprint(next));
+          revision = before.revision + 1;
         } else if (before.mode === "cloud") {
-          const res = await fetch("/api/actions", {
+          const signature = JSON.stringify({
+            actions,
+            revision: before.revision,
+            confirmed,
+          });
+          const existing = pendingCommit.current;
+          const key =
+            existing?.signature === signature ? existing.key : crypto.randomUUID();
+          pendingCommit.current = { signature, key };
+          const res = await authFetch("/api/actions", {
             method: "POST",
-            headers: {
-              ...(await authHeaders()),
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               actions,
               revision: before.revision,
               confirmed,
+              idempotencyKey: key,
             }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error);
           next = StateSchema.parse(data.state);
           revision = data.revision;
+          pendingCommit.current = null;
         } else throw new Error("צריך לבחור איך להתחיל.");
+
+        if (
+          requestGeneration !== generation.current ||
+          ref.current.mode !== before.mode
+        )
+          throw new Error("החשבון השתנה בזמן השמירה. השינוי לא הוצג.");
         adopt(next, revision, before.mode);
-        if (remember) setUndo(before.state);
-        else
-          setUndo((previous) =>
-            previous ? { ...previous, messages: next.messages } : null,
-          );
         if (remember)
-          setNotice(before.mode === "local" ? "נשמר במכשיר הזה" : "השינוי נשמר");
+          setUndo({
+            state: before.state,
+            revision,
+            mode: before.mode,
+            afterFingerprint: fingerprint(next),
+          });
+        else setUndo(null);
+        if (remember)
+          setNotice(
+            before.mode === "local" ? "נשמר במכשיר הזה" : "השינוי נשמר",
+          );
         return next;
       } catch (e) {
         const msg = e instanceof Error ? e.message : "השמירה לא הצליחה";
@@ -136,28 +174,91 @@ export function useHousehold() {
     },
     [adopt],
   );
+
+  const replaceState = useCallback(
+    async (candidate: unknown) => {
+      if (locked.current) throw new Error("שמירה אחרת עדיין מתבצעת.");
+      const parsed = StateSchema.parse(candidate);
+      locked.current = true;
+      setBusy(true);
+      setError("");
+      const before = ref.current;
+      const requestGeneration = generation.current;
+      try {
+        let revision = before.revision;
+        if (before.mode === "local") {
+          const stored = localStorage.getItem(LOCAL_KEY);
+          if (stored && stored !== fingerprint(before.state))
+            throw new Error("המידע השתנה בחלון אחר. טענו מחדש לפני שחזור.");
+          localStorage.setItem(LOCAL_KEY, fingerprint(parsed));
+          revision++;
+        } else if (before.mode === "cloud") {
+          const res = await authFetch("/api/state", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ state: parsed, revision: before.revision }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          revision = Number(data.revision);
+        } else throw new Error("צריך להתחבר או לפתוח הדגמה לפני שחזור.");
+        if (
+          requestGeneration !== generation.current ||
+          ref.current.mode !== before.mode
+        )
+          throw new Error("החשבון השתנה בזמן השחזור. הנתונים לא הוצגו.");
+        pendingCommit.current = null;
+        setUndo(null);
+        adopt(parsed, revision, before.mode);
+        setNotice("הגיבוי שוחזר לאחר אימות");
+        return parsed;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "השחזור לא הצליח";
+        setError(msg);
+        throw e;
+      } finally {
+        locked.current = false;
+        setBusy(false);
+      }
+    },
+    [adopt],
+  );
+
   const restore = useCallback(async () => {
     if (!undo || locked.current) return;
     locked.current = true;
     setBusy(true);
     try {
-      let revision = ref.current.revision;
-      if (ref.current.mode === "local")
-        localStorage.setItem(LOCAL_KEY, JSON.stringify(undo));
-      else {
-        const res = await fetch("/api/state", {
+      const current = ref.current;
+      if (
+        current.mode !== undo.mode ||
+        fingerprint(current.state) !== undo.afterFingerprint ||
+        current.revision !== undo.revision
+      ) {
+        setUndo(null);
+        throw new Error("אי אפשר לבטל כי המידע השתנה מאז הפעולה.");
+      }
+      let revision = current.revision;
+      if (current.mode === "local") {
+        const stored = localStorage.getItem(LOCAL_KEY);
+        if (stored !== undo.afterFingerprint) {
+          setUndo(null);
+          throw new Error("אי אפשר לבטל כי המידע השתנה בחלון אחר.");
+        }
+        localStorage.setItem(LOCAL_KEY, fingerprint(undo.state));
+        revision++;
+      } else {
+        const res = await authFetch("/api/state", {
           method: "PUT",
-          headers: {
-            ...(await authHeaders()),
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ state: undo, revision }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ state: undo.state, revision: current.revision }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         revision = data.revision;
       }
-      adopt(undo, revision, ref.current.mode);
+      pendingCommit.current = null;
+      adopt(undo.state, revision, current.mode);
       setUndo(null);
       setNotice("הפעולה האחרונה בוטלה");
     } catch (e) {
@@ -167,7 +268,11 @@ export function useHousehold() {
       setBusy(false);
     }
   }, [undo, adopt]);
+
   const signOut = async () => {
+    generation.current++;
+    pendingCommit.current = null;
+    setUndo(null);
     if (supabase && mode === "cloud") {
       const { error } = await supabase.auth.signOut();
       if (error) {
@@ -176,18 +281,19 @@ export function useHousehold() {
       }
     }
     adopt(emptyState(), 0, "choose");
-    setUndo(null);
     setMode("choose");
   };
+
   return {
     state,
     mode,
     busy,
     error,
     notice,
-    undo,
+    undo: undo?.state ?? null,
     currentRevision: () => ref.current.revision,
     commit,
+    replaceState,
     restore,
     startLocal,
     cloudLoad,
