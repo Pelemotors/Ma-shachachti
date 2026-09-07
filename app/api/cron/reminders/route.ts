@@ -154,10 +154,20 @@ export async function GET(req: Request) {
       ),
     );
 
-    await db
-      .from("ai_budgets")
-      .delete()
-      .lt("bucket", new Date(Date.now() - 8 * 86400000).toISOString());
+    await Promise.all([
+      db
+        .from("ai_budgets")
+        .delete()
+        .lt("bucket", new Date(Date.now() - 8 * 86400000).toISOString()),
+      db
+        .from("activity_events")
+        .delete()
+        .lt("created_at", new Date(Date.now() - 90 * 86400000).toISOString()),
+      db
+        .from("action_receipts")
+        .delete()
+        .lt("created_at", new Date(Date.now() - 8 * 86400000).toISOString()),
+    ]);
     await db.from("activity_events").insert({
       owner_id: null,
       event_type: "cron.reminders.success",
