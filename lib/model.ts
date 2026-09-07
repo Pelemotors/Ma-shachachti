@@ -78,7 +78,7 @@ export const ReminderSchema = z.object({
   dueAt: Stamp,
   status: z.enum(["pending", "cancelled", "sent", "failed"]),
   taskId: z.string().uuid().nullable(),
-  urgency: ReminderUrgencySchema.default("medium"),
+  urgency: ReminderUrgencySchema.optional(),
 });
 
 export const ProfileSchema = z.object({
