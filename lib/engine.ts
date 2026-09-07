@@ -220,6 +220,7 @@ export function applyActions(
             dueAt: action.dueAt,
             taskId: action.taskId,
             status: "pending",
+            urgency: action.urgency ?? "medium",
           });
         break;
       }
@@ -286,8 +287,8 @@ export function activeFacts(s: AppState, now = new Date()) {
   return s.facts.filter((f) => !f.expiresAt || new Date(f.expiresAt) > now);
 }
 
-export function estimatedMinutes(t: Task, s: AppState) {
-  const samples = s.tasks
+function paceSamples(t: Task, s: AppState) {
+  return s.tasks
     .filter(
       (x) =>
         x.status === "done" &&
@@ -299,9 +300,26 @@ export function estimatedMinutes(t: Task, s: AppState) {
     .map((x) => x.actualWorkMinutes!)
     .slice(-10)
     .sort((a, b) => a - b);
+}
+
+export function estimatedMinutes(t: Task, s: AppState) {
+  const samples = paceSamples(t, s);
   return samples.length >= 3
     ? samples[Math.floor(samples.length / 2)]
     : t.workMinutes;
+}
+
+export function shouldAskWorkTime(t: Task, s: AppState) {
+  const samples = paceSamples(t, s).length;
+  if (samples < 3) return true;
+  const matchingCompletions = s.tasks.filter(
+    (x) =>
+      x.status === "done" &&
+      (t.templateId
+        ? x.templateId === t.templateId
+        : normalize(x.title) === normalize(t.title)),
+  ).length;
+  return matchingCompletions % 4 === 0;
 }
 
 export function visible(t: Task, now = new Date()) {
@@ -329,6 +347,19 @@ export function whatMatters(s: AppState, now = new Date()) {
     .filter((t) => visible(t, now) && t.kind === "task")
     .sort((a, b) => score(b, s, now) - score(a, s, now))
     .slice(0, 6);
+}
+
+export function followUps(s: AppState, now = new Date()) {
+  return s.tasks
+    .filter(
+      (t) =>
+        visible(t, now) &&
+        t.kind === "task" &&
+        (t.status === "unknown" ||
+          (t.status === "open" && !!t.dueAt && new Date(t.dueAt) < now)),
+    )
+    .sort((a, b) => score(b, s, now) - score(a, s, now))
+    .slice(0, 3);
 }
 
 export function blocked(t: Task, s: AppState) {
