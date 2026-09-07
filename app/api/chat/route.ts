@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   authorize,
@@ -171,8 +172,41 @@ export async function POST(req: Request) {
       .object({
         message: z.string().trim().min(1).max(6000),
         contextTaskId: z.string().uuid().nullable().optional(),
+        idempotencyKey: z.string().uuid(),
       })
       .parse(await jsonBody(req, 20_000));
+    const requestHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          message: body.message,
+          contextTaskId: body.contextTaskId ?? null,
+        }),
+      )
+      .digest("hex");
+    const { data: cached, error: cachedError } = await db
+      .from("chat_receipts")
+      .select("request_hash,response")
+      .eq("owner_id", userId)
+      .eq("idempotency_key", body.idempotencyKey)
+      .maybeSingle();
+    if (cachedError)
+      throw new ApiError(
+        503,
+        "לא ניתן לבדוק ניסיון שיחה קודם. אפשר לנסות שוב בעוד רגע.",
+        "chat_receipt_unavailable",
+      );
+    if (cached) {
+      if (cached.request_hash !== requestHash)
+        throw new ApiError(
+          409,
+          "מזהה ניסיון השיחה כבר שייך להודעה אחרת.",
+          "chat_idempotency_conflict",
+        );
+      return Response.json(cached.response, {
+        headers: { "Cache-Control": "no-store", "X-Idempotent-Replay": "1" },
+      });
+    }
+
     const { state, revision } = await readState(db, userId);
     if (!state.profile.aiConsent)
       throw new ApiError(
@@ -253,6 +287,19 @@ export async function POST(req: Request) {
         );
       }
 
+    const payload = { ...parsed, basedOnRevision: revision, requestId };
+    const { error: receiptError } = await db.from("chat_receipts").upsert(
+      {
+        owner_id: userId,
+        idempotency_key: body.idempotencyKey,
+        request_hash: requestHash,
+        response: payload,
+      },
+      { onConflict: "owner_id,idempotency_key", ignoreDuplicates: true },
+    );
+    if (receiptError)
+      console.error("Chat receipt write failed", { requestId });
+
     await activity(userId, "ai.success", {
       requestId,
       latencyMs: Date.now() - started,
@@ -260,10 +307,9 @@ export async function POST(req: Request) {
       actionCount: parsed.actions.length,
       confidence: parsed.confidence,
     });
-    return Response.json(
-      { ...parsed, basedOnRevision: revision, requestId },
-      { headers: { "Cache-Control": "no-store" } },
-    );
+    return Response.json(payload, {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (e) {
     if (ownerId)
       await activity(ownerId, "ai.failure", {
