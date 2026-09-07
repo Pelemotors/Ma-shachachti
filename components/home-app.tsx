@@ -7,7 +7,6 @@ import {
   ShoppingBasket,
   Plus,
   ArrowUp,
-  ArrowRight,
   Clock3,
   Sparkles,
   CalendarDays,
@@ -20,11 +19,10 @@ import {
   Download,
   LogOut,
   Trash2,
-  Pencil,
   BookOpen,
   ChevronLeft,
 } from "lucide-react";
-import { Action, AppState, Task, categories } from "@/lib/model";
+import { Action, ActionBatch, AppState, Task, categories } from "@/lib/model";
 import {
   whatMatters,
   opportunities,
@@ -32,19 +30,22 @@ import {
   estimatedMinutes,
   requiresConfirmation,
   learning,
-  activeFacts,
-  visible,
   blocked,
+  followUps,
+  shouldAskWorkTime,
 } from "@/lib/engine";
 import { suggestions, catalog, templateAction } from "@/lib/catalog";
 import { formatTime } from "@/lib/time";
 import { consumptionInsights, calendarSuggestions } from "@/lib/insights";
 import { useHousehold } from "@/lib/use-household";
-import { supabase, authHeaders } from "@/lib/supabase-browser";
+import { supabase, authFetch } from "@/lib/supabase-browser";
 import { Dialog } from "./dialog";
 import { TaskEditor } from "./task-editor";
 import { VoiceButton } from "./voice-button";
 import { ProfileForm } from "./profile-form";
+
+const CHAT_PENDING_KEY = "ma-shachachti:chat-pending:v1";
+const CHAT_UI_KEY = "ma-shachachti:chat-ui:v1";
 
 type View =
   | "home"
@@ -81,6 +82,8 @@ function describe(a: Action): string {
       return `לקניות: ${a.title}`;
     case "fact.add":
       return `לזיכרון: ${a.text}`;
+    case "fact.update":
+      return "עדכון פרט בזיכרון";
     case "reminder.add":
       return `תזכורת: ${a.title}`;
     case "task.defer":
@@ -97,6 +100,10 @@ function describe(a: Action): string {
       return "הסרת פרט מהזיכרון";
     case "shopping.remove":
       return "הסרת פריט קניות";
+    case "planning.set":
+      return "התאמת התוכנית להיום";
+    case "planning.clear":
+      return "ניקוי ההתאמה הזמנית להיום";
     case "history.clear":
       return "מחיקת השיחות והיסטוריית הפעולות";
     default:
@@ -182,7 +189,9 @@ function TaskCard({
           onClick={() =>
             isDone
               ? void onAction({ type: "task.status", id: t.id, status: "open" })
-              : onComplete(t)
+              : shouldAskWorkTime(t, state)
+                ? onComplete(t)
+                : void onAction({ type: "task.status", id: t.id, status: "done" })
           }
         >
           {isDone && <Check size={17} />}
@@ -222,9 +231,7 @@ function TaskCard({
           ממתינה להמשך · {formatTime(t.hiddenUntil, state.profile.timezone)}
         </p>
       )}
-      {t.status === "unknown" && (
-        <p className="task-meta">לא ידוע אם כבר בוצע</p>
-      )}
+      {t.status === "unknown" && <p className="task-meta">לא ידוע אם כבר בוצע</p>}
       {blocked(t, state) && (
         <p className="task-meta">
           קודם:{" "}
@@ -288,15 +295,7 @@ function TaskCard({
     </article>
   );
 }
-function Empty({
-  text,
-  action,
-  label,
-}: {
-  text: string;
-  action?: () => void;
-  label?: string;
-}) {
+function Empty({ text, action, label }: { text: string; action?: () => void; label?: string }) {
   return (
     <div className="empty">
       <Leaf size={28} />
@@ -309,13 +308,7 @@ function Empty({
     </div>
   );
 }
-function ViewHeader({
-  children,
-  view,
-}: {
-  children?: React.ReactNode;
-  view: View;
-}) {
+function ViewHeader({ children, view }: { children?: React.ReactNode; view: View }) {
   return (
     <div className="section-heading">
       <h2>{titles[view]}</h2>
@@ -349,12 +342,9 @@ export function HomeApp() {
     [factExpiry, setFactExpiry] = useState(""),
     [reminderTitle, setReminderTitle] = useState(""),
     [reminderDue, setReminderDue] = useState(""),
+    [reminderUrgency, setReminderUrgency] = useState<"urgent" | "medium" | "low">("medium"),
     [completion, setCompletion] = useState<Task | null>(null),
     [workActual, setWorkActual] = useState(""),
-    [email, setEmail] = useState(""),
-    [otp, setOtp] = useState(""),
-    [authSent, setAuthSent] = useState(false),
-    [authBusy, setAuthBusy] = useState(false),
     [pushReady, setPushReady] = useState(false),
     [pushBusy, setPushBusy] = useState(false),
     [pushEnabled, setPushEnabled] = useState(false),
@@ -363,16 +353,45 @@ export function HomeApp() {
     draftBox = useRef<HTMLTextAreaElement>(null),
     sendLock = useRef(false),
     proposalRevision = useRef(0);
+
   useEffect(() => {
     const id = setInterval(() => setClock(new Date()), 60000);
     if (new URLSearchParams(window.location.search).get("view") === "reminders")
       setView("reminders");
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (mode === "loading" || mode === "choose") return;
+    try {
+      const raw = sessionStorage.getItem(CHAT_UI_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        proposal?: unknown;
+        revision?: number;
+        error?: string;
+        at?: number;
+      };
+      if (saved.error && saved.at && Date.now() - saved.at < 60 * 60 * 1000)
+        h.setError(saved.error);
+      if (saved.proposal && saved.revision === h.currentRevision()) {
+        const parsed = ActionBatch.safeParse(saved.proposal);
+        if (parsed.success) {
+          proposalRevision.current = saved.revision;
+          setProposal(parsed.data);
+          setView("chat");
+        }
+      }
+    } catch {
+      sessionStorage.removeItem(CHAT_UI_KEY);
+    }
+  }, [mode]);
+
   useEffect(() => {
     if (view === "chat")
       chatBottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [view, state.messages, thinking, proposal]);
+
   useEffect(() => {
     if (mode !== "cloud") return;
     let alive = true;
@@ -381,9 +400,7 @@ export function HomeApp() {
         if (!("serviceWorker" in navigator)) return;
         const reg = await navigator.serviceWorker.register("/sw.js");
         const sub = await reg.pushManager?.getSubscription();
-        const response = await fetch("/api/push", {
-          headers: await authHeaders(),
-        });
+        const response = await authFetch("/api/push");
         const data = await response.json();
         if (alive) {
           setPushReady(response.ok && data.ready);
@@ -398,6 +415,7 @@ export function HomeApp() {
       alive = false;
     };
   }, [mode]);
+
   const run = async (actions: Action[], confirmed = false) => {
     await h.commit(actions, confirmed);
   };
@@ -418,36 +436,78 @@ export function HomeApp() {
     setContext(t.id);
     setView("chat");
   };
+
   async function send(text = draft) {
-    if (!text.trim() || thinking || busy || proposal || sendLock.current)
-      return;
+    if (!text.trim() || thinking || busy || proposal || sendLock.current) return;
     sendLock.current = true;
     setThinking(true);
     const message = text.trim();
     try {
-      const next = await h.commit(
-        [{ type: "message.add", role: "user", text: message }],
-        false,
-        false,
-      );
+      let next = state;
+      let idempotencyKey = crypto.randomUUID();
+      if (mode === "cloud") {
+        try {
+          const raw = sessionStorage.getItem(CHAT_PENDING_KEY);
+          const pending = raw
+            ? (JSON.parse(raw) as {
+                key: string;
+                message: string;
+                contextTaskId: string | null;
+              })
+            : null;
+          if (
+            pending?.message === message &&
+            pending.contextTaskId === context &&
+            state.messages.at(-1)?.role === "user" &&
+            state.messages.at(-1)?.text === message
+          ) {
+            idempotencyKey = pending.key;
+          } else {
+            next = await h.commit(
+              [{ type: "message.add", role: "user", text: message }],
+              false,
+              false,
+            );
+            sessionStorage.setItem(
+              CHAT_PENDING_KEY,
+              JSON.stringify({ key: idempotencyKey, message, contextTaskId: context }),
+            );
+          }
+        } catch {
+          next = await h.commit(
+            [{ type: "message.add", role: "user", text: message }],
+            false,
+            false,
+          );
+        }
+      } else {
+        next = await h.commit(
+          [{ type: "message.add", role: "user", text: message }],
+          false,
+          false,
+        );
+      }
       setDraft("");
-      let answer: { reply: string; actions: Action[] };
+      let answer: { reply: string; actions: Action[]; basedOnRevision?: number };
       if (mode === "local") answer = demoReply(message, next, context);
       else {
-        const response = await fetch("/api/chat", {
+        const response = await authFetch("/api/chat", {
           method: "POST",
-          headers: {
-            ...(await authHeaders()),
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ message, contextTaskId: context }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message,
+            contextTaskId: context,
+            idempotencyKey,
+          }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
-        if (data.basedOnRevision !== h.currentRevision())
+        if (data.basedOnRevision !== h.currentRevision()) {
+          sessionStorage.removeItem(CHAT_PENDING_KEY);
           throw new Error(
             "המידע השתנה בזמן השיחה. לא בוצעו שינויים; אפשר לשלוח שוב.",
           );
+        }
         answer = data;
       }
       await h.commit(
@@ -455,54 +515,38 @@ export function HomeApp() {
         false,
         false,
       );
+      sessionStorage.removeItem(CHAT_PENDING_KEY);
+      sessionStorage.removeItem(CHAT_UI_KEY);
       if (answer.actions.length) {
         if (state.profile.autoApply && !requiresConfirmation(answer.actions))
           await h.commit(answer.actions);
         else {
           proposalRevision.current = h.currentRevision();
           setProposal(answer.actions);
+          sessionStorage.setItem(
+            CHAT_UI_KEY,
+            JSON.stringify({
+              proposal: answer.actions,
+              revision: proposalRevision.current,
+              at: Date.now(),
+            }),
+          );
         }
       }
     } catch (e) {
-      h.setError(e instanceof Error ? e.message : "השיחה התעכבה.");
+      const msg = e instanceof Error ? e.message : "השיחה התעכבה.";
+      h.setError(msg);
       setDraft(message);
+      sessionStorage.setItem(
+        CHAT_UI_KEY,
+        JSON.stringify({ error: msg, at: Date.now() }),
+      );
     } finally {
       sendLock.current = false;
       setThinking(false);
     }
   }
-  async function login(e: React.FormEvent) {
-    e.preventDefault();
-    if (!supabase) return;
-    setAuthBusy(true);
-    h.setError("");
-    try {
-      if (authSent) {
-        const { error } = await supabase.auth.verifyOtp({
-          email,
-          token: otp,
-          type: "email",
-        });
-        if (error) throw error;
-        await h.cloudLoad();
-      } else {
-        const { error } = await supabase.auth.signInWithOtp({
-          email,
-          options: { shouldCreateUser: true },
-        });
-        if (error) throw error;
-        setAuthSent(true);
-      }
-    } catch {
-      h.setError(
-        authSent
-          ? "הקוד לא אומת. אפשר לבדוק את הקוד או לבקש קוד חדש."
-          : "לא הצלחנו לשלוח קוד. אפשר לנסות שוב.",
-      );
-    } finally {
-      setAuthBusy(false);
-    }
-  }
+
   async function enablePush() {
     setPushBusy(true);
     try {
@@ -510,7 +554,7 @@ export function HomeApp() {
         throw new Error(
           "במכשיר הזה ייתכן שצריך להוסיף את האפליקציה למסך הבית ולפתוח אותה משם.",
         );
-      const status = await fetch("/api/push", { headers: await authHeaders() });
+      const status = await authFetch("/api/push");
       const config = await status.json();
       if (!status.ok || !config.ready)
         throw new Error("ההתראות עדיין לא מחוברות. התזכורות נשמרות ברשימה.");
@@ -530,12 +574,9 @@ export function HomeApp() {
           userVisibleOnly: true,
           applicationServerKey: key,
         }));
-      const res = await fetch("/api/push", {
+      const res = await authFetch("/api/push", {
         method: "POST",
-        headers: {
-          ...(await authHeaders()),
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sub.toJSON()),
       });
       if (!res.ok)
@@ -554,12 +595,9 @@ export function HomeApp() {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        const res = await fetch("/api/push", {
+        const res = await authFetch("/api/push", {
           method: "DELETE",
-          headers: {
-            ...(await authHeaders()),
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ endpoint: sub.endpoint }),
         });
         if (!res.ok) throw new Error("הביטול לא נשמר");
@@ -584,18 +622,20 @@ export function HomeApp() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+
   const relevant = whatMatters(state, clock),
+    followup = followUps(state, clock),
     free = opportunities(state, minutes, effort, clock),
     plan = planDay(state, planMinutes, effort, clock);
   const matches = (t: Task) =>
-    (category === "הכול" || t.category === category) &&
-    t.title.includes(filter);
+    (category === "הכול" || t.category === category) && t.title.includes(filter);
   const greeting = new Intl.DateTimeFormat("he-IL", {
     timeZone: state.profile.timezone,
     hour: "numeric",
     hourCycle: "h23",
   }).format(clock);
   const completed = state.tasks.filter((t) => t.status === "done");
+
   if (mode === "loading")
     return (
       <main className="center" aria-busy="true">
@@ -608,72 +648,9 @@ export function HomeApp() {
       <main className="welcome">
         <div className="brand-mark">מ׳</div>
         <p className="eyebrow">מה שכחתי?</p>
-        <h1>
-          קצת פחות בראש.
-          <br />
-          קצת יותר מקום לך.
-        </h1>
-        <p>
-          משימות, מחשבות ותוכנית ליום שלך.
-          <br />
-          אפשר להתחיל בקטן.
-        </p>
-        {supabase && (
-          <form onSubmit={login} className="panel stack">
-            <h2>כניסה לבית שלך</h2>
-            <label>
-              כתובת אימייל
-              <input
-                type="email"
-                dir="ltr"
-                required
-                value={email}
-                disabled={authSent}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </label>
-            {authSent && (
-              <>
-                <label>
-                  הקוד שקיבלת באימייל
-                  <input
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    required
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setAuthSent(false)}
-                >
-                  שליחת קוד חדש או שינוי כתובת
-                </button>
-              </>
-            )}
-            <button className="primary" disabled={authBusy}>
-              {authBusy ? "רגע…" : authSent ? "כניסה" : "שלחו לי קוד כניסה"}
-            </button>
-          </form>
-        )}
-        <button
-          className={supabase ? "secondary" : "primary"}
-          onClick={h.startLocal}
-        >
-          להתנסות במכשיר הזה
-        </button>
-        <small>
-          הדגמה מקומית, ללא חשבון וללא סוכן AI מחובר.
-          <br />
-          המידע נשמר בדפדפן הזה בלבד.
-        </small>
-        {h.error && (
-          <p role="alert" className="error">
-            {h.error}
-          </p>
-        )}
+        <h1>צריך להתחבר כדי להמשיך.</h1>
+        <a className="primary" href="/login">כניסה לחשבון</a>
+        <button className="secondary" onClick={h.startLocal}>התנסות מקומית</button>
       </main>
     );
   if (!state.profile.onboarded)
@@ -702,13 +679,10 @@ export function HomeApp() {
         >
           אפשר גם להכיר בהמשך
         </button>
-        {h.error && (
-          <p className="error" role="alert">
-            {h.error}
-          </p>
-        )}
+        {h.error && <p className="error" role="alert">{h.error}</p>}
       </main>
     );
+
   return (
     <div className="app-shell">
       <aside className="desktop-sidebar">
@@ -778,21 +752,16 @@ export function HomeApp() {
           </div>
         </header>
         {mode === "local" && (
-          <div className="demo-banner">
-            הדגמה במכשיר הזה · הנתונים מקומיים והשיחה בסיסית
-          </div>
+          <div className="demo-banner">הדגמה במכשיר הזה · הנתונים מקומיים והשיחה בסיסית</div>
         )}
-        <main
-          className={
-            view === "chat" ? "main-content chat-page" : "main-content"
-          }
-        >
+        <main className={view === "chat" ? "main-content chat-page" : "main-content"}>
           {h.error && (
             <div className="error-banner" role="alert">
               <span>{h.error}</span>
               <button
                 onClick={() => {
                   h.setError("");
+                  sessionStorage.removeItem(CHAT_UI_KEY);
                   if (mode === "cloud")
                     void h.cloudLoad().catch((e) => h.setError(e.message));
                 }}
@@ -801,6 +770,7 @@ export function HomeApp() {
               </button>
             </div>
           )}
+
           {view === "home" && (
             <>
               <section className="greeting">
@@ -817,17 +787,9 @@ export function HomeApp() {
                 <p>מה יעזור לך עכשיו?</p>
               </section>
               <div className="engines">
-                <button
-                  className="engine main-engine"
-                  onClick={() => navigate("focus")}
-                >
-                  <span className="engine-icon">
-                    <Sparkles size={25} />
-                  </span>
-                  <span>
-                    <strong>מה שכחתי?</strong>
-                    <small>מה חשוב לזכור עכשיו</small>
-                  </span>
+                <button className="engine main-engine" onClick={() => navigate("focus")}>
+                  <span className="engine-icon"><Sparkles size={25} /></span>
+                  <span><strong>מה שכחתי?</strong><small>מה חשוב לזכור עכשיו</small></span>
                   <ChevronLeft size={21} />
                 </button>
                 <button
@@ -837,202 +799,103 @@ export function HomeApp() {
                     navigate("plan");
                   }}
                 >
-                  <span className="engine-icon">
-                    <CalendarDays size={23} />
-                  </span>
-                  <span>
-                    <strong>צור לי לו״ז להיום</strong>
-                    <small>נעשה סדר ביום שלך</small>
-                  </span>
+                  <span className="engine-icon"><CalendarDays size={23} /></span>
+                  <span><strong>צור לי לו״ז להיום</strong><small>נעשה סדר ביום שלך</small></span>
                   <ChevronLeft size={21} />
                 </button>
                 <button className="engine" onClick={() => navigate("free")}>
-                  <span className="engine-icon">
-                    <Clock3 size={23} />
-                  </span>
-                  <span>
-                    <strong>יש לי זמן פנוי</strong>
-                    <small>מה מתאים לזמן ולכוח שלך</small>
-                  </span>
+                  <span className="engine-icon"><Clock3 size={23} /></span>
+                  <span><strong>יש לי זמן פנוי</strong><small>מה מתאים לזמן ולכוח שלך</small></span>
                   <ChevronLeft size={21} />
                 </button>
               </div>
               <section>
                 <div className="section-heading">
                   <h2>עכשיו אצלך</h2>
-                  <button
-                    className="text-button"
-                    onClick={() => navigate("tasks")}
-                  >
+                  <button className="text-button" onClick={() => navigate("tasks")}>
                     לכל המשימות <ChevronLeft size={16} />
                   </button>
                 </div>
                 {relevant.length ? (
                   <div className="task-list">
                     {relevant.slice(0, 3).map((t) => (
-                      <TaskCard
-                        state={state}
-                        busy={busy}
-                        clock={clock}
-                        detailed={detailed}
-                        onEdit={setEditor}
-                        onChat={onTaskChat}
-                        onComplete={(t) => {
-                          setCompletion(t);
-                          setWorkActual("");
-                        }}
-                        onAction={act}
-                        key={t.id}
-                        task={t}
-                      />
+                      <TaskCard state={state} busy={busy} clock={clock} detailed={detailed} onEdit={setEditor} onChat={onTaskChat} onComplete={(t) => { setCompletion(t); setWorkActual(""); }} onAction={act} key={t.id} task={t} />
                     ))}
                   </div>
                 ) : (
-                  <Empty
-                    text="אפשר להניח כאן את הדבר הראשון שחשוב לזכור."
-                    action={() => setEditor("new")}
-                    label="הוספת משימה"
-                  />
+                  <Empty text="אפשר להניח כאן את הדבר הראשון שחשוב לזכור." action={() => setEditor("new")} label="הוספת משימה" />
                 )}
               </section>
               {suggestions(state).length > 0 && (
                 <button className="kit-invite" onClick={() => navigate("kit")}>
                   <Leaf size={21} />
-                  <span>
-                    <strong>נכיר קצת את השגרה?</strong>
-                    <small>כמה הצעות שמתאימות לבית שלכם</small>
-                  </span>
+                  <span><strong>נכיר קצת את השגרה?</strong><small>כמה הצעות שמתאימות לבית שלכם</small></span>
                   <ChevronLeft size={18} />
                 </button>
               )}
-              <button
-                className="quiet-link"
-                onClick={() => navigate("history")}
-              >
+              <button className="quiet-link" onClick={() => navigate("history")}>
                 מה כבר נעשה <CheckCheck size={16} />
               </button>
             </>
           )}
+
           {view === "tasks" && (
             <>
               <ViewHeader view={view}>
-                <button
-                  className="primary compact"
-                  onClick={() => setEditor("new")}
-                >
-                  <Plus size={18} />
-                  משימה
+                <button className="primary compact" onClick={() => setEditor("new")}>
+                  <Plus size={18} /> משימה
                 </button>
               </ViewHeader>
               <div className="filters">
                 <label className="search">
                   <Search size={18} />
-                  <input
-                    aria-label="חיפוש משימה"
-                    placeholder="לחפש משהו ברשימה"
-                    value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
-                  />
+                  <input aria-label="חיפוש משימה" placeholder="לחפש משהו ברשימה" value={filter} onChange={(e) => setFilter(e.target.value)} />
                 </label>
-                <select
-                  aria-label="סינון לפי תחום"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                >
+                <select aria-label="סינון לפי תחום" value={category} onChange={(e) => setCategory(e.target.value)}>
                   <option>הכול</option>
-                  {categories.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
+                  {categories.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </div>
               <div className="tabs">
-                <button
-                  className={!detailed ? "active" : ""}
-                  onClick={() => setDetailed(false)}
-                >
-                  פשוט
-                </button>
-                <button
-                  className={detailed ? "active" : ""}
-                  onClick={() => setDetailed(true)}
-                >
-                  מפורט
-                </button>
+                <button className={!detailed ? "active" : ""} onClick={() => setDetailed(false)}>פשוט</button>
+                <button className={detailed ? "active" : ""} onClick={() => setDetailed(true)}>מפורט</button>
                 <button onClick={() => navigate("kit")}>הצעות לבית</button>
               </div>
               <div className="task-list">
                 {state.tasks
-                  .filter(
-                    (t) => ["open", "unknown"].includes(t.status) && matches(t),
-                  )
+                  .filter((t) => ["open", "unknown"].includes(t.status) && matches(t))
                   .map((t) => (
-                    <TaskCard
-                      state={state}
-                      busy={busy}
-                      clock={clock}
-                      detailed={detailed}
-                      onEdit={setEditor}
-                      onChat={onTaskChat}
-                      onComplete={(t) => {
-                        setCompletion(t);
-                        setWorkActual("");
-                      }}
-                      onAction={act}
-                      key={t.id}
-                      task={t}
-                    />
+                    <TaskCard state={state} busy={busy} clock={clock} detailed={detailed} onEdit={setEditor} onChat={onTaskChat} onComplete={(t) => { setCompletion(t); setWorkActual(""); }} onAction={act} key={t.id} task={t} />
                   ))}
               </div>
-              {!state.tasks.some(
-                (t) => ["open", "unknown"].includes(t.status) && matches(t),
-              ) && (
-                <Empty
-                  text="אין כרגע משימות בתצוגה הזאת."
-                  action={() => setEditor("new")}
-                  label="הוספת משימה"
-                />
+              {!state.tasks.some((t) => ["open", "unknown"].includes(t.status) && matches(t)) && (
+                <Empty text="אין כרגע משימות בתצוגה הזאת." action={() => setEditor("new")} label="הוספת משימה" />
               )}
-              <button
-                className="quiet-link"
-                onClick={() => navigate("history")}
-              >
-                היסטוריית ביצוע וביטולים
-              </button>
+              <button className="quiet-link" onClick={() => navigate("history")}>היסטוריית ביצוע וביטולים</button>
             </>
           )}
+
           {view === "focus" && (
             <>
               <ViewHeader view={view} />
-              <p className="intro">
-                הדברים שכדאי לשים לב אליהם. אין דיווח? נבדוק, בלי להניח שלא
-                נעשה.
-              </p>
+              <p className="intro">הדברים שכדאי לשים לב אליהם. אין דיווח? נבדוק בעדינות, בלי להניח שלא נעשה.</p>
+              {followup.length > 0 && (
+                <div className="callout">
+                  <Bell size={20} />
+                  <div>
+                    <strong>יש משהו שכדאי לבדוק</strong>
+                    <p>{followup.map((t) => t.title).join(" · ")}</p>
+                  </div>
+                </div>
+              )}
               <div className="task-list">
                 {relevant.map((t) => (
-                  <TaskCard
-                    state={state}
-                    busy={busy}
-                    clock={clock}
-                    detailed={detailed}
-                    onEdit={setEditor}
-                    onChat={onTaskChat}
-                    onComplete={(t) => {
-                      setCompletion(t);
-                      setWorkActual("");
-                    }}
-                    onAction={act}
-                    key={t.id}
-                    task={t}
-                  />
+                  <TaskCard state={state} busy={busy} clock={clock} detailed={detailed} onEdit={setEditor} onChat={onTaskChat} onComplete={(t) => { setCompletion(t); setWorkActual(""); }} onAction={act} key={t.id} task={t} />
                 ))}
               </div>
-              {!relevant.length && (
-                <Empty text="אין כרגע משהו נוסף שדורש את תשומת הלב שלך." />
-              )}
+              {!relevant.length && <Empty text="אין כרגע משהו נוסף שדורש את תשומת הלב שלך." />}
               {state.reminders
-                .filter(
-                  (r) => r.status === "pending" && new Date(r.dueAt) <= clock,
-                )
+                .filter((r) => r.status === "pending" && new Date(r.dueAt) <= clock)
                 .map((r) => (
                   <div className="callout" key={r.id}>
                     <Bell size={20} />
@@ -1041,6 +904,7 @@ export function HomeApp() {
                 ))}
             </>
           )}
+
           {view === "free" && (
             <>
               <ViewHeader view={view} />
@@ -1050,33 +914,16 @@ export function HomeApp() {
                   כמה זמן פנוי יש?
                   <div className="choice-row">
                     {[20, 60, 240].map((m) => (
-                      <button
-                        type="button"
-                        key={m}
-                        className={minutes === m ? "selected" : ""}
-                        onClick={() => setMinutes(m)}
-                      >
+                      <button type="button" key={m} className={minutes === m ? "selected" : ""} onClick={() => setMinutes(m)}>
                         {m === 20 ? "20 דקות" : m === 60 ? "שעה" : "חצי יום"}
                       </button>
                     ))}
                   </div>
-                  <input
-                    aria-label="משך אחר בדקות"
-                    type="number"
-                    min={1}
-                    max={720}
-                    value={minutes}
-                    onChange={(e) =>
-                      setMinutes(Math.max(1, Math.min(720, +e.target.value)))
-                    }
-                  />
+                  <input aria-label="משך אחר בדקות" type="number" min={1} max={720} value={minutes} onChange={(e) => setMinutes(Math.max(1, Math.min(720, +e.target.value)))} />
                 </label>
                 <label>
                   כמה כוח מתאים להשקיע?
-                  <select
-                    value={effort}
-                    onChange={(e) => setEffort(+e.target.value)}
-                  >
+                  <select value={effort} onChange={(e) => setEffort(+e.target.value)}>
                     <option value={1}>מעט, משהו קל</option>
                     <option value={2}>כוח בינוני</option>
                     <option value={3}>אפשר גם משהו מאומץ</option>
@@ -1086,39 +933,19 @@ export function HomeApp() {
               {free.important.length > 0 && (
                 <div className="callout">
                   <Bell size={20} />
-                  <div>
-                    <strong>חשוב לזכור, גם אם לא נכנס עכשיו</strong>
-                    <p>{free.important.map((t) => t.title).join(" · ")}</p>
-                  </div>
+                  <div><strong>חשוב לזכור, גם אם לא נכנס עכשיו</strong><p>{free.important.map((t) => t.title).join(" · ")}</p></div>
                 </div>
               )}
-              <div className="section-heading">
-                <h2>אפשר עכשיו</h2>
-              </div>
+              <div className="section-heading"><h2>אפשר עכשיו</h2></div>
               <div className="task-list">
                 {free.candidates.map((t) => (
-                  <TaskCard
-                    state={state}
-                    busy={busy}
-                    clock={clock}
-                    detailed={detailed}
-                    onEdit={setEditor}
-                    onChat={onTaskChat}
-                    onComplete={(t) => {
-                      setCompletion(t);
-                      setWorkActual("");
-                    }}
-                    onAction={act}
-                    key={t.id}
-                    task={t}
-                  />
+                  <TaskCard state={state} busy={busy} clock={clock} detailed={detailed} onEdit={setEditor} onChat={onTaskChat} onComplete={(t) => { setCompletion(t); setWorkActual(""); }} onAction={act} key={t.id} task={t} />
                 ))}
               </div>
-              {!free.candidates.length && (
-                <Empty text="לא מצאתי משימה שמתאימה לחלון הזה. אפשר להשאיר אותו למנוחה." />
-              )}
+              {!free.candidates.length && <Empty text="לא מצאתי משימה שמתאימה לחלון הזה. אפשר להשאיר אותו למנוחה." />}
             </>
           )}
+
           {view === "plan" && (
             <>
               <ViewHeader view={view} />
@@ -1126,102 +953,48 @@ export function HomeApp() {
               <section className="panel stack">
                 <label>
                   כמה דקות עבודה פנויות היום?
-                  <input
-                    type="number"
-                    min={10}
-                    max={720}
-                    value={planMinutes}
-                    onChange={(e) =>
-                      setPlanMinutes(
-                        Math.max(10, Math.min(720, +e.target.value)),
-                      )
-                    }
-                  />
+                  <input type="number" min={10} max={720} value={planMinutes} onChange={(e) => setPlanMinutes(Math.max(10, Math.min(720, +e.target.value)))} />
                 </label>
                 <label>
                   הכוח שלך היום
-                  <select
-                    value={effort}
-                    onChange={(e) => setEffort(+e.target.value)}
-                  >
-                    <option value={1}>מעט</option>
-                    <option value={2}>בינוני</option>
-                    <option value={3}>הרבה</option>
+                  <select value={effort} onChange={(e) => setEffort(+e.target.value)}>
+                    <option value={1}>מעט</option><option value={2}>בינוני</option><option value={3}>הרבה</option>
                   </select>
                 </label>
-                <button className="primary" onClick={() => setPlanReady(true)}>
-                  היום כרגיל — בנה תוכנית
-                </button>
+                <button className="primary" onClick={() => setPlanReady(true)}>היום כרגיל — בנה תוכנית</button>
                 <details>
                   <summary>יש משהו שונה היום</summary>
                   <label>
                     מה השתנה?
-                    <textarea
-                      value={changedDay}
-                      onChange={(e) => setChangedDay(e.target.value)}
-                      placeholder="למשל: יש תור בצהריים, אני לבד עם הילדים"
-                    />
+                    <textarea value={changedDay} onChange={(e) => setChangedDay(e.target.value)} placeholder="למשל: יש תור בצהריים, אני לבד עם הילדים" />
                   </label>
-                  <button
-                    className="secondary"
-                    disabled={!changedDay.trim()}
-                    onClick={() => {
-                      setDraft(changedDay);
-                      setView("chat");
-                    }}
-                  >
+                  <button className="secondary" disabled={!changedDay.trim()} onClick={() => { setDraft(changedDay); setView("chat"); }}>
                     להתאים יחד בשיחה
                   </button>
                 </details>
               </section>
               {planReady && (
                 <>
-                  <p className="muted">
-                    סדר מוצע מהתחלת חלון העבודה. זמני המתנה יכולים לחפוף למשימות
-                    אחרות.
-                  </p>
+                  <p className="muted">סדר מוצע מהתחלת חלון העבודה. זמני המתנה יכולים לחפוף למשימות אחרות.</p>
                   <div className="timeline">
                     {plan.selected.map(({ task, start, end }, i) => (
                       <div className="timeline-item" key={task.id}>
                         <div className="timeline-number">{i + 1}</div>
                         <div>
-                          <small>
-                            דקה {start}–{end} מההתחלה
-                          </small>
-                          <TaskCard
-                            state={state}
-                            busy={busy}
-                            clock={clock}
-                            detailed={detailed}
-                            onEdit={setEditor}
-                            onChat={onTaskChat}
-                            onComplete={(t) => {
-                              setCompletion(t);
-                              setWorkActual("");
-                            }}
-                            onAction={act}
-                            task={task}
-                          />
+                          <small>דקה {start}–{end} מההתחלה</small>
+                          <TaskCard state={state} busy={busy} clock={clock} detailed={detailed} onEdit={setEditor} onChat={onTaskChat} onComplete={(t) => { setCompletion(t); setWorkActual(""); }} onAction={act} task={task} />
                         </div>
                       </div>
                     ))}
                   </div>
-                  {!plan.selected.length && (
-                    <Empty text="אין כרגע משימות שנכנסות לתוכנית הזאת. אפשר לשנות את החלון או להשאיר זמן לעצמך." />
-                  )}
-                  {plan.remaining.length > 0 && (
-                    <p className="callout">
-                      נשארו {plan.remaining.length} משימות פתוחות מחוץ לתוכנית.
-                      הן לא הועברו למחר.
-                    </p>
-                  )}
-                  <button className="secondary" onClick={() => window.print()}>
-                    הדפסת התוכנית / שמירה כ־PDF
-                  </button>
+                  {!plan.selected.length && <Empty text="אין כרגע משימות שנכנסות לתוכנית הזאת. אפשר לשנות את החלון או להשאיר זמן לעצמך." />}
+                  {plan.remaining.length > 0 && <p className="callout">נשארו {plan.remaining.length} משימות פתוחות מחוץ לתוכנית. הן לא הועברו למחר.</p>}
+                  <button className="secondary" onClick={() => window.print()}>הדפסת התוכנית / שמירה כ־PDF</button>
                 </>
               )}
             </>
           )}
+
           {view === "shopping" && (
             <>
               <ViewHeader view={view} />
@@ -1230,101 +1003,44 @@ export function HomeApp() {
                 onSubmit={async (e) => {
                   e.preventDefault();
                   try {
-                    await run([
-                      { type: "shopping.add", title: newItem, quantity },
-                    ]);
+                    await run([{ type: "shopping.add", title: newItem, quantity }]);
                     setNewItem("");
                     setQuantity("");
                   } catch {}
                 }}
               >
-                <input
-                  required
-                  aria-label="פריט לקניות"
-                  placeholder="מה חסר בבית?"
-                  value={newItem}
-                  maxLength={150}
-                  onChange={(e) => setNewItem(e.target.value)}
-                />
-                <input
-                  className="quantity"
-                  aria-label="כמות"
-                  placeholder="כמות"
-                  value={quantity}
-                  maxLength={60}
-                  onChange={(e) => setQuantity(e.target.value)}
-                />
-                <button
-                  className="primary icon-button"
-                  disabled={busy}
-                  aria-label="הוספת פריט"
-                >
-                  <Plus size={20} />
-                </button>
+                <input required aria-label="פריט לקניות" placeholder="מה חסר בבית?" value={newItem} maxLength={150} onChange={(e) => setNewItem(e.target.value)} />
+                <input className="quantity" aria-label="כמות" placeholder="כמות" value={quantity} maxLength={60} onChange={(e) => setQuantity(e.target.value)} />
+                <button className="primary icon-button" disabled={busy} aria-label="הוספת פריט"><Plus size={20} /></button>
               </form>
               <div className="shopping-list">
                 {[...state.shopping]
-                  .sort(
-                    (a, b) => Number(!!a.purchasedAt) - Number(!!b.purchasedAt),
-                  )
+                  .sort((a, b) => Number(!!a.purchasedAt) - Number(!!b.purchasedAt))
                   .map((item) => (
-                    <div
-                      className={
-                        "shopping-item " + (item.purchasedAt ? "is-done" : "")
-                      }
-                      key={item.id}
-                    >
+                    <div className={"shopping-item " + (item.purchasedAt ? "is-done" : "")} key={item.id}>
                       <label className="check-line">
-                        <input
-                          type="checkbox"
-                          disabled={busy}
-                          checked={!!item.purchasedAt}
-                          onChange={(e) =>
-                            void act({
-                              type: "shopping.check",
-                              id: item.id,
-                              checked: e.target.checked,
-                            })
-                          }
-                        />
-                        <span>{item.title}</span>
-                        {item.quantity && <small>{item.quantity}</small>}
+                        <input type="checkbox" disabled={busy} checked={!!item.purchasedAt} onChange={(e) => void act({ type: "shopping.check", id: item.id, checked: e.target.checked })} />
+                        <span>{item.title}</span>{item.quantity && <small>{item.quantity}</small>}
                       </label>
-                      <button
-                        className="icon-button"
-                        aria-label={"הסרת " + item.title}
-                        onClick={() =>
-                          void act({ type: "shopping.remove", id: item.id })
-                        }
-                      >
+                      <button className="icon-button" aria-label={"הסרת " + item.title} onClick={() => void act({ type: "shopping.remove", id: item.id })}>
                         <Trash2 size={16} />
                       </button>
                     </div>
                   ))}
               </div>
-              {!state.shopping.length && (
-                <Empty text="הרשימה מחכה לדברים שחסרים בבית." />
-              )}
-              <button className="secondary" onClick={() => window.print()}>
-                הדפסה / שמירה כ־PDF
-              </button>
+              {!state.shopping.length && <Empty text="הרשימה מחכה לדברים שחסרים בבית." />}
+              <button className="secondary" onClick={() => window.print()}>הדפסה / שמירה כ־PDF</button>
             </>
           )}
+
           {view === "chat" && (
             <>
               <ViewHeader view={view}>
-                <button
-                  className="icon-button"
-                  aria-label="הוספת משימה ידנית"
-                  onClick={() => setEditor("new")}
-                >
-                  <Plus size={20} />
-                </button>
+                <button className="icon-button" aria-label="הוספת משימה ידנית" onClick={() => setEditor("new")}><Plus size={20} /></button>
               </ViewHeader>
               {context && (
                 <div className="context-chip">
-                  מדברים על:{" "}
-                  {state.tasks.find((t) => t.id === context)?.title ?? "המשימה"}
+                  מדברים על: {state.tasks.find((t) => t.id === context)?.title ?? "המשימה"}
                   <button onClick={() => setContext(null)}>סיום ההקשר</button>
                 </div>
               )}
@@ -1332,20 +1048,10 @@ export function HomeApp() {
                 <div className="chat-welcome">
                   <div className="brand-mark">מ׳</div>
                   <h2>אפשר פשוט לכתוב.</h2>
-                  <p>
-                    משהו לזכור, משהו שכבר נעשה,
-                    <br />
-                    או יום שצריך לעשות בו קצת סדר.
-                  </p>
+                  <p>משהו לזכור, משהו שכבר נעשה,<br />או יום שצריך לעשות בו קצת סדר.</p>
                   <div className="prompt-chips">
-                    {[
-                      "צריך לקפל כביסה",
-                      "אולי להכין פשטידה",
-                      "יש לי מעט כוח היום",
-                    ].map((t) => (
-                      <button key={t} onClick={() => setDraft(t)}>
-                        {t}
-                      </button>
+                    {["צריך לקפל כביסה", "אולי להכין פשטידה", "יש לי מעט כוח היום"].map((t) => (
+                      <button key={t} onClick={() => setDraft(t)}>{t}</button>
                     ))}
                   </div>
                 </div>
@@ -1353,17 +1059,11 @@ export function HomeApp() {
               <div className="messages" aria-live="polite">
                 {state.messages.map((m) => (
                   <div key={m.id} className={"message " + m.role}>
-                    <span className="sr-only">
-                      {m.role === "user" ? "ההודעה שלך" : "העוזר"}:{" "}
-                    </span>
+                    <span className="sr-only">{m.role === "user" ? "ההודעה שלך" : "העוזר"}: </span>
                     <p>{m.text}</p>
                   </div>
                 ))}
-                {thinking && (
-                  <div className="message assistant">
-                    <p>חושב איתך…</p>
-                  </div>
-                )}
+                {thinking && <div className="message assistant"><p>חושב איתך…</p></div>}
                 {proposal && (
                   <div className="proposal">
                     <strong>אלה השינויים המוצעים</strong>
@@ -1383,20 +1083,16 @@ export function HomeApp() {
                         disabled={busy}
                         onClick={async () => {
                           try {
-                            if (
-                              proposalRevision.current !== h.currentRevision()
-                            ) {
+                            if (proposalRevision.current !== h.currentRevision()) {
                               setProposal(null);
-                              throw new Error(
-                                "המידע השתנה מאז ההצעה. יש לבקש הצעה חדשה.",
-                              );
+                              sessionStorage.removeItem(CHAT_UI_KEY);
+                              throw new Error("המידע השתנה מאז ההצעה. יש לבקש הצעה חדשה.");
                             }
                             await run(proposal, true);
                             setProposal(null);
+                            sessionStorage.removeItem(CHAT_UI_KEY);
                           } catch (e) {
-                            h.setError(
-                              e instanceof Error ? e.message : "לא נשמר",
-                            );
+                            h.setError(e instanceof Error ? e.message : "לא נשמר");
                           }
                         }}
                       >
@@ -1404,7 +1100,10 @@ export function HomeApp() {
                       </button>
                       <button
                         className="secondary"
-                        onClick={() => setProposal(null)}
+                        onClick={() => {
+                          setProposal(null);
+                          sessionStorage.removeItem(CHAT_UI_KEY);
+                        }}
                       >
                         לוותר
                       </button>
@@ -1415,6 +1114,7 @@ export function HomeApp() {
               </div>
             </>
           )}
+
           {view === "kit" && (
             <>
               <ViewHeader view={view} />
@@ -1422,31 +1122,14 @@ export function HomeApp() {
                 <article className="suggestion" key={title}>
                   <span className="tag">רעיון לפי התקופה בשנה</span>
                   <h3>{title}</h3>
-                  <button
-                    className="text-button"
-                    onClick={() =>
-                      void act({
-                        type: "task.create",
-                        task: { title, kind: "idea", category: "ילדים" },
-                      })
-                    }
-                  >
+                  <button className="text-button" onClick={() => void act({ type: "task.create", task: { title, kind: "idea", category: "ילדים" } })}>
                     לשמור כאפשרות
                   </button>
                 </article>
               ))}
-              <p className="intro">
-                אלה הצעות בלבד. נבחר מה שמתאים, והשאר יכול לחכות.
-              </p>
-              <select
-                aria-label="תחום הצעות"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-              >
-                <option>הכול</option>
-                {categories.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
+              <p className="intro">אלה הצעות בלבד. נבחר מה שמתאים, והשאר יכול לחכות.</p>
+              <select aria-label="תחום הצעות" value={category} onChange={(e) => setCategory(e.target.value)}>
+                <option>הכול</option>{categories.map((c) => <option key={c}>{c}</option>)}
               </select>
               <div className="task-list">
                 {suggestions(state)
@@ -1456,30 +1139,10 @@ export function HomeApp() {
                     <article className="suggestion" key={t.id}>
                       <span className="tag">הצעה · {t.category}</span>
                       <h3>{t.title}</h3>
-                      <p>
-                        כ־{t.workMinutes} דקות עבודה
-                        {t.waitMinutes
-                          ? ` ועוד ${t.waitMinutes} דקות המתנה`
-                          : ""}{" "}
-                        · אומדן התחלתי
-                      </p>
+                      <p>כ־{t.workMinutes} דקות עבודה{t.waitMinutes ? ` ועוד ${t.waitMinutes} דקות המתנה` : ""} · אומדן התחלתי</p>
                       <div className="button-row">
-                        <button
-                          className="secondary"
-                          disabled={busy}
-                          onClick={() => void act(templateAction(t.id))}
-                        >
-                          כן, עושים אצלנו
-                        </button>
-                        <button
-                          className="text-button"
-                          disabled={busy}
-                          onClick={() =>
-                            void act({ type: "template.exclude", id: t.id })
-                          }
-                        >
-                          לא רלוונטי לבית
-                        </button>
+                        <button className="secondary" disabled={busy} onClick={() => void act(templateAction(t.id))}>כן, עושים אצלנו</button>
+                        <button className="text-button" disabled={busy} onClick={() => void act({ type: "template.exclude", id: t.id })}>לא רלוונטי לבית</button>
                       </div>
                     </article>
                   ))}
@@ -1490,159 +1153,78 @@ export function HomeApp() {
                   {state.excludedTemplates.map((id) => (
                     <div className="list-row" key={id}>
                       <span>{catalog.find((t) => t.id === id)?.title}</span>
-                      <button
-                        onClick={() =>
-                          void act({ type: "template.restore", id })
-                        }
-                      >
-                        להחזיר להצעות
-                      </button>
+                      <button onClick={() => void act({ type: "template.restore", id })}>להחזיר להצעות</button>
                     </div>
                   ))}
                 </details>
               )}
             </>
           )}
+
           {view === "memory" && (
             <>
               <ViewHeader view={view} />
-              <p className="intro">
-                אפשר לתקן ולהסיר. מידע שהתיישן מפסיק להשפיע על ההצעות.
-              </p>
+              <p className="intro">אפשר לתקן ולהסיר. מידע שהתיישן מפסיק להשפיע על ההצעות.</p>
               <form
                 className="panel stack"
                 onSubmit={async (e) => {
                   e.preventDefault();
                   try {
-                    await run([
-                      {
-                        type: "fact.add",
-                        text: factText,
-                        kind: factKind,
-                        expiresAt:
-                          factKind === "temporary"
-                            ? new Date(factExpiry).toISOString()
-                            : null,
-                      },
-                    ]);
+                    await run([{ type: "fact.add", text: factText, kind: factKind, expiresAt: factKind === "temporary" ? new Date(factExpiry).toISOString() : null }]);
                     setFactText("");
                   } catch {}
                 }}
               >
-                <label>
-                  משהו שכדאי שאזכור
-                  <input
-                    required
-                    maxLength={500}
-                    value={factText}
-                    onChange={(e) => setFactText(e.target.value)}
-                    placeholder="למשל: מעדיפים קניות ביום חמישי"
-                  />
-                </label>
+                <label>משהו שכדאי שאזכור<input required maxLength={500} value={factText} onChange={(e) => setFactText(e.target.value)} placeholder="למשל: מעדיפים קניות ביום חמישי" /></label>
                 <label>
                   לכמה זמן?
-                  <select
-                    value={factKind}
-                    onChange={(e) =>
-                      setFactKind(e.target.value as typeof factKind)
-                    }
-                  >
-                    <option value="stable">עד שאעדכן</option>
-                    <option value="temporary">מידע זמני</option>
+                  <select value={factKind} onChange={(e) => setFactKind(e.target.value as typeof factKind)}>
+                    <option value="stable">עד שאעדכן</option><option value="temporary">מידע זמני</option>
                   </select>
                 </label>
-                {factKind === "temporary" && (
-                  <label>
-                    נכון עד
-                    <input
-                      required
-                      type="datetime-local"
-                      value={factExpiry}
-                      onChange={(e) => setFactExpiry(e.target.value)}
-                    />
-                  </label>
-                )}
-                <button className="secondary" disabled={busy}>
-                  שמירה בזיכרון
-                </button>
+                {factKind === "temporary" && <label>נכון עד<input required type="datetime-local" value={factExpiry} onChange={(e) => setFactExpiry(e.target.value)} /></label>}
+                <button className="secondary" disabled={busy}>שמירה בזיכרון</button>
               </form>
               <div className="task-list">
                 {state.facts.map((f) => (
                   <article className="memory-card" key={f.id}>
                     <div>
                       <span className="tag">
-                        {f.kind === "inference"
-                          ? "השערה"
-                          : f.kind === "temporary"
-                            ? "מידע זמני"
-                            : "מידע שנמסר"}
-                        {f.expiresAt && new Date(f.expiresAt) <= clock
-                          ? " · התיישן"
-                          : ""}
+                        {f.kind === "inference" ? "השערה" : f.kind === "temporary" ? "מידע זמני" : "מידע שנמסר"}
+                        {f.expiresAt && new Date(f.expiresAt) <= clock ? " · התיישן" : ""}
                       </span>
                       <p>{f.text}</p>
-                      {f.expiresAt && (
-                        <small>
-                          תוקף:{" "}
-                          {formatTime(f.expiresAt, state.profile.timezone)}
-                        </small>
-                      )}
+                      {f.expiresAt && <small>תוקף: {formatTime(f.expiresAt, state.profile.timezone)}</small>}
                     </div>
-                    <button
-                      className="icon-button"
-                      aria-label={"הסרת " + f.text}
-                      onClick={() =>
-                        void act({ type: "fact.remove", id: f.id })
-                      }
-                    >
-                      <Trash2 size={17} />
-                    </button>
+                    <button className="icon-button" aria-label={"הסרת " + f.text} onClick={() => void act({ type: "fact.remove", id: f.id })}><Trash2 size={17} /></button>
                   </article>
                 ))}
               </div>
-              {!state.facts.length && (
-                <Empty text="עדיין אין פרטים שמורים מעבר לפרופיל הבית." />
-              )}
+              {!state.facts.length && <Empty text="עדיין אין פרטים שמורים מעבר לפרופיל הבית." />}
               <h2>מחזורי קנייה</h2>
               {consumptionInsights(state, clock).length ? (
                 consumptionInsights(state, clock).map((i) => (
                   <article className="panel" key={i.title}>
                     <strong>{i.title}</strong>
-                    <p>
-                      הרכישות חוזרות בערך כל {i.days} ימים, לפי {i.samples}{" "}
-                      רכישות. אולי כדאי לבדוק מלאי סביב{" "}
-                      {formatTime(i.expected, state.profile.timezone)}.
-                    </p>
+                    <p>הרכישות חוזרות בערך כל {i.days} ימים, לפי {i.samples} רכישות. אולי כדאי לבדוק מלאי סביב {formatTime(i.expected, state.profile.timezone)}.</p>
                     <small>זו תחזית קנייה, לא ידיעה שהמוצר נגמר.</small>
                   </article>
                 ))
               ) : (
-                <p className="muted">
-                  לאחר כמה רכישות נוכל להציע מתי לבדוק מלאי. לא נסיק שהמוצר נגמר
-                  רק כי נקנה חדש.
-                </p>
+                <p className="muted">לאחר כמה רכישות נוכל להציע מתי לבדוק מלאי. לא נסיק שהמוצר נגמר רק כי נקנה חדש.</p>
               )}
               <h2>מה מתחיל להסתמן</h2>
               {learning(state).length ? (
                 learning(state).map((l, i) => (
                   <article className="panel" key={i}>
                     <strong>{l.title}</strong>
-                    <p>
-                      אולי מתאים מחזור של כ־{l.days} ימים, לפי {l.samples}{" "}
-                      ביצועים. זו הצעה, והשגרה לא שונתה.
-                    </p>
+                    <p>אולי מתאים מחזור של כ־{l.days} ימים, לפי {l.samples} ביצועים. זו הצעה, והשגרה לא שונתה.</p>
                     <button
                       className="text-button"
                       onClick={() => {
-                        const t = state.tasks.find(
-                          (t) =>
-                            (l.templateId
-                              ? t.templateId === l.templateId
-                              : t.title === l.title) && t.status === "open",
-                        );
+                        const t = state.tasks.find((t) => (l.templateId ? t.templateId === l.templateId : t.title === l.title) && t.status === "open");
                         if (t) setEditor(t);
-                        else
-                          h.setNotice("אפשר להגדיר חזרה ביצירת המשימה הבאה.");
+                        else h.setNotice("אפשר להגדיר חזרה ביצירת המשימה הבאה.");
                       }}
                     >
                       לבחון התאמת חזרה
@@ -1650,12 +1232,11 @@ export function HomeApp() {
                   </article>
                 ))
               ) : (
-                <p className="muted">
-                  נלמד רק אחרי כמה ביצועים. יום יוצא דופן לא ישנה את השגרה.
-                </p>
+                <p className="muted">נלמד רק אחרי כמה ביצועים. יום יוצא דופן לא ישנה את השגרה.</p>
               )}
             </>
           )}
+
           {view === "reminders" && (
             <>
               <ViewHeader view={view} />
@@ -1663,18 +1244,12 @@ export function HomeApp() {
                 {mode === "local"
                   ? "התזכורות בהדגמה נשמרות במכשיר בלבד. אין שליחת התראות ברקע."
                   : pushEnabled
-                    ? "המכשיר רשום להתראות. מסירה תלויה בחיבור ובשעות השקט."
+                    ? "המכשיר רשום להתראות. מסירה תלויה בחיבור ובשעות השקט. תזכורת דחופה יכולה לעבור גם בשעות השקט."
                     : "התזכורות נשמרות ברשימה. כדי לקבל התראה צריך להפעיל התראות במכשיר."}
               </p>
               {mode === "cloud" && !pushEnabled && (
-                <button
-                  className="secondary"
-                  disabled={pushBusy || !pushReady}
-                  onClick={() => void enablePush()}
-                >
-                  {pushReady
-                    ? "הפעלת התראות במכשיר"
-                    : "שליחת התראות עדיין לא מחוברת"}
+                <button className="secondary" disabled={pushBusy || !pushReady} onClick={() => void enablePush()}>
+                  {pushReady ? "הפעלת התראות במכשיר" : "שליחת התראות עדיין לא מחוברת"}
                 </button>
               )}
               <form
@@ -1682,181 +1257,91 @@ export function HomeApp() {
                 onSubmit={async (e) => {
                   e.preventDefault();
                   try {
-                    await run([
-                      {
-                        type: "reminder.add",
-                        title: reminderTitle,
-                        dueAt: new Date(reminderDue).toISOString(),
-                        taskId: null,
-                      },
-                    ]);
+                    await run([{ type: "reminder.add", title: reminderTitle, dueAt: new Date(reminderDue).toISOString(), taskId: null, urgency: reminderUrgency }]);
                     setReminderTitle("");
                     setReminderDue("");
+                    setReminderUrgency("medium");
                   } catch {}
                 }}
               >
+                <label>מה להזכיר?<input required maxLength={200} value={reminderTitle} onChange={(e) => setReminderTitle(e.target.value)} /></label>
+                <label>מתי? לפי השעה במכשיר<input type="datetime-local" required value={reminderDue} onChange={(e) => setReminderDue(e.target.value)} /></label>
                 <label>
-                  מה להזכיר?
-                  <input
-                    required
-                    maxLength={200}
-                    value={reminderTitle}
-                    onChange={(e) => setReminderTitle(e.target.value)}
-                  />
+                  חשיבות ההתראה
+                  <select value={reminderUrgency} onChange={(e) => setReminderUrgency(e.target.value as typeof reminderUrgency)}>
+                    <option value="low">נמוכה — אפשר לחכות</option>
+                    <option value="medium">רגילה</option>
+                    <option value="urgent">דחופה — גם בשעות שקט</option>
+                  </select>
                 </label>
-                <label>
-                  מתי? לפי השעה במכשיר
-                  <input
-                    type="datetime-local"
-                    required
-                    value={reminderDue}
-                    onChange={(e) => setReminderDue(e.target.value)}
-                  />
-                </label>
-                <button className="primary" disabled={busy}>
-                  שמירת תזכורת
-                </button>
+                <button className="primary" disabled={busy}>שמירת תזכורת</button>
               </form>
               {state.reminders.map((r) => (
                 <article className="list-row panel" key={r.id}>
                   <div>
                     <strong>{r.title}</strong>
                     <p>
-                      {formatTime(r.dueAt, state.profile.timezone)} ·{" "}
-                      {
-                        {
-                          pending: "ממתינה",
-                          sent: "נשלחה לשירות ההתראות",
-                          failed: "השליחה לא הצליחה",
-                          cancelled: "בוטלה",
-                        }[r.status]
-                      }
+                      {formatTime(r.dueAt, state.profile.timezone)} · {r.urgency === "urgent" ? "דחופה · " : r.urgency === "low" ? "חשיבות נמוכה · " : ""}
+                      {{ pending: "ממתינה", sent: "נשלחה לשירות ההתראות", failed: "השליחה לא הצליחה", cancelled: "בוטלה" }[r.status]}
                     </p>
                   </div>
-                  {r.status === "pending" && (
-                    <button
-                      onClick={() =>
-                        void act({ type: "reminder.cancel", id: r.id })
-                      }
-                    >
-                      ביטול
-                    </button>
-                  )}
+                  {r.status === "pending" && <button onClick={() => void act({ type: "reminder.cancel", id: r.id })}>ביטול</button>}
                 </article>
               ))}
             </>
           )}
+
           {view === "history" && (
             <>
               <ViewHeader view={view} />
-              <p className="intro">
-                הביצועים נשמרים כאן. אין צורך לזכור לדווח על הכול.
-              </p>
+              <p className="intro">הביצועים נשמרים כאן. אין צורך לזכור לדווח על הכול.</p>
               <div className="task-list">
                 {state.tasks
                   .filter((t) => ["done", "cancelled"].includes(t.status))
                   .slice()
                   .reverse()
                   .map((t) => (
-                    <TaskCard
-                      state={state}
-                      busy={busy}
-                      clock={clock}
-                      detailed={detailed}
-                      onEdit={setEditor}
-                      onChat={onTaskChat}
-                      onComplete={(t) => {
-                        setCompletion(t);
-                        setWorkActual("");
-                      }}
-                      onAction={act}
-                      key={t.id}
-                      task={t}
-                    />
+                    <TaskCard state={state} busy={busy} clock={clock} detailed={detailed} onEdit={setEditor} onChat={onTaskChat} onComplete={(t) => { setCompletion(t); setWorkActual(""); }} onAction={act} key={t.id} task={t} />
                   ))}
               </div>
-              {!completed.length &&
-                !state.tasks.some((t) => t.status === "cancelled") && (
-                  <Empty text="כאן יופיעו משימות שהושלמו או בוטלו." />
-                )}
+              {!completed.length && !state.tasks.some((t) => t.status === "cancelled") && <Empty text="כאן יופיעו משימות שהושלמו או בוטלו." />}
             </>
           )}
+
           {view === "settings" && (
             <>
               <ViewHeader view={view} />
               <section className="panel">
-                <ProfileForm
-                  profile={state.profile}
-                  onSave={async (a) => {
-                    await run([a], true);
-                  }}
-                />
+                <ProfileForm profile={state.profile} onSave={async (a) => { await run([a], true); }} />
               </section>
               <div className="settings-links">
-                <button onClick={() => navigate("memory")}>
-                  <BookOpen size={20} />
-                  המידע שנשמר על הבית
-                  <ChevronLeft size={18} />
-                </button>
-                <button onClick={() => navigate("kit")}>
-                  <Leaf size={20} />
-                  הצעות והרגלים
-                  <ChevronLeft size={18} />
-                </button>
-                <button onClick={() => navigate("history")}>
-                  <CheckCheck size={20} />
-                  היסטוריית משימות
-                  <ChevronLeft size={18} />
-                </button>
-                <button onClick={exportData}>
-                  <Download size={20} />
-                  הורדת גיבוי אישי
-                </button>
+                <button onClick={() => navigate("memory")}><BookOpen size={20} />המידע שנשמר על הבית<ChevronLeft size={18} /></button>
+                <button onClick={() => navigate("kit")}><Leaf size={20} />הצעות והרגלים<ChevronLeft size={18} /></button>
+                <button onClick={() => navigate("history")}><CheckCheck size={20} />היסטוריית משימות<ChevronLeft size={18} /></button>
+                <button onClick={exportData}><Download size={20} />הורדת גיבוי אישי</button>
+                <button onClick={() => { location.href = "/app/backup"; }}><Download size={20} />שחזור גיבוי</button>
                 {mode === "cloud" && (
-                  <button
-                    disabled={pushBusy}
-                    onClick={() =>
-                      void (pushEnabled ? disablePush() : enablePush())
-                    }
-                  >
-                    <Bell size={20} />
-                    {pushEnabled
-                      ? "כיבוי התראות במכשיר"
-                      : "הפעלת התראות במכשיר"}
+                  <button disabled={pushBusy} onClick={() => void (pushEnabled ? disablePush() : enablePush())}>
+                    <Bell size={20} />{pushEnabled ? "כיבוי התראות במכשיר" : "הפעלת התראות במכשיר"}
                   </button>
                 )}
-                <button onClick={() => setConfirm([{ type: "history.clear" }])}>
-                  <Trash2 size={20} />
-                  מחיקת השיחות והיסטוריית הפעולות
-                </button>
-                <button onClick={() => void h.signOut()}>
-                  <LogOut size={20} />
-                  {mode === "local" ? "יציאה מההדגמה" : "יציאה מהחשבון"}
-                </button>
+                <button onClick={() => setConfirm([{ type: "history.clear" }])}><Trash2 size={20} />מחיקת השיחות והיסטוריית הפעולות</button>
+                <button onClick={() => void h.signOut()}><LogOut size={20} />{mode === "local" ? "יציאה מההדגמה" : "יציאה מהחשבון"}</button>
               </div>
-              <p className="muted">
-                הקלטות קול נשלחות לתמלול ולא נשמרות באפליקציה. ההיסטוריה מוגבלת
-                ל־200 הודעות אחרונות. גיבוי עשוי לכלול מידע אישי — שמרו אותו
-                אצלכם.
-              </p>
+              <p className="muted">הקלטות קול נשלחות לתמלול ולא נשמרות באפליקציה. ההיסטוריה מוגבלת ל־200 הודעות אחרונות. גיבוי עשוי לכלול מידע אישי — שמרו אותו אצלכם.</p>
             </>
           )}
         </main>
+
         {h.notice && (
           <div className="save-notice" role="status">
             <Check size={16} />
             <span>{h.notice}</span>
-            {h.undo && (
-              <button disabled={busy} onClick={() => void h.restore()}>
-                <Undo2 size={15} />
-                ביטול
-              </button>
-            )}
-            <button aria-label="סגירת הודעה" onClick={() => h.setNotice("")}>
-              ×
-            </button>
+            {h.undo && <button disabled={busy} onClick={() => void h.restore()}><Undo2 size={15} />ביטול</button>}
+            <button aria-label="סגירת הודעה" onClick={() => h.setNotice("")}>×</button>
           </div>
         )}
+
         {(view === "home" || view === "chat") && (
           <div className="composer-wrap">
             <form
@@ -1871,12 +1356,7 @@ export function HomeApp() {
               }}
             >
               <VoiceButton
-                enabled={
-                  mode === "cloud" &&
-                  state.profile.aiConsent &&
-                  !thinking &&
-                  !busy
-                }
+                enabled={mode === "cloud" && state.profile.aiConsent && !thinking && !busy}
                 onText={(text) => {
                   setDraft((prev) => (prev ? prev + " " + text : text));
                   setView("chat");
@@ -1891,80 +1371,42 @@ export function HomeApp() {
                 maxLength={6000}
                 placeholder="כתבו לי מה קורה…"
                 value={draft}
-                onFocus={() => {
-                  if (view === "home") setView("chat");
-                }}
+                onFocus={() => { if (view === "home") setView("chat"); }}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    !e.nativeEvent.isComposing
-                  ) {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
                     if (view === "home") setView("chat");
                     else void send();
                   }
                 }}
               />
-              <button
-                className="send"
-                aria-label="שליחת הודעה"
-                disabled={!draft.trim() || thinking || busy || !!proposal}
-              >
-                <ArrowUp size={21} />
-              </button>
+              <button className="send" aria-label="שליחת הודעה" disabled={!draft.trim() || thinking || busy || !!proposal}><ArrowUp size={21} /></button>
             </form>
-            <small>
-              {view === "chat"
-                ? "אפשר לערוך תמלול לפני השליחה · Shift + Enter לשורה חדשה"
-                : "אפשר לכתוב, לדבר או פשוט לפרוק מהראש"}
-            </small>
+            <small>{view === "chat" ? "אפשר לערוך תמלול לפני השליחה · Shift + Enter לשורה חדשה" : "אפשר לכתוב, לדבר או פשוט לפרוק מהראש"}</small>
           </div>
         )}
+
         <nav className="mobile-nav" aria-label="ניווט בתחתית">
           {(
-            [
-              ["home", Home, "בית"],
-              ["chat", MessageCircle, "שיחה"],
-              ["tasks", CheckCheck, "משימות"],
-              ["shopping", ShoppingBasket, "קניות"],
-            ] as const
+            [["home", Home, "בית"], ["chat", MessageCircle, "שיחה"], ["tasks", CheckCheck, "משימות"], ["shopping", ShoppingBasket, "קניות"]] as const
           ).map(([v, Icon, label]) => (
-            <button
-              key={v}
-              className={view === v ? "selected" : ""}
-              onClick={() => navigate(v)}
-            >
-              <Icon size={21} />
-              <span>{label}</span>
+            <button key={v} className={view === v ? "selected" : ""} onClick={() => navigate(v)}>
+              <Icon size={21} /><span>{label}</span>
             </button>
           ))}
         </nav>
       </div>
+
       {editor && (
-        <TaskEditor
-          task={editor === "new" ? undefined : editor}
-          state={state}
-          onSave={async (a) => {
-            await run([a]);
-          }}
-          onClose={() => setEditor(null)}
-        />
-      )}{" "}
+        <TaskEditor task={editor === "new" ? undefined : editor} state={state} onSave={async (a) => { await run([a]); }} onClose={() => setEditor(null)} />
+      )}
       {completion && (
         <Dialog title="סיימת עם המשימה" onClose={() => setCompletion(null)}>
           <p>{completion.title}</p>
           <label>
             כמה דקות עבודה בפועל? אפשר לדלג
-            <input
-              type="number"
-              min={1}
-              max={1440}
-              value={workActual}
-              onChange={(e) => setWorkActual(e.target.value)}
-              placeholder="בלי זמן ההמתנה וההפסקות"
-            />
+            <input type="number" min={1} max={1440} value={workActual} onChange={(e) => setWorkActual(e.target.value)} placeholder="בלי זמן ההמתנה וההפסקות" />
           </label>
           <div className="button-row">
             <button
@@ -1972,23 +1414,14 @@ export function HomeApp() {
               disabled={busy}
               onClick={async () => {
                 try {
-                  await run([
-                    {
-                      type: "task.status",
-                      id: completion.id,
-                      status: "done",
-                      ...(workActual ? { actualWorkMinutes: +workActual } : {}),
-                    },
-                  ]);
+                  await run([{ type: "task.status", id: completion.id, status: "done", ...(workActual ? { actualWorkMinutes: +workActual } : {}) }]);
                   setCompletion(null);
                 } catch {}
               }}
             >
               סימון כבוצע
             </button>
-            <button className="secondary" onClick={() => setCompletion(null)}>
-              חזרה
-            </button>
+            <button className="secondary" onClick={() => setCompletion(null)}>חזרה</button>
           </div>
         </Dialog>
       )}
@@ -1998,29 +1431,14 @@ export function HomeApp() {
             {confirm.map((a, i) => (
               <li key={i}>
                 {describe(a)}
-                {"id" in a && state.tasks.find((t) => t.id === a.id)
-                  ? ` — ${state.tasks.find((t) => t.id === a.id)?.title}`
-                  : ""}
+                {"id" in a && state.tasks.find((t) => t.id === a.id) ? ` — ${state.tasks.find((t) => t.id === a.id)?.title}` : ""}
               </li>
             ))}
           </ul>
           <p>השינוי יבוצע רק אחרי האישור שלך.</p>
           <div className="button-row">
-            <button
-              className="primary"
-              disabled={busy}
-              onClick={async () => {
-                try {
-                  await run(confirm, true);
-                  setConfirm(null);
-                } catch {}
-              }}
-            >
-              אישור
-            </button>
-            <button className="secondary" onClick={() => setConfirm(null)}>
-              חזרה
-            </button>
+            <button className="primary" disabled={busy} onClick={async () => { try { await run(confirm, true); setConfirm(null); } catch {} }}>אישור</button>
+            <button className="secondary" onClick={() => setConfirm(null)}>חזרה</button>
           </div>
         </Dialog>
       )}
