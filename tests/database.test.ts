@@ -56,17 +56,18 @@ test("clean install can apply every audit migration and enforce approved access"
       "20260907_transactional_admin_access.sql",
       "20260907_idempotent_action_saves.sql",
       "20260907_move_auth_helpers_private.sql",
+      "20260907_zz_chat_idempotency.sql",
     ];
     for (const name of migrations)
       await db.exec(await readFile(new URL(`../database/migrations/${name}`, import.meta.url), "utf8"));
 
     await db.exec(`insert into public.user_roles(user_id,role,approved) values('${one}','admin',true),('${two}','user',false) on conflict(user_id) do update set role=excluded.role,approved=excluded.approved;`);
     await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub','${two}',false);`);
-    await assert.rejects(db.query("select * from app_states"), /permission denied|row-level security|0 rows/i).catch(async (e) => {
-      const rows = await db.query("select * from app_states");
-      assert.equal(rows.rows.length, 0);
-      return undefined as never;
-    });
+    const blocked = await db.query("select * from app_states");
+    assert.equal(blocked.rows.length, 0);
+    const blockedChats = await db.query("select * from chat_receipts");
+    assert.equal(blockedChats.rows.length, 0);
+
     await db.exec(`select set_config('request.jwt.claim.sub','${one}',false);`);
     const s = applyActions(emptyState(), [{ type: "task.create", task: { title: "בדיקת מיגרציה" } }]);
     const key = "30000000-0000-4000-8000-000000000003";
@@ -74,6 +75,11 @@ test("clean install can apply every audit migration and enforce approved access"
     const second = await db.query<{ idempotent_save_app_state: { revision: number } }>("select idempotent_save_app_state($1::jsonb,0,$2::uuid)", [JSON.stringify(s), key]);
     assert.equal(Number(first.rows[0].idempotent_save_app_state.revision), 1);
     assert.equal(Number(second.rows[0].idempotent_save_app_state.revision), 1);
+    await db.query(
+      "insert into chat_receipts(owner_id,idempotency_key,request_hash,response) values($1,$2,$3,$4::jsonb)",
+      [one, "40000000-0000-4000-8000-000000000004", "hash", JSON.stringify({ ok: true })],
+    );
+    assert.equal((await db.query("select * from chat_receipts")).rows.length, 1);
     const funcs = await db.query<{ nspname: string; proname: string }>("select n.nspname,p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.proname in ('is_admin','is_approved') order by 1,2");
     assert.ok(funcs.rows.every((x) => x.nspname === "private"));
   } finally {
