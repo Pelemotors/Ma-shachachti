@@ -80,7 +80,7 @@ export async function GET(req: Request) {
                     title: "מה שכחתי?",
                     body: "יש תזכורת שמחכה לך. אפשר לפתוח כשמתאים.",
                     tag: job.id,
-                    url: "/?view=reminders",
+                    url: "/app?view=reminders",
                   }),
                   { TTL: 3600, timeout: 8000 },
                 );
