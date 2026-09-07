@@ -105,6 +105,7 @@ test("clean install can apply every audit migration and enforce approved access"
       "20260907_zzz_rls_policy_hardening.sql",
       "20260907_zzzz_action_receipt_hash.sql",
       "20260907_zzzzz_remove_legacy_action_rpc.sql",
+      "20260908_pending_proposals_table.sql",
       "20260907_state_v2_pending_proposals.sql",
     ];
     for (const name of migrations)
@@ -201,6 +202,36 @@ test("clean install can apply every audit migration and enforce approved access"
       "select n.nspname,p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.proname in ('is_admin','is_approved') order by 1,2",
     );
     assert.ok(funcs.rows.every((x) => x.nspname === "private"));
+
+    // Domain 2: V1 rows remain writable; V2 payloads are accepted after migration.
+    const v1Payload = JSON.parse(JSON.stringify(s));
+    v1Payload.schemaVersion = 1;
+    delete v1Payload.members;
+    delete v1Payload.homeAreas;
+    delete v1Payload.firstScan;
+    delete v1Payload.suggestionHistory;
+    delete v1Payload.learning;
+    delete v1Payload.compactedMemory;
+    delete v1Payload.operations;
+    if (v1Payload.planning) delete v1Payload.planning.plan;
+    const v2 = emptyState();
+    v2.tasks = s.tasks;
+    v2.reminders = s.reminders;
+    const revAfterV1 = await db.query<{ save_app_state: number }>(
+      "select save_app_state($1::jsonb,1)",
+      [JSON.stringify(v1Payload)],
+    );
+    assert.equal(Number(revAfterV1.rows[0].save_app_state), 2);
+    const revAfterV2 = await db.query<{ save_app_state: number }>(
+      "select save_app_state($1::jsonb,2)",
+      [JSON.stringify(v2)],
+    );
+    assert.equal(Number(revAfterV2.rows[0].save_app_state), 3);
+    const stored = await db.query<{ ver: string }>(
+      "select data->>'schemaVersion' as ver from app_states where owner_id=$1",
+      [one],
+    );
+    assert.equal(stored.rows[0].ver, "2");
   } finally {
     await db.close();
   }
