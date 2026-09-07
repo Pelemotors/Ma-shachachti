@@ -1,6 +1,7 @@
 import { adminDb, authorize, ApiError, fail, activity } from "@/lib/server";
 
 const MAX = 8 * 1024 * 1024;
+const MAX_MULTIPART = MAX + 256 * 1024;
 const ACCEPTED = ["image/png", "image/jpeg", "image/webp", "video/mp4"];
 const esc = (s: string) =>
   s.replace(
@@ -21,9 +22,27 @@ export async function POST(req: Request) {
   try {
     const auth = await authorize(req);
     userId = auth.userId;
-    const contentLength = Number(req.headers.get("content-length") ?? 0);
-    if (contentLength > MAX + 128 * 1024)
-      throw new ApiError(413, "הקובץ גדול מדי. אפשר עד 8MB.", "support_payload_too_large");
+
+    const rawLength = req.headers.get("content-length");
+    if (!rawLength)
+      throw new ApiError(
+        411,
+        "לא ניתן לבדוק את גודל הדיווח. נסי לשלוח שוב.",
+        "support_length_required",
+      );
+    const contentLength = Number(rawLength);
+    if (!Number.isFinite(contentLength) || contentLength <= 0)
+      throw new ApiError(
+        400,
+        "הדיווח אינו תקין.",
+        "support_invalid_length",
+      );
+    if (contentLength > MAX_MULTIPART)
+      throw new ApiError(
+        413,
+        "הקובץ גדול מדי. אפשר עד 8MB.",
+        "support_payload_too_large",
+      );
 
     const db = adminDb();
     const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -34,7 +53,11 @@ export async function POST(req: Request) {
       .eq("event_type", "support.report.attempt")
       .gte("created_at", since);
     if (countError)
-      throw new ApiError(503, "שירות הדיווחים אינו זמין כרגע.", "support_rate_check_failed");
+      throw new ApiError(
+        503,
+        "שירות הדיווחים אינו זמין כרגע.",
+        "support_rate_check_failed",
+      );
     if ((count ?? 0) >= 5)
       throw new ApiError(
         429,
@@ -61,7 +84,11 @@ export async function POST(req: Request) {
     const ua = String(form.get("userAgent") ?? "").slice(0, 1000);
     const file = form.get("media");
     if (!description)
-      throw new ApiError(400, "צריך לכתוב בקצרה מה קרה.", "support_description_required");
+      throw new ApiError(
+        400,
+        "צריך לכתוב בקצרה מה קרה.",
+        "support_description_required",
+      );
 
     const attachments: Array<{
       filename: string;
@@ -70,9 +97,17 @@ export async function POST(req: Request) {
     }> = [];
     if (file instanceof File && file.size) {
       if (file.size > MAX)
-        throw new ApiError(413, "הקובץ גדול מדי. אפשר עד 8MB.", "support_file_too_large");
+        throw new ApiError(
+          413,
+          "הקובץ גדול מדי. אפשר עד 8MB.",
+          "support_file_too_large",
+        );
       if (!ACCEPTED.includes(file.type))
-        throw new ApiError(415, "סוג הקובץ אינו נתמך.", "support_file_type");
+        throw new ApiError(
+          415,
+          "סוג הקובץ אינו נתמך.",
+          "support_file_type",
+        );
       attachments.push({
         filename: file.name || "report-media",
         content: Buffer.from(await file.arrayBuffer()).toString("base64"),
@@ -96,7 +131,11 @@ export async function POST(req: Request) {
       }),
     });
     if (!r.ok)
-      throw new ApiError(502, "הדיווח לא נשלח. נסי שוב.", "support_delivery_failed");
+      throw new ApiError(
+        502,
+        "הדיווח לא נשלח. נסי שוב.",
+        "support_delivery_failed",
+      );
 
     await activity(userId, "support.report.success", {
       requestId,
