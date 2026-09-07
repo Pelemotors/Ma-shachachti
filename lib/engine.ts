@@ -6,7 +6,15 @@ import {
   StateSchema,
   normalize,
 } from "./model";
-import { nextDayStart, addCalendarDays, dayKey } from "./time";
+import {
+  nextDayStart,
+  addCalendarDays,
+  dayKey,
+  isHiddenUntilFuture,
+  msUntil,
+} from "./time";
+import { enrichTaskLocal } from "./enrichment";
+import { applyLifeAdminConfirm } from "./domain/notifications/life-admin";
 
 export function requiresConfirmation(actions: Action[]) {
   return (
@@ -50,20 +58,47 @@ export function applyActions(
             t.dueAt === (input.dueAt ?? null),
         );
         if (duplicate) break;
-        s.tasks.push({
-          id: crypto.randomUUID(),
+        const enriched = enrichTaskLocal({
           title: input.title.trim(),
-          category: input.category ?? "שונות / לא מסווג",
-          kind: input.kind ?? "task",
+          categoryId: input.categoryId,
+          detailTypeId: input.detailTypeId,
+          workMinutes: input.workMinutes,
+          waitMinutes: input.waitMinutes,
+          effort: input.effort,
+          priority: input.priority,
+          kind: input.kind,
+          templateId: input.templateId,
+        });
+        const classification = input.classification ?? {
+          source: (input.categoryId ? "user" : "agent") as
+            "user" | "agent" | "catalog" | "migration" | "learned",
+          confidence: (input.categoryId ? "high" : "medium") as
+            "high" | "medium" | "unknown",
+          userOverride: false,
+        };
+        s.tasks.push({
+          id: input.id ?? crypto.randomUUID(),
+          title: input.title.trim(),
+          categoryId: enriched.categoryId,
+          detailTypeId: enriched.detailTypeId,
+          classification,
+          enrichmentStatus:
+            input.enrichmentStatus ??
+            (input.categoryId && input.categoryId !== "unclassified"
+              ? "done"
+              : "pending"),
+          kind: enriched.kind ?? input.kind ?? "task",
           status: "open",
           createdAt: stamp,
           updatedAt: stamp,
           dueAt: input.dueAt ?? null,
+          preferredWindow: input.preferredWindow ?? null,
           hiddenUntil: input.hiddenUntil ?? null,
-          workMinutes: input.workMinutes ?? 15,
-          waitMinutes: input.waitMinutes ?? 0,
-          effort: input.effort ?? 2,
-          priority: input.priority ?? 1,
+          startedAt: null,
+          workMinutes: enriched.workMinutes ?? input.workMinutes ?? 15,
+          waitMinutes: enriched.waitMinutes ?? input.waitMinutes ?? 0,
+          effort: enriched.effort ?? input.effort ?? 2,
+          priority: enriched.priority ?? input.priority ?? 1,
           dependsOn: input.dependsOn ?? [],
           steps: input.steps ?? [],
           templateId: input.templateId ?? null,
@@ -72,6 +107,8 @@ export function applyActions(
           notes: input.notes ?? "",
           completedAt: null,
           actualWorkMinutes: null,
+          relatedMemberIds: input.relatedMemberIds ?? [],
+          homeAreaIds: input.homeAreaIds ?? [],
         });
         break;
       }
@@ -82,6 +119,29 @@ export function applyActions(
         const t = task(action.id);
         t.hiddenUntil = nextDayStart(now, s.profile.timezone);
         t.updatedAt = stamp;
+        break;
+      }
+      case "task.deferUntil": {
+        const t = task(action.id);
+        t.hiddenUntil = action.hiddenUntil;
+        t.updatedAt = stamp;
+        break;
+      }
+      case "task.start": {
+        const t = task(action.id);
+        if (t.status === "done" || t.status === "cancelled")
+          throw new Error("לא ניתן להתחיל משימה שכבר נסגרה.");
+        t.status = "in_progress";
+        t.startedAt = stamp;
+        t.updatedAt = stamp;
+        if (s.planning.plan) {
+          const item = s.planning.plan.items.find((i) => i.taskId === t.id);
+          if (item) {
+            item.planStatus = "in_progress";
+            item.locked = true;
+            s.planning.plan.updatedAt = stamp;
+          }
+        }
         break;
       }
       case "task.step": {
@@ -98,8 +158,24 @@ export function applyActions(
         t.status = action.status;
         t.updatedAt = stamp;
         t.completedAt = action.status === "done" ? stamp : null;
+        if (action.status === "in_progress" && !t.startedAt)
+          t.startedAt = stamp;
+        if (action.status !== "in_progress" && action.status !== "open")
+          t.startedAt = t.startedAt;
+        if (action.status === "open") t.startedAt = null;
         t.actualWorkMinutes =
           action.status === "done" ? (action.actualWorkMinutes ?? null) : null;
+        if (s.planning.plan) {
+          const item = s.planning.plan.items.find((i) => i.taskId === t.id);
+          if (item) {
+            if (action.status === "done") item.planStatus = "done";
+            if (action.status === "in_progress") {
+              item.planStatus = "in_progress";
+              item.locked = true;
+            }
+            s.planning.plan.updatedAt = stamp;
+          }
+        }
         if (action.status === "done" || action.status === "cancelled")
           s.reminders
             .filter((r) => r.taskId === t.id && r.status === "pending")
@@ -122,6 +198,7 @@ export function applyActions(
             updatedAt: stamp,
             completedAt: null,
             actualWorkMinutes: null,
+            startedAt: null,
             occurrenceOf: t.id,
             dueAt: next,
             hiddenUntil: next,
@@ -137,7 +214,8 @@ export function applyActions(
       }
       case "shopping.add": {
         const existing = s.shopping.find(
-          (i) => !i.purchasedAt && normalize(i.title) === normalize(action.title),
+          (i) =>
+            !i.purchasedAt && normalize(i.title) === normalize(action.title),
         );
         if (existing) {
           if (action.quantity) existing.quantity = action.quantity;
@@ -235,6 +313,22 @@ export function applyActions(
       case "planning.clear":
         s.planning.today = null;
         break;
+      case "plan.set":
+        s.planning.plan = action.plan;
+        break;
+      case "plan.clear":
+        s.planning.plan = null;
+        break;
+      case "plan.itemUpdate": {
+        if (!s.planning.plan) throw new Error("אין תוכנית יום פעילה.");
+        const item = s.planning.plan.items.find(
+          (i) => i.taskId === action.taskId,
+        );
+        if (!item) throw new Error("הפריט לא נמצא בתוכנית.");
+        Object.assign(item, action.patch);
+        s.planning.plan.updatedAt = stamp;
+        break;
+      }
       case "profile.update":
         Object.assign(s.profile, action.patch);
         break;
@@ -243,7 +337,9 @@ export function applyActions(
           s.excludedTemplates.push(action.id);
         break;
       case "template.restore":
-        s.excludedTemplates = s.excludedTemplates.filter((x) => x !== action.id);
+        s.excludedTemplates = s.excludedTemplates.filter(
+          (x) => x !== action.id,
+        );
         break;
       case "message.add":
         s.messages.push({
@@ -251,6 +347,7 @@ export function applyActions(
           role: action.role,
           text: action.text,
           createdAt: stamp,
+          turnId: action.turnId ?? null,
         });
         s.messages = s.messages.slice(-200);
         break;
@@ -258,6 +355,112 @@ export function applyActions(
         s.messages = [];
         s.events = [];
         break;
+      case "member.upsert": {
+        const id = action.member.id ?? crypto.randomUUID();
+        const existing = s.members.find((m) => m.id === id);
+        if (existing) {
+          Object.assign(existing, {
+            name: action.member.name,
+            type: action.member.type ?? existing.type,
+            aliases: action.member.aliases ?? existing.aliases,
+            updatedAt: stamp,
+          });
+        } else {
+          s.members.push({
+            id,
+            name: action.member.name,
+            type: action.member.type ?? "other",
+            aliases: action.member.aliases ?? [],
+            createdAt: stamp,
+            updatedAt: stamp,
+          });
+        }
+        break;
+      }
+      case "member.remove":
+        s.members = s.members.filter((m) => m.id !== action.id);
+        break;
+      case "suggestion.record": {
+        const row = s.suggestionHistory.find((x) => x.taskId === action.taskId);
+        if (action.outcome === "suggested") {
+          if (!row)
+            s.suggestionHistory.push({
+              taskId: action.taskId,
+              suggestedAt: stamp,
+              selectedAt: null,
+              declinedAt: null,
+            });
+          else row.suggestedAt = stamp;
+        } else if (action.outcome === "selected") {
+          if (row) row.selectedAt = stamp;
+          else
+            s.suggestionHistory.push({
+              taskId: action.taskId,
+              suggestedAt: stamp,
+              selectedAt: stamp,
+              declinedAt: null,
+            });
+        } else {
+          if (row) row.declinedAt = stamp;
+          else
+            s.suggestionHistory.push({
+              taskId: action.taskId,
+              suggestedAt: stamp,
+              selectedAt: null,
+              declinedAt: stamp,
+            });
+        }
+        s.suggestionHistory = s.suggestionHistory.slice(-500);
+        break;
+      }
+      case "operation.record":
+        s.operations.push({
+          turnId: action.turnId,
+          createdAt: stamp,
+          summary: action.summary,
+          actionTypes: action.actionTypes,
+        });
+        s.operations = s.operations.slice(-100);
+        break;
+      case "homeArea.upsert": {
+        const incoming = action.area;
+        const id = incoming.id ?? crypto.randomUUID();
+        const existing = s.homeAreas.find((a) => a.id === id);
+        if (existing) Object.assign(existing, incoming, { id });
+        else
+          s.homeAreas.push({
+            id,
+            type: incoming.type ?? "other",
+            name: incoming.name,
+            aliases: incoming.aliases ?? [],
+            parentAreaId: incoming.parentAreaId ?? null,
+            source: incoming.source ?? "user",
+          });
+        break;
+      }
+      case "homeArea.remove":
+        s.homeAreas = s.homeAreas.filter((a) => a.id !== action.id);
+        break;
+      case "scan.set":
+        s.firstScan = {
+          status: action.firstScan.status,
+          completedAt: action.firstScan.completedAt ?? null,
+          session: action.firstScan.session ?? null,
+        };
+        break;
+      case "memory.lifeAdmin": {
+        const window = applyLifeAdminConfirm(
+          s.compactedMemory,
+          action.completedAtMinutes,
+          action.response,
+        );
+        s.compactedMemory = {
+          ...s.compactedMemory,
+          lifeAdminWindow: window,
+          updatedAt: stamp,
+        };
+        break;
+      }
     }
 
     if (action.type !== "message.add" && action.type !== "history.clear")
@@ -323,9 +526,12 @@ export function shouldAskWorkTime(t: Task, s: AppState) {
 }
 
 export function visible(t: Task, now = new Date()) {
+  // Keep status + hiddenUntil gate aligned with domain/tasks/visibility (P01).
   return (
-    (t.status === "open" || t.status === "unknown") &&
-    (!t.hiddenUntil || new Date(t.hiddenUntil) <= now)
+    (t.status === "open" ||
+      t.status === "unknown" ||
+      t.status === "in_progress") &&
+    !isHiddenUntilFuture(t.hiddenUntil, now)
   );
 }
 
@@ -333,12 +539,12 @@ export function score(t: Task, s: AppState, now = new Date()) {
   let n = t.priority * 10;
   if (t.kind === "idea") n -= 35;
   if (t.dueAt) {
-    const hours = (new Date(t.dueAt).getTime() - now.getTime()) / 3600000;
+    const hours = msUntil(t.dueAt, now) / 3600000;
     n += hours < 0 ? 100 : hours < 24 ? 70 : hours < 72 ? 30 : 0;
   }
-  n += s.tasks.filter(
-    (x) => x.status === "open" && x.dependsOn.includes(t.id),
-  ).length * 15;
+  n +=
+    s.tasks.filter((x) => x.status === "open" && x.dependsOn.includes(t.id))
+      .length * 15;
   return n;
 }
 
@@ -403,11 +609,12 @@ export function opportunities(
 type BusyWindow = { start: number; end: number };
 function planConstraint(s: AppState, now: Date) {
   const constraint = s.planning.today;
-  if (!constraint || constraint.date !== dayKey(now, s.profile.timezone)) return null;
+  if (!constraint || constraint.date !== dayKey(now, s.profile.timezone))
+    return null;
   return constraint;
 }
 function minuteOffset(iso: string, now: Date) {
-  return (Date.parse(iso) - now.getTime()) / 60000;
+  return msUntil(iso, now) / 60000;
 }
 function nextWorkStart(start: number, work: number, busy: BusyWindow[]) {
   let next = Math.max(0, start);
@@ -494,6 +701,233 @@ export function planDay(
   return { selected, remaining };
 }
 
+export function buildDailyPlanSession(
+  s: AppState,
+  minutes: number,
+  effort: 1 | 2 | 3,
+  revision: number,
+  now = new Date(),
+): import("./model").DailyPlanSession {
+  const computed = planDay(s, minutes, effort, now);
+  const stamp = now.toISOString();
+  return {
+    id: crypto.randomUUID(),
+    date: dayKey(now, s.profile.timezone),
+    createdAt: stamp,
+    updatedAt: stamp,
+    availableMinutes: minutes,
+    effort,
+    generatedFromRevision: revision,
+    items: computed.selected.map((row, order) => ({
+      taskId: row.task.id,
+      order,
+      plannedStart: new Date(now.getTime() + row.start * 60000).toISOString(),
+      plannedEnd: new Date(now.getTime() + row.end * 60000).toISOString(),
+      locked: row.task.status === "in_progress",
+      planStatus:
+        row.task.status === "in_progress"
+          ? ("in_progress" as const)
+          : ("planned" as const),
+    })),
+  };
+}
+
+export function activeDailyPlan(s: AppState, now = new Date()) {
+  const plan = s.planning.plan;
+  if (!plan) return null;
+  if (plan.date !== dayKey(now, s.profile.timezone)) return null;
+  return plan;
+}
+
+/**
+ * Stable replan: keep past/done/in_progress/locked; rebuild only future unlocked.
+ */
+export function replanDailyPlan(
+  s: AppState,
+  now = new Date(),
+): {
+  plan: import("./model").DailyPlanSession | null;
+  requiresProposal: boolean;
+  shiftedTaskIds: string[];
+} {
+  const existing = activeDailyPlan(s, now);
+  if (!existing)
+    return { plan: null, requiresProposal: false, shiftedTaskIds: [] };
+
+  const preserved = existing.items.filter((item) => {
+    const task = s.tasks.find((t) => t.id === item.taskId);
+    if (!task) return false;
+    if (
+      item.locked ||
+      item.planStatus === "done" ||
+      item.planStatus === "in_progress"
+    )
+      return true;
+    if (task.status === "done" || task.status === "in_progress") return true;
+    if (item.plannedEnd && Date.parse(item.plannedEnd) <= now.getTime())
+      return true;
+    return false;
+  });
+
+  const preservedIds = new Set(preserved.map((i) => i.taskId));
+  const usedMinutes = preserved.reduce((sum, item) => {
+    if (!item.plannedStart || !item.plannedEnd) return sum;
+    return (
+      sum +
+      Math.max(
+        0,
+        (Date.parse(item.plannedEnd) - Date.parse(item.plannedStart)) / 60000,
+      )
+    );
+  }, 0);
+  const remainingMinutes = Math.max(
+    15,
+    existing.availableMinutes - usedMinutes,
+  );
+  const shadow: AppState = {
+    ...s,
+    tasks: s.tasks.map((t) =>
+      preservedIds.has(t.id) && t.status === "open"
+        ? { ...t, hiddenUntil: nextDayStart(now, s.profile.timezone) }
+        : t,
+    ),
+  };
+  const rebuilt = planDay(
+    shadow,
+    remainingMinutes,
+    existing.effort as 1 | 2 | 3,
+    now,
+  );
+  const futureItems = rebuilt.selected
+    .filter((row) => !preservedIds.has(row.task.id))
+    .map((row, idx) => ({
+      taskId: row.task.id,
+      order: preserved.length + idx,
+      plannedStart: new Date(now.getTime() + row.start * 60000).toISOString(),
+      plannedEnd: new Date(now.getTime() + row.end * 60000).toISOString(),
+      locked: false,
+      planStatus: "planned" as const,
+    }));
+
+  const oldFuture = existing.items
+    .filter((i) => !preservedIds.has(i.taskId))
+    .map((i) => i.taskId);
+  const newFuture = futureItems.map((i) => i.taskId);
+  const shiftedTaskIds = [
+    ...oldFuture.filter((id) => !newFuture.includes(id)),
+    ...newFuture.filter((id) => !oldFuture.includes(id)),
+  ];
+  const requiresProposal = shiftedTaskIds.length >= 2;
+
+  return {
+    plan: {
+      ...existing,
+      updatedAt: now.toISOString(),
+      items: [
+        ...preserved.map((i, order) => ({ ...i, order })),
+        ...futureItems,
+      ],
+    },
+    requiresProposal,
+    shiftedTaskIds,
+  };
+}
+
+export function freeTimeV2(
+  s: AppState,
+  minutes: number,
+  effort: number,
+  now = new Date(),
+) {
+  const plan = activeDailyPlan(s, now);
+  const plannedIds = new Set(plan?.items.map((i) => i.taskId) ?? []);
+  const declineCounts = new Map<string, number>();
+  for (const row of s.suggestionHistory) {
+    if (row.declinedAt)
+      declineCounts.set(row.taskId, (declineCounts.get(row.taskId) ?? 0) + 1);
+  }
+
+  const fits = (t: Task) =>
+    visible(t, now) &&
+    t.status === "open" &&
+    t.status !== ("in_progress" as string) &&
+    !blocked(t, s) &&
+    t.effort <= effort &&
+    (estimatedMinutes(t, s) + t.waitMinutes) * 1.15 <= minutes &&
+    (!t.hiddenUntil || new Date(t.hiddenUntil) <= now);
+
+  const closeFirst = s.tasks
+    .filter((t) => fits(t))
+    .filter(
+      (t) =>
+        (t.dueAt && new Date(t.dueAt) < now) ||
+        (t.dueAt && new Date(t.dueAt).getTime() - now.getTime() < 86400000) ||
+        t.priority >= 3 ||
+        plannedIds.has(t.id),
+    )
+    .sort((a, b) => {
+      const da = declineCounts.get(a.id) ?? 0;
+      const db = declineCounts.get(b.id) ?? 0;
+      return score(b, s, now) - da * 5 - (score(a, s, now) - db * 5);
+    })
+    .slice(0, 4);
+
+  const outsidePlan = s.tasks
+    .filter((t) => fits(t) && !plannedIds.has(t.id) && !closeFirst.includes(t))
+    .filter((t) => t.kind === "idea" || t.kind === "task")
+    .sort((a, b) => {
+      const da = declineCounts.get(a.id) ?? 0;
+      const db = declineCounts.get(b.id) ?? 0;
+      return score(b, s, now) - da * 8 - (score(a, s, now) - db * 8);
+    })
+    .slice(0, 4);
+
+  return { closeFirst, outsidePlan };
+}
+
+export function findSemanticDuplicate(
+  s: AppState,
+  title: string,
+  opts: {
+    categoryId?: string;
+    detailTypeId?: string | null;
+    dueAt?: string | null;
+    memberIds?: string[];
+    /** Location-aware: non-overlapping areas do not merge (P36). */
+    homeAreaIds?: string[];
+  } = {},
+) {
+  const needle = normalize(title);
+  return s.tasks.find((t) => {
+    if (t.status !== "open" && t.status !== "in_progress") return false;
+    if (opts.categoryId && t.categoryId !== opts.categoryId) return false;
+    // detailTypeId is a hint only — starter sink_clean may merge with scan dishes_handwash (P35).
+    if ((opts.dueAt ?? null) !== t.dueAt) return false;
+    if (opts.memberIds?.length) {
+      const sameMember = opts.memberIds.some((id) =>
+        t.relatedMemberIds.includes(id),
+      );
+      if (!sameMember) return false;
+    }
+    const incomingAreas = opts.homeAreaIds ?? [];
+    if (incomingAreas.length && t.homeAreaIds.length) {
+      const overlap = incomingAreas.some((id) => t.homeAreaIds.includes(id));
+      if (!overlap) return false;
+    }
+    const hay = normalize(t.title);
+    if (hay === needle) return true;
+    if (hay.includes(needle) || needle.includes(hay)) return true;
+    // Hebrew stem-ish overlap for dishwasher empty / fold laundry style paraphrases
+    const tokens = (s: string) => s.split(" ").filter((w) => w.length > 2);
+    const a = new Set(tokens(hay));
+    const b = tokens(needle);
+    const overlap = b.filter((w) =>
+      [...a].some((x) => x.includes(w) || w.includes(x)),
+    );
+    return overlap.length >= 1;
+  });
+}
+
 export function learning(s: AppState) {
   const groups = new Map<string, Task[]>();
   s.tasks
@@ -505,7 +939,9 @@ export function learning(s: AppState) {
   return [...groups.values()]
     .filter((g) => g.length >= 4)
     .map((g) => {
-      const sorted = g.sort((a, b) => a.completedAt!.localeCompare(b.completedAt!));
+      const sorted = g.sort((a, b) =>
+        a.completedAt!.localeCompare(b.completedAt!),
+      );
       const intervals = sorted
         .slice(1)
         .map(
@@ -518,7 +954,8 @@ export function learning(s: AppState) {
       ];
       const consistent =
         median >= 1 &&
-        intervals.filter((x) => Math.abs(x - median) <= median * 0.3).length >= 3;
+        intervals.filter((x) => Math.abs(x - median) <= median * 0.3).length >=
+          3;
       return {
         title: g[0].title,
         templateId: g[0].templateId,

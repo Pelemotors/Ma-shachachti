@@ -1,11 +1,18 @@
-import data from "./catalog.json";
-import { AppState, categories, Action } from "./model";
-export const catalog = data.map((t) => ({
-  ...t,
-  category: t.category as (typeof categories)[number],
-}));
+import { Action, AppState } from "./model";
+import { catalog } from "./catalog-data";
+import {
+  enrichedCatalog,
+  getStarterTemplates,
+  shouldUseStarterMode,
+} from "./domain/starter";
+
+export { catalog };
+
 export function suggestions(s: AppState) {
-  return catalog.filter(
+  const base = shouldUseStarterMode(s)
+    ? getStarterTemplates(s.profile)
+    : enrichedCatalog.filter((t) => t.initialVisibility !== "hidden");
+  return base.filter(
     (t) =>
       !s.excludedTemplates.includes(t.id) &&
       !s.tasks.some((x) => x.templateId === t.id) &&
@@ -19,7 +26,14 @@ export function templateAction(id: string): Action {
     type: "task.create",
     task: {
       title: t.title,
-      category: t.category,
+      categoryId: t.categoryId,
+      detailTypeId: t.detailTypeId,
+      classification: {
+        source: "catalog",
+        confidence: "high",
+        userOverride: false,
+      },
+      enrichmentStatus: "done",
       workMinutes: t.workMinutes,
       waitMinutes: t.waitMinutes,
       effort: t.effort,
@@ -27,3 +41,5 @@ export function templateAction(id: string): Action {
     },
   };
 }
+
+export { getStarterTemplates, shouldUseStarterMode, enrichedCatalog };

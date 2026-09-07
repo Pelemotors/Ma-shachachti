@@ -7,7 +7,10 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 type Urgency = "urgent" | "medium" | "low";
-const pushOptions: Record<Urgency, { TTL: number; urgency: "high" | "normal" | "low" }> = {
+const pushOptions: Record<
+  Urgency,
+  { TTL: number; urgency: "high" | "normal" | "low" }
+> = {
   urgent: { TTL: 1800, urgency: "high" },
   medium: { TTL: 3600, urgency: "normal" },
   low: { TTL: 21600, urgency: "low" },
@@ -40,7 +43,8 @@ export async function GET(req: Request) {
     );
     db = adminDb();
     const { data: jobs, error } = await db.rpc("claim_due_reminders");
-    if (error) throw new ApiError(503, "Queue unavailable", "queue_unavailable");
+    if (error)
+      throw new ApiError(503, "Queue unavailable", "queue_unavailable");
 
     let sent = 0;
     await Promise.all(
@@ -148,7 +152,11 @@ export async function GET(req: Request) {
             .eq("id", job.id)
             .eq("status", "pending");
           if (updateError)
-            throw new ApiError(503, "Queue update failed", "queue_update_failed");
+            throw new ApiError(
+              503,
+              "Queue update failed",
+              "queue_update_failed",
+            );
           if (delivered) sent++;
         },
       ),

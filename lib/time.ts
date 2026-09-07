@@ -6,6 +6,33 @@ export function dayKey(date: Date, timezone: string) {
     day: "2-digit",
   }).format(date);
 }
+
+/** Parse ISO stamp to epoch ms; NaN if missing/invalid. */
+export function stampMs(iso: string | null | undefined): number {
+  if (!iso) return Number.NaN;
+  return Date.parse(iso);
+}
+
+export function msUntil(iso: string, now: Date = new Date()): number {
+  return stampMs(iso) - now.getTime();
+}
+
+export function isStampPast(
+  iso: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  const ms = stampMs(iso);
+  return Number.isFinite(ms) && ms < now.getTime();
+}
+
+/** True when hiddenUntil is set and still in the future. */
+export function isHiddenUntilFuture(
+  hiddenUntil: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  const ms = stampMs(hiddenUntil);
+  return Number.isFinite(ms) && ms > now.getTime();
+}
 export function nextDayStart(now: Date, timezone: string) {
   const key = dayKey(now, timezone);
   let t = now.getTime();
@@ -37,3 +64,5 @@ export function addCalendarDays(iso: string, days: number, timezone: string) {
   if (diff < -12) diff += 24;
   return new Date(target.getTime() + diff * 3600000).toISOString();
 }
+
+export { resolveRelativeTime } from "./relative-time";

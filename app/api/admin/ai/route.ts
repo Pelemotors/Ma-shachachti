@@ -25,7 +25,11 @@ export async function GET(req: Request) {
       .order("created_at", { ascending: false })
       .limit(5000);
     if (error)
-      throw new ApiError(503, "לא ניתן לקרוא נתוני AI.", "admin_ai_read_failed");
+      throw new ApiError(
+        503,
+        "לא ניתן לקרוא נתוני AI.",
+        "admin_ai_read_failed",
+      );
     const rows = data ?? [];
     const success = rows.filter((x) => x.event_type === "ai.success");
     const failures = rows.filter((x) => x.event_type === "ai.failure");
@@ -34,7 +38,9 @@ export async function GET(req: Request) {
       .filter(Number.isFinite);
     const failureCodes: Record<string, number> = {};
     for (const row of failures) {
-      const code = String((row.metadata as { code?: string })?.code ?? "unknown");
+      const code = String(
+        (row.metadata as { code?: string })?.code ?? "unknown",
+      );
       failureCodes[code] = (failureCodes[code] ?? 0) + 1;
     }
     return Response.json({

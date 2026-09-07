@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { authorize, readState, fail, jsonBody, ApiError, activity } from "@/lib/server";
+import {
+  authorize,
+  readState,
+  fail,
+  jsonBody,
+  ApiError,
+  activity,
+} from "@/lib/server";
 import { ActionBatch, StateSchema } from "@/lib/model";
 import { applyActions } from "@/lib/engine";
 import { z } from "zod";

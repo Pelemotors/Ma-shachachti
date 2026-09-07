@@ -1,20 +1,39 @@
 import { authorize, readState, budget, ApiError, fail } from "@/lib/server";
+import { messageForCode } from "@/lib/errors";
+
 export const maxDuration = 60;
 export async function POST(req: Request) {
   try {
     const { db, userId } = await authorize(req);
     const { state } = await readState(db, userId);
     if (!state.profile.aiConsent)
-      throw new ApiError(403, "נדרשת הסכמה לשימוש בשירות התמלול.");
+      throw new ApiError(
+        403,
+        messageForCode("transcription_consent_required"),
+        "transcription_consent_required",
+      );
     if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_TRANSCRIPTION_MODEL)
-      throw new ApiError(503, "התמלול עדיין לא מחובר. אפשר להקליד.");
+      throw new ApiError(
+        503,
+        messageForCode("transcription_not_configured"),
+        "transcription_not_configured",
+      );
     if (Number(req.headers.get("content-length") ?? 0) > 10_500_000)
-      throw new ApiError(413, "ההקלטה ארוכה מדי.");
+      throw new ApiError(
+        413,
+        messageForCode("payload_too_large"),
+        "payload_too_large",
+      );
     const blob = await req.blob();
-    if (blob.size > 10_000_000) throw new ApiError(413, "ההקלטה ארוכה מדי.");
+    if (blob.size > 10_000_000)
+      throw new ApiError(
+        413,
+        messageForCode("payload_too_large"),
+        "payload_too_large",
+      );
     const mime = blob.type.split(";")[0];
     if (!["audio/webm", "audio/mp4", "audio/ogg", "audio/wav"].includes(mime))
-      throw new ApiError(400, "פורמט ההקלטה לא נתמך.");
+      throw new ApiError(400, messageForCode("invalid_input"), "invalid_input");
     await budget(userId, "transcribe", 20);
     const form = new FormData();
     form.append(
@@ -31,7 +50,11 @@ export async function POST(req: Request) {
       signal: AbortSignal.timeout(45000),
     });
     if (!res.ok)
-      throw new ApiError(502, "לא הצלחתי לתמלל. אפשר לנסות שוב או להקליד.");
+      throw new ApiError(
+        502,
+        messageForCode("transcription_failed"),
+        "transcription_failed",
+      );
     const data = await res.json();
     return Response.json({ text: String(data.text ?? "").slice(0, 6000) });
   } catch (e) {

@@ -1,5 +1,5 @@
 import { authorize, readState, saveState, fail, jsonBody } from "@/lib/server";
-import { StateSchema } from "@/lib/model";
+import { migrateState } from "@/lib/model";
 import { z } from "zod";
 export async function GET(req: Request) {
   try {
@@ -16,10 +16,11 @@ export async function PUT(req: Request) {
   try {
     const { db } = await authorize(req);
     const b = z
-      .object({ state: StateSchema, revision: z.number().int().min(0) })
+      .object({ state: z.unknown(), revision: z.number().int().min(0) })
       .parse(await jsonBody(req));
-    const revision = await saveState(db, b.state, b.revision);
-    return Response.json({ state: b.state, revision });
+    const state = migrateState(b.state);
+    const revision = await saveState(db, state, b.revision);
+    return Response.json({ state, revision });
   } catch (e) {
     return fail(e);
   }

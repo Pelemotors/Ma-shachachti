@@ -1,5 +1,47 @@
 // Deliberately no runtime caching: never cache authenticated API responses or household data.
-const DEFAULT_URL='/app?view=reminders';
-function safeUrl(value){try{const url=new URL(typeof value==='string'?value:DEFAULT_URL,self.location.origin);if(url.origin!==self.location.origin)return DEFAULT_URL;if(!url.pathname.startsWith('/app'))return DEFAULT_URL;return url.pathname+url.search+url.hash;}catch{return DEFAULT_URL;}}
-self.addEventListener('push',event=>{let data={};try{data=event.data?.json()??{};}catch{}const url=safeUrl(data.url);event.waitUntil(self.registration.showNotification(data.title||'מה שכחתי?',{body:data.body||'יש עדכון חדש',tag:data.tag||'home',icon:'/icon-192.png',data:{url}}));});
-self.addEventListener('notificationclick',event=>{event.notification.close();const target=safeUrl(event.notification.data?.url);event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(async windows=>{for(const client of windows){if(new URL(client.url).origin===self.location.origin){await client.navigate(target);return client.focus();}}return clients.openWindow(target);}));});
+const DEFAULT_URL = "/app?view=reminders";
+function safeUrl(value) {
+  try {
+    const url = new URL(
+      typeof value === "string" ? value : DEFAULT_URL,
+      self.location.origin,
+    );
+    if (url.origin !== self.location.origin) return DEFAULT_URL;
+    if (!url.pathname.startsWith("/app")) return DEFAULT_URL;
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return DEFAULT_URL;
+  }
+}
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data?.json() ?? {};
+  } catch {}
+  const url = safeUrl(data.url);
+  event.waitUntil(
+    self.registration.showNotification(data.title || "מה שכחתי?", {
+      body: data.body || "יש עדכון חדש",
+      tag: data.tag || "home",
+      icon: "/icon-192.png",
+      data: { url },
+    }),
+  );
+});
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = safeUrl(event.notification.data?.url);
+  event.waitUntil(
+    clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then(async (windows) => {
+        for (const client of windows) {
+          if (new URL(client.url).origin === self.location.origin) {
+            await client.navigate(target);
+            return client.focus();
+          }
+        }
+        return clients.openWindow(target);
+      }),
+  );
+});

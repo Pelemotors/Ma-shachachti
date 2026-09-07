@@ -16,8 +16,7 @@ export function SupportReport() {
 
   async function send() {
     if (!text.trim()) return setMsg("כתבי בקצרה מה קרה.");
-    if (file && file.size > MAX)
-      return setMsg("הקובץ גדול מדי. אפשר עד 8MB.");
+    if (file && file.size > MAX) return setMsg("הקובץ גדול מדי. אפשר עד 8MB.");
     if (file && !ACCEPTED.split(",").includes(file.type))
       return setMsg("סוג הקובץ אינו נתמך. אפשר PNG, JPG, WEBP או MP4.");
     setBusy(true);
@@ -72,7 +71,10 @@ export function SupportReport() {
       </button>
       {open && (
         <Dialog title="משהו לא עובד?" onClose={() => setOpen(false)}>
-          <section className="panel stack" style={{ maxHeight: "80vh", overflow: "auto" }}>
+          <section
+            className="panel stack"
+            style={{ maxHeight: "80vh", overflow: "auto" }}
+          >
             <p>
               צלמי את התקלה או צרפי תמונה, וכתבי במשפט מה קרה. זה יגיע ישירות
               לצוות.
@@ -95,7 +97,10 @@ export function SupportReport() {
                 setMsg("");
               }}
             />
-            <button className="secondary" onClick={() => input.current?.click()}>
+            <button
+              className="secondary"
+              onClick={() => input.current?.click()}
+            >
               {file ? `📎 ${file.name}` : "📷 צילום / צירוף מסך"}
             </button>
             <button className="primary" disabled={busy} onClick={send}>

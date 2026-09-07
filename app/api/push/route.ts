@@ -31,13 +31,11 @@ export async function POST(req: Request) {
     if (!process.env.VAPID_PRIVATE_KEY)
       throw new ApiError(503, "ההתראות עדיין לא מחוברות.");
     const subscription = Subscription.parse(await jsonBody(req, 6000));
-    const { error } = await db
-      .from("push_subscriptions")
-      .upsert({
-        owner_id: userId,
-        endpoint: subscription.endpoint,
-        subscription,
-      });
+    const { error } = await db.from("push_subscriptions").upsert({
+      owner_id: userId,
+      endpoint: subscription.endpoint,
+      subscription,
+    });
     if (error) throw new ApiError(503, "לא הצלחנו לשמור הרשאה להתראות.");
     return Response.json({ ok: true });
   } catch (e) {

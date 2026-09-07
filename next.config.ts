@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
   poweredByHeader: false,
+  // Playwright and some hosts hit the dev server as 127.0.0.1 while
+  // `next dev --hostname 0.0.0.0` would otherwise block /_next assets.
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   outputFileTracingIncludes: {
     "/api/chat": ["./lib/agent/INSTRUCTIONS.he.md"],
   },

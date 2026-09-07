@@ -37,7 +37,12 @@ type H = {
   services: Record<string, boolean>;
   serviceDetails?: Record<
     string,
-    { configured?: boolean; status?: string; lastTestedAt?: string | null; lastRunAt?: string | null }
+    {
+      configured?: boolean;
+      status?: string;
+      lastTestedAt?: string | null;
+      lastRunAt?: string | null;
+    }
   >;
   checkedAt: string;
 };
@@ -161,10 +166,16 @@ export default function Admin() {
           <p className="admin-eyebrow">מה שכחתי? · CONTROL ROOM</p>
           <h1>אין הרשאת מנהל</h1>
           <p>החשבון מחובר, אבל אין לו הרשאה ל־Control Room.</p>
-          <button className="admin-btn primary" onClick={() => (location.href = "/app")}>
+          <button
+            className="admin-btn primary"
+            onClick={() => (location.href = "/app")}
+          >
             חזרה לאפליקציה
           </button>
-          <button className="admin-btn" onClick={() => supabase?.auth.signOut()}>
+          <button
+            className="admin-btn"
+            onClick={() => supabase?.auth.signOut()}
+          >
             יציאה מהחשבון
           </button>
         </div>
@@ -236,7 +247,10 @@ export default function Admin() {
               <p className="admin-eyebrow">CONTROL ROOM</p>
               <h1>ניהול המערכת</h1>
             </div>
-            <button className="admin-btn" onClick={() => supabase?.auth.signOut()}>
+            <button
+              className="admin-btn"
+              onClick={() => supabase?.auth.signOut()}
+            >
               יציאה
             </button>
           </header>
@@ -257,14 +271,18 @@ export default function Admin() {
                       <div className="admin-bar-wrap" key={x.date}>
                         <div
                           className="admin-bar"
-                          style={{ height: `${Math.max(4, (x.events / max) * 100)}%` }}
+                          style={{
+                            height: `${Math.max(4, (x.events / max) * 100)}%`,
+                          }}
                         />
                         <span>{x.date.slice(5)}</span>
                       </div>
                     ))}
                   </div>
                 </section>
-                <section className={`admin-card ${s?.pending ? "admin-alert" : ""}`}>
+                <section
+                  className={`admin-card ${s?.pending ? "admin-alert" : ""}`}
+                >
                   <h2>דורש טיפול</h2>
                   {s?.pending ? (
                     <>
@@ -288,7 +306,9 @@ export default function Admin() {
                   {activity.slice(0, 6).map((e) => (
                     <div className="admin-system-row" key={e.id}>
                       <strong>{e.event_type}</strong>
-                      <small>{new Date(e.created_at).toLocaleString("he-IL")}</small>
+                      <small>
+                        {new Date(e.created_at).toLocaleString("he-IL")}
+                      </small>
                     </div>
                   ))}
                   {!activity.length && (
@@ -338,7 +358,8 @@ export default function Admin() {
                       </div>
                       {u.lastSignInAt && (
                         <small>
-                          כניסה אחרונה: {new Date(u.lastSignInAt).toLocaleString("he-IL")}
+                          כניסה אחרונה:{" "}
+                          {new Date(u.lastSignInAt).toLocaleString("he-IL")}
                         </small>
                       )}
                     </div>
@@ -371,7 +392,9 @@ export default function Admin() {
                       <button
                         className="admin-btn"
                         onClick={() =>
-                          upd(u, { role: u.role === "admin" ? "user" : "admin" })
+                          upd(u, {
+                            role: u.role === "admin" ? "user" : "admin",
+                          })
                         }
                       >
                         {u.role === "admin" ? "הסרת Admin" : "הוספת Admin"}
@@ -409,12 +432,13 @@ export default function Admin() {
               <section className="admin-card admin-section">
                 <h2>AI</h2>
                 <p>
-                  הנתונים מבוססים על קריאות AI שהסתיימו בפועל. תוכן שיחות ומפתחות
-                  אינם נחשפים כאן.
+                  הנתונים מבוססים על קריאות AI שהסתיימו בפועל. תוכן שיחות
+                  ומפתחות אינם נחשפים כאן.
                 </p>
                 {ai?.lastTestedAt && (
                   <small>
-                    בדיקה אחרונה: {new Date(ai.lastTestedAt).toLocaleString("he-IL")}
+                    בדיקה אחרונה:{" "}
+                    {new Date(ai.lastTestedAt).toLocaleString("he-IL")}
                   </small>
                 )}
               </section>
