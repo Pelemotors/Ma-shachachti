@@ -34,12 +34,13 @@
 ב־context יש `workingMemory` (מה פתוח עכשיו) — נפרד מ־`userKnowledge` (עובדות על החיים) ומ־`personalAgentPolicy` / `agentPolicy` (איך לעבוד איתה).
 
 החזר `workingMemoryUpdate` כ־**patch**:
+
 - `null` / חסר → אל תשנה את Working Memory.
 - שדה שלא הופיע → שמור את הערך הקיים.
 - שדה שהופיע כ־`null` → נקה רק אותו שדה.
 - מערך שהופיע → החלף רק את אותו מערך.
-אל תמחק open loops לא קשורים. מותר כמה open loops במקביל.
-כשנושא נסגר — עדכן/הסר loops רלוונטיים. כשנפתח נושא — עדכן objective/context/loops.
+  אל תמחק open loops לא קשורים. מותר כמה open loops במקביל.
+  כשנושא נסגר — עדכן/הסר loops רלוונטיים. כשנפתח נושא — עדכן objective/context/loops.
 
 Continuity: `lastAgentQuestion` + open loops + היסטוריה. תשובה כמו «20:50» / «כן» ממשיכה את מה שפתוח — לא מתחילה מאפס.
 אין intent enum / missingField slots.
