@@ -1103,13 +1103,22 @@ details .stack {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  min-height: 40px;
-  border-radius: 13px;
-  background: transparent;
-  color: var(--theme-primary);
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border-radius: 14px;
+  background: var(--theme-primary);
+  color: #fff;
   flex-shrink: 0;
+}
+.send:disabled {
+  opacity: 0.45;
+}
+.send:not(:disabled):hover {
+  filter: brightness(1.05);
+}
+.send:not(:disabled):active {
+  filter: brightness(0.95);
 }
 .composer-wrap > small {
   display: block;
@@ -1230,24 +1239,67 @@ details .stack {
   max-width: 90px;
 }
 .shopping-list {
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  overflow: hidden;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
   margin-bottom: 20px;
 }
 .shopping-list:empty {
   display: none;
 }
 .shopping-item {
-  padding: 14px 18px;
+  padding: 8px 4px;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   border-bottom: 1px solid var(--line);
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  margin: 0;
 }
 .shopping-item:last-child {
-  border: 0;
+  border-bottom: 1px solid var(--line);
+}
+.shopping-item-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+.shopping-item-main input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.shopping-item-text {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.shopping-item-title {
+  font-weight: 500;
+}
+.shopping-item-qty {
+  color: var(--muted);
+  font-weight: 400;
+}
+.shopping-item-remove {
+  flex-shrink: 0;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+}
+.shopping-item.is-done .shopping-item-text {
+  opacity: 0.55;
+  text-decoration: line-through;
 }
 .shopping-item label {
   flex: 1;
@@ -1258,6 +1310,24 @@ details .stack {
 }
 .shopping-item small {
   color: var(--muted);
+}
+.message-retry-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.message-send-failed {
+  outline: 1px solid var(--line);
+}
+.approval-actions {
+  flex-wrap: wrap;
+}
+.approval-actions .primary {
+  flex: 1 1 140px;
+}
+.approval-actions .secondary {
+  flex: 1 1 120px;
 }
 .chat-page {
   padding-top: 20px;
@@ -1423,10 +1493,11 @@ details .stack {
 }
 .save-notice {
   position: fixed;
-  bottom: 24px;
-  left: 24px;
+  top: calc(16px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 30;
-  max-width: calc(100vw - 48px);
+  max-width: min(360px, calc(100vw - 32px));
   background: var(--ink);
   color: white;
   border-radius: 14px;
@@ -1723,9 +1794,11 @@ dialog::backdrop {
     padding-top: 25px;
   }
   .save-notice {
-    bottom: calc(166px + env(safe-area-inset-bottom));
-    left: 16px;
-    max-width: calc(100vw - 32px);
+    top: calc(12px + env(safe-area-inset-top));
+    bottom: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: min(360px, calc(100vw - 32px));
     font-size: 13px;
   }
   .panel {
@@ -1768,7 +1841,7 @@ dialog::backdrop {
     min-width: 44px;
   }
   .shopping-item {
-    padding: 10px 12px;
+    padding: 8px 4px;
   }
   .list-row.panel {
     padding: 16px;

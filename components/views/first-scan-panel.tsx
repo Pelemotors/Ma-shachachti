@@ -627,7 +627,7 @@ export function FirstScanPanel(props: {
               disabled={props.busy}
               onClick={() => void startAddMissingSession()}
             >
-              להוסיף מידע שחסר
+              להוסיף משהו ששכחתי
             </button>
           </div>
         </>

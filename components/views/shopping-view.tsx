@@ -41,25 +41,36 @@ export function ShoppingView(props: {
           הוספה
         </button>
       </form>
-      <div className="task-list">
+      <div className="shopping-list" role="list">
         {props.items.map((item) => (
-          <div className="shopping-item" key={item.id}>
-            <label>
+          <div
+            className={
+              "shopping-item" + (item.purchasedAt ? " is-done" : "")
+            }
+            key={item.id}
+            role="listitem"
+          >
+            <label className="shopping-item-main">
               <input
                 type="checkbox"
                 checked={Boolean(item.purchasedAt)}
                 onChange={(e) => props.onToggle(item.id, e.target.checked)}
+                aria-label={item.title}
               />
-              <span>
-                {item.title}
-                {item.quantity ? ` · ${item.quantity}` : ""}
+              <span className="shopping-item-text">
+                <span className="shopping-item-title">{item.title}</span>
+                {item.quantity ? (
+                  <small className="shopping-item-qty"> · {item.quantity}</small>
+                ) : null}
               </span>
             </label>
             <button
-              className="text-button"
+              type="button"
+              className="text-button shopping-item-remove"
+              aria-label={`הסרת ${item.title}`}
               onClick={() => props.onRemove(item.id)}
             >
-              הסרה
+              ×
             </button>
           </div>
         ))}

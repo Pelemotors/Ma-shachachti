@@ -72,7 +72,20 @@ export function HomeApp() {
   useEffect(() => {
     if (view === "chat")
       chatBottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [view, state.messages, chat.isThinking, chat.proposal]);
+  }, [
+    view,
+    state.messages,
+    chat.isThinking,
+    chat.proposal,
+    chat.pendingUserMessage,
+    chat.sendStatus,
+  ]);
+
+  useEffect(() => {
+    if (!h.notice) return;
+    const t = window.setTimeout(() => h.setNotice(""), 1800);
+    return () => window.clearTimeout(t);
+  }, [h.notice, h.setNotice]);
 
   const { navigate: navHistory } = useAppNavigation({
     view,
@@ -252,6 +265,7 @@ export function HomeApp() {
             taskCardHandlers={taskCardHandlers}
             navigate={navigate}
             onNotice={h.setNotice}
+            onError={h.setError}
             onExport={exportData}
             onSignOut={() => void h.signOut()}
           />
