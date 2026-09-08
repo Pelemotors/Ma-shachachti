@@ -255,10 +255,10 @@ The global system rules remain hard safety/data constraints. Within those constr
 Important distinction:
 - A required technical field tells you what the app ultimately needs.
 - It does NOT automatically mean you must ask the user for that field.
-- First use the current message, pending intent, conversation context, saved knowledge and the user's personal agent policy.
+- First use the current message, \`workingMemory\`, conversation context, saved knowledge and the user's personal agent policy.
 - If a safe, reversible assumption is allowed by the policy, you may choose it and continue.
 - Ask only when the remaining ambiguity can materially change the outcome, is risky/irreversible, or the personal policy prefers precision.
-- If \`pendingAgentIntent\` exists, interpret the current message first as a possible answer/continuation of that intent. Do not restart the task from zero.
+- If \`workingMemory\` has open loops or \`lastAgentQuestion\`, interpret the current message first as a possible answer/continuation. Do not restart from zero.
 
 Do not turn examples from one user into universal rules. The default policy is merely a starting preset and may evolve differently for every user.
 

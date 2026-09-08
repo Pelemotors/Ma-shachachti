@@ -170,6 +170,7 @@ export type ChatOrchestrationResult = {
   proposal: AgentDecision["proposal"];
   affectsToday: boolean;
   policySignals: AgentDecision["policySignals"];
+  workingMemoryUpdate: AgentDecision["workingMemoryUpdate"];
   requestedTodayCreateIndexes?: number[];
   rejectedActionCount: number;
   basedOnRevision: number;
@@ -319,6 +320,7 @@ export async function orchestrateChatTurn(
     proposal: decision.proposal,
     affectsToday: decision.affectsToday,
     policySignals: decision.policySignals,
+    workingMemoryUpdate: decision.workingMemoryUpdate ?? null,
     requestedTodayCreateIndexes: decision.requestedTodayCreateIndexes,
     rejectedActionCount: rejectedFromParse.length + rejectedApply.length,
     basedOnRevision: input.revision,

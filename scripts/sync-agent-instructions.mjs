@@ -11,7 +11,7 @@ const escaped = md
   .replace(/`/g, "\\`")
   .replace(/\$\{/g, "\\${");
 const out = `/** Auto-synced from INSTRUCTIONS.he.md — run: node scripts/sync-agent-instructions.mjs */
-export const AGENT_CONTRACT_VERSION = "2026-09-08-chat-proposal";
+export const AGENT_CONTRACT_VERSION = "2026-09-08-open-working-memory";
 export const AGENT_INSTRUCTIONS = \`
 ${escaped}
 \`;

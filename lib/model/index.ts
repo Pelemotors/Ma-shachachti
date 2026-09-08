@@ -49,6 +49,10 @@ export const ClassificationSchema = z.object({
   userOverride: z.boolean(),
 });
 
+/**
+ * @deprecated Legacy FSM slot — dual-read only. Live chat uses AgentWorkingMemory.
+ * Do not extend this enum; new writes must use agentWorkingMemory.
+ */
 export const PendingAgentIntentValueSchema = z.object({
   id: z.string().uuid(),
   type: z.enum([
@@ -70,6 +74,42 @@ export const PendingAgentIntentValueSchema = z.object({
 export const PendingAgentIntentSchema =
   PendingAgentIntentValueSchema.nullable();
 export type PendingAgentIntent = z.infer<typeof PendingAgentIntentSchema>;
+
+/** Open personal-agent working memory — what is open now, not which workflow. */
+export const AgentWorkingMemoryOpenLoopSchema = z.object({
+  summary: z.string().min(1).max(400),
+  relevantEntityIds: z.array(z.string().uuid()).max(40).default([]),
+});
+export const AgentWorkingMemoryAssumptionSchema = z.object({
+  text: z.string().min(1).max(400),
+  confidence: z.number().min(0).max(1),
+});
+export const AgentWorkingMemorySchema = z.object({
+  objective: z.string().max(500).nullable(),
+  contextSummary: z.string().max(2000).nullable(),
+  openLoops: z.array(AgentWorkingMemoryOpenLoopSchema).max(8),
+  lastAgentQuestion: z.string().max(500).nullable(),
+  relevantEntityIds: z.array(z.string().uuid()).max(40),
+  assumptions: z.array(AgentWorkingMemoryAssumptionSchema).max(12),
+  updatedAt: Stamp,
+});
+export type AgentWorkingMemory = z.infer<typeof AgentWorkingMemorySchema>;
+
+/**
+ * Patch semantics: omitted property = keep; explicit null = clear that field;
+ * array present = replace that array. Null/absent workingMemoryUpdate = no change.
+ */
+export const AgentWorkingMemoryPatchSchema = z.object({
+  objective: z.string().max(500).nullable().optional(),
+  contextSummary: z.string().max(2000).nullable().optional(),
+  openLoops: z.array(AgentWorkingMemoryOpenLoopSchema).max(8).optional(),
+  lastAgentQuestion: z.string().max(500).nullable().optional(),
+  relevantEntityIds: z.array(z.string().uuid()).max(40).optional(),
+  assumptions: z.array(AgentWorkingMemoryAssumptionSchema).max(12).optional(),
+});
+export type AgentWorkingMemoryPatch = z.infer<
+  typeof AgentWorkingMemoryPatchSchema
+>;
 
 export const TaskSchema = z.object({
   id: z.string().uuid(),
@@ -112,6 +152,8 @@ export const TaskSchema = z.object({
   notes: z.string().max(2000),
   completedAt: Stamp.nullable(),
   actualWorkMinutes: z.number().int().min(1).max(1440).nullable(),
+  /** Once set, never ask duration feedback again for this task/lineage. */
+  durationFeedbackAskedAt: Stamp.nullable().default(null),
   relatedMemberIds: z.array(z.string().uuid()).max(20).default([]),
   homeAreaIds: z.array(z.string().uuid()).max(20).default([]),
 });
@@ -141,6 +183,8 @@ export const ReminderSchema = z.object({
   status: z.enum(["pending", "cancelled", "sent", "failed"]),
   taskId: z.string().uuid().nullable(),
   urgency: ReminderUrgencySchema.optional(),
+  /** Sort key: newest created first. Optional for legacy rows. */
+  createdAt: Stamp.optional(),
 });
 
 export const ProfileSchema = z.object({
@@ -256,7 +300,12 @@ export const HouseholdMemberSchema = z.object({
 export type HouseholdMember = z.infer<typeof HouseholdMemberSchema>;
 
 export const SuggestionHistorySchema = z.object({
-  taskId: z.string().uuid(),
+  /** Stable suggestion entity id (not the resulting task id). */
+  id: z.string().uuid(),
+  /** Catalog templateId or calendar:<normalized title>. */
+  suggestionKey: z.string().max(200),
+  source: z.enum(["catalog", "calendar"]).default("catalog"),
+  taskId: z.string().uuid().nullable().default(null),
   suggestedAt: Stamp,
   selectedAt: Stamp.nullable(),
   declinedAt: Stamp.nullable(),
@@ -419,7 +468,9 @@ export const StateV2Schema = z.object({
       session: FirstScanSessionSchema.nullable().optional(),
     })
     .default({ status: "not_started", completedAt: null, session: null }),
+  /** @deprecated Dual-read only — prefer agentWorkingMemory. */
   pendingAgentIntent: PendingAgentIntentSchema.default(null),
+  agentWorkingMemory: AgentWorkingMemorySchema.nullable().default(null),
 });
 
 export type AppState = z.infer<typeof StateV2Schema>;
@@ -513,6 +564,9 @@ function migrateTask(raw: z.infer<typeof TaskV1Schema>): Task {
     notes: raw.notes,
     completedAt: raw.completedAt,
     actualWorkMinutes: raw.actualWorkMinutes,
+    durationFeedbackAskedAt:
+      (raw as { durationFeedbackAskedAt?: string | null })
+        .durationFeedbackAskedAt ?? null,
     relatedMemberIds: raw.relatedMemberIds ?? [],
     homeAreaIds: (raw as { homeAreaIds?: string[] }).homeAreaIds ?? [],
   };
@@ -564,7 +618,88 @@ export function migrateV1ToV2(v1: StateV1): AppState {
     homeAreas: [],
     firstScan: { status: "not_started", completedAt: null, session: null },
     pendingAgentIntent: null,
+    agentWorkingMemory: null,
   };
+}
+
+function hydrateWorkingMemoryFromLegacy(
+  obj: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...obj };
+  if (next.agentWorkingMemory == null && next.pendingAgentIntent != null) {
+    const pending = PendingAgentIntentValueSchema.safeParse(
+      next.pendingAgentIntent,
+    );
+    if (pending.success) {
+      // Lazy import avoided — inline human migration (not workflow type).
+      const p = pending.data;
+      const ids: string[] = [];
+      if (p.contextTaskId) ids.push(p.contextTaskId);
+      const uuidRe =
+        /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi;
+      const draft = JSON.stringify(p.draftActions ?? []);
+      for (const m of draft.match(uuidRe) ?? []) ids.push(m.toLowerCase());
+      const relevantEntityIds = [...new Set(ids)].slice(0, 40);
+      const question = p.clarificationQuestion?.trim() || null;
+      next.agentWorkingMemory = {
+        objective: "להשלים את הבקשה שעליה נשאלה שאלת ההמשך",
+        contextSummary: question
+          ? `שאלה פתוחה מהסוכן: ${question}`
+          : "יש המשך שיחה פתוח מהתור הקודם",
+        openLoops: [
+          {
+            summary: question
+              ? "ממתינים לתשובת המשתמש לשאלה האחרונה כדי להמשיך"
+              : "יש נושא פתוח מהשיחה הקודמת",
+            relevantEntityIds,
+          },
+        ],
+        lastAgentQuestion: question,
+        relevantEntityIds,
+        assumptions: [],
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  if (Array.isArray(next.tasks)) {
+    next.tasks = next.tasks.map((raw) => {
+      if (!raw || typeof raw !== "object") return raw;
+      const t = raw as Record<string, unknown>;
+      if (t.durationFeedbackAskedAt === undefined)
+        return { ...t, durationFeedbackAskedAt: null };
+      return t;
+    });
+  }
+
+  if (Array.isArray(next.suggestionHistory)) {
+    next.suggestionHistory = next.suggestionHistory.map((raw) => {
+      if (!raw || typeof raw !== "object") return raw;
+      const row = raw as Record<string, unknown>;
+      const id =
+        typeof row.id === "string"
+          ? row.id
+          : globalThis.crypto?.randomUUID?.() ??
+            `00000000-0000-4000-8000-${String(Math.random()).slice(2, 14).padEnd(12, "0")}`;
+      const suggestionKey =
+        typeof row.suggestionKey === "string"
+          ? row.suggestionKey
+          : typeof row.taskId === "string"
+            ? `legacy-task:${row.taskId}`
+            : `legacy:${id}`;
+      return {
+        id,
+        suggestionKey,
+        source: row.source === "calendar" ? "calendar" : "catalog",
+        taskId: typeof row.taskId === "string" ? row.taskId : null,
+        suggestedAt: row.suggestedAt,
+        selectedAt: row.selectedAt ?? null,
+        declinedAt: row.declinedAt ?? null,
+      };
+    });
+  }
+
+  return next;
 }
 
 export function migrateState(raw: unknown): AppState {
@@ -581,7 +716,9 @@ export function migrateState(raw: unknown): AppState {
             : Number.NaN;
 
     if (version === 2) {
-      return StateV2Schema.parse({ ...obj, schemaVersion: 2 });
+      return StateV2Schema.parse(
+        hydrateWorkingMemoryFromLegacy({ ...obj, schemaVersion: 2 }),
+      );
     }
 
     if (version !== null && version !== 1 && !Number.isNaN(version)) {
@@ -664,6 +801,7 @@ export function emptyState(): AppState {
     homeAreas: [],
     firstScan: { status: "not_started", completedAt: null, session: null },
     pendingAgentIntent: null,
+    agentWorkingMemory: null,
   };
 }
 
@@ -731,6 +869,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
       recurrenceDays: true,
       relatedMemberIds: true,
       homeAreaIds: true,
+      durationFeedbackAskedAt: true,
     }).partial(),
   }),
   z.object({
@@ -786,7 +925,28 @@ export const ActionSchema = z.discriminatedUnion("type", [
     taskId: z.string().uuid().nullable(),
     urgency: ReminderUrgencySchema.optional(),
   }),
+  z.object({
+    type: z.literal("reminder.update"),
+    id: z.string().uuid(),
+    patch: z
+      .object({
+        title: z.string().min(1).max(200).optional(),
+        dueAt: Stamp.optional(),
+        urgency: ReminderUrgencySchema.optional(),
+      })
+      .refine(
+        (p) =>
+          p.title !== undefined ||
+          p.dueAt !== undefined ||
+          p.urgency !== undefined,
+        "empty_reminder_patch",
+      ),
+  }),
   z.object({ type: z.literal("reminder.cancel"), id: z.string().uuid() }),
+  z.object({
+    type: z.literal("durationFeedback.markAsked"),
+    taskId: z.string().uuid(),
+  }),
   z.object({
     type: z.literal("planning.set"),
     constraint: PlanningConstraintSchema,
@@ -821,6 +981,11 @@ export const ActionSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("pendingIntent.clear") }),
   z.object({
+    type: z.literal("workingMemory.patch"),
+    patch: AgentWorkingMemoryPatchSchema,
+  }),
+  z.object({ type: z.literal("workingMemory.clear") }),
+  z.object({
     type: z.literal("member.upsert"),
     member: HouseholdMemberSchema.partial({
       id: true,
@@ -831,7 +996,10 @@ export const ActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("member.remove"), id: z.string().uuid() }),
   z.object({
     type: z.literal("suggestion.record"),
-    taskId: z.string().uuid(),
+    id: z.string().uuid().optional(),
+    suggestionKey: z.string().max(200),
+    source: z.enum(["catalog", "calendar"]).default("catalog"),
+    taskId: z.string().uuid().nullable().optional(),
     outcome: z.enum(["suggested", "selected", "declined"]),
   }),
   z.object({

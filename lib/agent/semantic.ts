@@ -6,9 +6,11 @@ import type { AgentDecision } from "./schema";
 import { ClarificationSchema } from "./schema";
 
 /**
- * Structured semantic interpretation — LLM (or tests) produce meaning;
- * deterministic code grounds it against AppState and emits Actions.
- * This is not a keyword/regex NLP layer.
+ * Structured semantic interpretation — **NOT the live chat path**.
+ * Live chat: LLM → AgentDecision (Actions + workingMemoryUpdate) → Domain.
+ * `groundInterpretations` remains for legacy/unit tests only; do not wire into
+ * `orchestrateChatTurn` and do not expand SemanticIntent as a user-intent bank.
+ * Deterministic integrity for live turns: `enforceReferentialIntegrity` below.
  */
 
 export const SemanticIntentSchema = z.enum([

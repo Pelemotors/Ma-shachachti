@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Action, ActionSchema } from "../model";
+import { Action, ActionSchema, AgentWorkingMemoryPatchSchema } from "../model";
 import { AGENT_POLICY_TRAITS } from "../domain/agent-policy";
 
 export const AgentActionSchema = ActionSchema.options.filter(
@@ -16,6 +16,11 @@ export const AgentActionSchema = ActionSchema.options.filter(
       "plan.itemUpdate",
       "suggestion.record",
       "memory.lifeAdmin",
+      "pendingIntent.set",
+      "pendingIntent.clear",
+      "workingMemory.patch",
+      "workingMemory.clear",
+      "durationFeedback.markAsked",
     ].includes(x.shape.type.value),
 );
 
@@ -61,6 +66,11 @@ export const AgentDecisionSchema = z.object({
   affectsToday: z.boolean(),
   /** Signals about HOW this user prefers the single personal agent to behave. */
   policySignals: z.array(AgentPolicySignalSchema).max(8).default([]),
+  /**
+   * Patch to open working memory. null/omitted = no change.
+   * Never a full silent wipe of unrelated open loops.
+   */
+  workingMemoryUpdate: AgentWorkingMemoryPatchSchema.nullable().optional(),
   /** Optional indexes into proposal.proposedActions task.create list (0-based). */
   requestedTodayCreateIndexes: z
     .array(z.number().int().min(0).max(19))
@@ -266,6 +276,17 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
     else warnings.push("clarification_invalid");
   }
 
+  let workingMemoryUpdate: AgentDecision["workingMemoryUpdate"] = null;
+  if (
+    obj.workingMemoryUpdate != null &&
+    typeof obj.workingMemoryUpdate === "object" &&
+    !Array.isArray(obj.workingMemoryUpdate)
+  ) {
+    const wm = AgentWorkingMemoryPatchSchema.safeParse(obj.workingMemoryUpdate);
+    if (wm.success) workingMemoryUpdate = wm.data;
+    else warnings.push("working_memory_update_invalid");
+  }
+
   let proposal: AgentDecision["proposal"] = null;
   if (obj.proposal != null && typeof obj.proposal === "object") {
     const pRaw = obj.proposal as Record<string, unknown>;
@@ -333,6 +354,7 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
     proposal,
     affectsToday,
     policySignals,
+    workingMemoryUpdate,
     requestedTodayCreateIndexes,
   };
 
@@ -430,6 +452,36 @@ export function agentDecisionJsonSchema() {
       requestedTodayCreateIndexes: {
         type: "array",
         items: { type: "integer", minimum: 0, maximum: 19 },
+      },
+      workingMemoryUpdate: {
+        anyOf: [
+          { type: "null" },
+          {
+            type: "object",
+            additionalProperties: true,
+            properties: {
+              objective: { anyOf: [{ type: "string" }, { type: "null" }] },
+              contextSummary: {
+                anyOf: [{ type: "string" }, { type: "null" }],
+              },
+              openLoops: {
+                type: "array",
+                items: { type: "object", additionalProperties: true },
+              },
+              lastAgentQuestion: {
+                anyOf: [{ type: "string" }, { type: "null" }],
+              },
+              relevantEntityIds: {
+                type: "array",
+                items: { type: "string" },
+              },
+              assumptions: {
+                type: "array",
+                items: { type: "object", additionalProperties: true },
+              },
+            },
+          },
+        ],
       },
     },
     required: [

@@ -17,6 +17,14 @@ const CHAT_PENDING_KEY = "ma-shachachti:chat-pending:v1";
 
 type Household = ReturnType<typeof useHousehold>;
 
+export type ChatSendStatus = "idle" | "pending" | "thinking" | "failed";
+
+export type PendingUserMessage = {
+  text: string;
+  turnId: string;
+  createdAt: string;
+};
+
 export function useChatController(
   h: Household,
   proposalCtrl: ProposalController,
@@ -25,7 +33,12 @@ export function useChatController(
   const [draft, setDraft] = useState("");
   const [context, setContext] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
+  const [sendStatus, setSendStatus] = useState<ChatSendStatus>("idle");
+  const [pendingUserMessage, setPendingUserMessage] =
+    useState<PendingUserMessage | null>(null);
+  const [failedTurnId, setFailedTurnId] = useState<string | null>(null);
   const sendLock = useRef(false);
+  const lastFailedMessage = useRef<string | null>(null);
 
   const {
     proposal,
@@ -43,9 +56,11 @@ export function useChatController(
         return;
       sendLock.current = true;
       setThinking(true);
+      setSendStatus("pending");
       const message = text.trim();
+      let idempotencyKey = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
       try {
-        let idempotencyKey = crypto.randomUUID();
         if (mode === "cloud") {
           try {
             const raw = sessionStorage.getItem(CHAT_PENDING_KEY);
@@ -82,7 +97,17 @@ export function useChatController(
             );
           }
 
+          // Optimistic UI only — never written to AppState (avoids revision conflicts).
+          setPendingUserMessage({
+            text: message,
+            turnId: idempotencyKey,
+            createdAt,
+          });
           setDraft("");
+          setFailedTurnId(null);
+          lastFailedMessage.current = null;
+          setSendStatus("thinking");
+
           const response = await authFetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -108,9 +133,11 @@ export function useChatController(
             h.adoptRemote(data.state, data.revision);
           }
 
-          // Terminal only after successful response (including receipt on server).
+          // Server messages with same turnId replace the pending overlay.
+          setPendingUserMessage(null);
           sessionStorage.removeItem(CHAT_PENDING_KEY);
           sessionStorage.removeItem(CHAT_UI_KEY);
+          setSendStatus("idle");
 
           const proposed =
             data.proposal?.proposedActions ??
@@ -122,7 +149,6 @@ export function useChatController(
             ...(data.explicitActions ?? []),
             ...proposed,
           ]);
-          // Safety: never auto-apply task.create even if server mis-buckets.
           void auto;
           if (needConfirm.length || proposed.length) {
             const actions = (
@@ -136,7 +162,13 @@ export function useChatController(
             });
           }
         } else {
-          // Local demo: keep client turn, but never auto-apply task.create.
+          setPendingUserMessage({
+            text: message,
+            turnId: idempotencyKey,
+            createdAt,
+          });
+          setDraft("");
+          setSendStatus("thinking");
           const next = await h.commit(
             [
               {
@@ -150,7 +182,7 @@ export function useChatController(
             true,
             { turnId: idempotencyKey },
           );
-          setDraft("");
+          setPendingUserMessage(null);
           const answer = demoReply(message, next, context);
           const assistantText = answer.reply;
           await h.commit(
@@ -169,6 +201,7 @@ export function useChatController(
           const { auto, proposal: needConfirm } = partitionActionsByPolicy(
             answer.actions,
           );
+          void auto;
           if (needConfirm.length || chatActionsNeedProposal(answer.actions)) {
             persistProposal(needConfirm.length ? needConfirm : answer.actions, {
               summary:
@@ -177,23 +210,9 @@ export function useChatController(
                   : "זיהיתי משימה אחת. להוסיף אותה לרשימת המשימות?",
               sourceRevision: h.currentRevision(),
             });
-            await h.commit(
-              [
-                {
-                  type: "operation.record",
-                  turnId: idempotencyKey,
-                  summary: "proposal_pending",
-                  actionTypes: needConfirm.map((a) => a.type),
-                },
-              ],
-              false,
-              true,
-              { turnId: idempotencyKey, sealTurn: true },
-            );
-          } else if (auto.length) {
-            await h.commit(auto, false, true, {
+          } else if (answer.actions.length) {
+            await h.commit(answer.actions, false, true, {
               turnId: idempotencyKey,
-              sealTurn: true,
             });
           } else {
             await h.commit(
@@ -210,6 +229,7 @@ export function useChatController(
               { turnId: idempotencyKey, sealTurn: true },
             );
           }
+          setSendStatus("idle");
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "השיחה התעכבה.";
@@ -222,7 +242,18 @@ export function useChatController(
             ? String((e as { requestId?: string }).requestId ?? "")
             : "";
         h.setError(msg);
+        // Keep text available: restore draft + keep pending overlay for UX retry.
         setDraft(message);
+        lastFailedMessage.current = message;
+        setFailedTurnId(idempotencyKey);
+        setSendStatus("failed");
+        setPendingUserMessage((prev) =>
+          prev ?? {
+            text: message,
+            turnId: idempotencyKey,
+            createdAt,
+          },
+        );
         sessionStorage.setItem(
           CHAT_UI_KEY,
           JSON.stringify({
@@ -232,21 +263,34 @@ export function useChatController(
             at: Date.now(),
           }),
         );
-        // Keep CHAT_PENDING_KEY for cloud retry of the same turn.
       } finally {
         sendLock.current = false;
         setThinking(false);
       }
     },
-    [draft, thinking, busy, proposal, state, mode, context, h, persistProposal],
+    [draft, thinking, busy, proposal, mode, context, h, persistProposal],
   );
+
+  const retrySend = useCallback(async () => {
+    const text = lastFailedMessage.current ?? draft;
+    if (!text.trim()) return;
+    setSendStatus("pending");
+    await sendMessage(text);
+  }, [draft, sendMessage]);
 
   return {
     sendMessage,
+    retrySend,
     approveProposal,
     rejectProposal,
+    /** Alias for UX contract */
+    approve: approveProposal,
+    reject: rejectProposal,
     removeProposalAction,
     isThinking: thinking,
+    sendStatus,
+    pendingUserMessage,
+    failedTurnId,
     draft,
     setDraft,
     proposal,
@@ -260,6 +304,10 @@ export function useChatController(
     clearError: () => {
       h.setError("");
       sessionStorage.removeItem(CHAT_UI_KEY);
+      if (sendStatus === "failed") {
+        setSendStatus("idle");
+        setFailedTurnId(null);
+      }
     },
   };
 }

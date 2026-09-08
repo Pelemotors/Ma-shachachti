@@ -276,6 +276,9 @@ export function useProposalController(
     clearProposal,
     approveProposal,
     rejectProposal,
+    /** UX contract aliases */
+    approve: approveProposal,
+    reject: rejectProposal,
     removeProposalAction,
   };
 }
