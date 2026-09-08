@@ -13,6 +13,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { Task } from "@/lib/model";
+import { resolveActiveTheme } from "@/lib/seasonal-theme";
 import { useHousehold } from "@/lib/use-household";
 import { useAppNavigation } from "@/lib/use-app-navigation";
 import { VoiceButton } from "./voice-recorder";
@@ -108,6 +109,13 @@ export function HomeApp() {
     hourCycle: "h23",
   }).format(clock);
 
+  const activeTheme = resolveActiveTheme({
+    mode: state.profile.themeMode ?? "auto",
+    fixed: state.profile.fixedTheme ?? "spring",
+    clock,
+    timezone: state.profile.timezone,
+  });
+
   if (mode === "loading") return <AppLoadingGate />;
   if (mode === "choose") return <AppChooseGate onStartLocal={h.startLocal} />;
   if (!state.profile.onboarded)
@@ -135,7 +143,7 @@ export function HomeApp() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-theme={activeTheme}>
       <aside className="desktop-sidebar">
         <div className="wordmark">
           <span className="brand-mark small">מ׳</span>
