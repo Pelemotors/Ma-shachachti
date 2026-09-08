@@ -50,7 +50,7 @@ function deploymentVersion() {
  * pre-persistence; only this layer confirms a mutation after the same atomic
  * save path has accepted the actions.
  */
-export function buildExecutionReceipt(actions: Action[]) {
+function buildExecutionReceipt(actions: Action[]) {
   if (!actions.length) return "";
   if (actions.length > 1) return "ביצעתי את העדכונים.";
   const action = actions[0]!;
@@ -72,6 +72,11 @@ export function buildExecutionReceipt(actions: Action[]) {
     case "member.upsert":
     case "homeArea.upsert":
       return "פרטי הבית עודכנו.";
+    case "routine.create":
+      return "השגרה נשמרה.";
+    case "routine.update":
+    case "routine.pause":
+      return "השגרה עודכנה.";
     case "planning.set":
     case "planning.clear":
       return "השינוי להיום נשמר.";
@@ -131,8 +136,6 @@ async function saveTurnState(
   );
   if (saveError) {
     if (saveError.message.includes("revision_conflict")) {
-      // Re-read and revalidate the ordered batch as a whole. Never silently
-      // drop one semantic action while preserving a reply that assumes it ran.
       const latest = await readState(db, input.userId);
       const latestLearned = applyAgentPolicySignals(
         latest.state,
@@ -356,8 +359,8 @@ export async function POST(req: Request) {
       idempotencyKey: body.idempotencyKey,
       requestHash,
     });
-    let nextState = saved.state;
-    let nextRevision = saved.revision;
+    const nextState = saved.state;
+    const nextRevision = saved.revision;
     stateRevision = nextRevision;
 
     stage = "proposal_persist";
@@ -366,7 +369,6 @@ export async function POST(req: Request) {
     let similarHints: { title: string; existingTitle: string }[] = [];
     let proposalSummary = result.proposal?.summary ?? "";
     if (proposedActions.length) {
-      // Stamp IDs early so composed proposal actions can reference created tasks.
       const stampedEarly = stampTaskCreateIds(proposedActions);
       let requestedTodayTaskIds = resolveRequestedTodayTaskIds({
         actions: stampedEarly,
