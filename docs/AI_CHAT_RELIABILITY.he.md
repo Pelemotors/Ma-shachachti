@@ -15,10 +15,14 @@
 
 ### חורים ממשיים בקוד (לא השערות)
 
-1. Agent טוען `INSTRUCTIONS.he.md` ב־`readFile()` מ־filesystem — שברירי ב־Serverless.
-2. `/api/health` בודק רק קיום ENV ומחזיר `version: "0.1.0"` קבוע — יכול להיות ירוק כשהצ׳אט מת.
-3. הלקוח זורק תשובת AI אם `basedOnRevision !== currentRevision` בזמן חשיבת המודל.
-4. Turn מפוצל לכמה שמירות (הודעת משתמש → AI → תשובה → actions) — נקודות שבירה רבות.
+**סטטוס (עודכן אחרי ייצוב Chat → Plan → Home):**
+
+1. ~~Agent טוען `INSTRUCTIONS.he.md` ב־`readFile()`~~ — **תוקן:** הוראות ב־bundle (`lib/agent/instructions.ts`).
+2. `/api/health` — **שופר:** `deploymentVersion`, `appSchemaVersion`, `databaseReady` (ENV/RPC path), `aiConfigured`. עדיין: health ירוק ≠ צ׳אט חי; AI readiness ב־`/api/health/ai`.
+3. ~~הלקוח זורק תשובת AI על revision mismatch~~ — **תוקן בשרת:** re-read + revalidate; reply נשמר; receipt `failed` מאפשר reclaim.
+4. ~~Turn מפוצל לכמה שמירות~~ — **תוקן בענן:** server-owned turn + claim/complete receipts.
+
+**חוב טכני מתועד (לא חוסם את שרשרת Plan):** `client_upgrade_required` מלא, time-budget מתקדם, Manual QA ל־Push/OS.
 
 ---
 
@@ -380,7 +384,7 @@ PRODUCTION CHAT SMOKE = PASS
 | 5 — Failure tests | R24–R29 |
 | 6 — Release policy | R30 |
 
-**התחלה מומלצת בקוד:** הסרת `readFile(INSTRUCTIONS.he.md)` + תיקון revision rejection ב־client.
+**התחלה מומלצת בקוד:** שמירה על Instructions ב־bundle + revision revalidate בשרת + Plan sync אחרי approve (לא regex NLP).
 
 ---
 

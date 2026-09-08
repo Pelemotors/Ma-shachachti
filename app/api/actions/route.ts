@@ -9,6 +9,7 @@ import {
 } from "@/lib/server";
 import { ActionBatch, StateSchema } from "@/lib/model";
 import { applyActions } from "@/lib/engine";
+import { syncDailyPlanAfterActions } from "@/lib/domain/planning/sync-daily-plan";
 import { z } from "zod";
 
 export async function POST(req: Request) {
@@ -80,6 +81,14 @@ export async function POST(req: Request) {
       );
     }
 
+    const synced = syncDailyPlanAfterActions({
+      state: proposed,
+      actions: body.actions,
+      now: new Date(),
+      revision: body.revision,
+    });
+    proposed = synced.state;
+
     const { data, error } = await db.rpc("idempotent_save_app_state", {
       p_data: StateSchema.parse(proposed),
       p_expected_revision: body.revision,
@@ -112,9 +121,15 @@ export async function POST(req: Request) {
       requestId,
       actionCount: body.actions.length,
       revision,
+      planSyncFailed: synced.planSyncFailed,
     });
     return Response.json(
-      { state, revision, requestId },
+      {
+        state,
+        revision,
+        requestId,
+        notice: synced.planSyncFailed ? synced.notice : undefined,
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e) {

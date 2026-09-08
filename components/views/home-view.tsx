@@ -7,7 +7,7 @@ import {
   CheckCheck,
 } from "lucide-react";
 import { AppState, Action, Task } from "@/lib/model";
-import { whatMatters } from "@/lib/engine";
+import { getHomeTodayTasks } from "@/lib/domain/planning/home-today";
 import { suggestions } from "@/lib/catalog";
 import { TaskCard } from "@/components/task-card";
 import { Empty } from "@/components/empty-state";
@@ -27,7 +27,13 @@ export function HomeView(props: {
   onAction: (a: Action) => Promise<void>;
   onNewTask: () => void;
 }) {
-  const relevant = whatMatters(props.state, props.clock);
+  const { tasks: relevant, source } = getHomeTodayTasks(
+    props.state,
+    props.clock,
+  );
+  // Above-the-fold hint only for whatMatters fallback — never truncate DailyPlan.
+  const shown =
+    source === "daily_plan" ? relevant : relevant.slice(0, 6);
   return (
     <>
       <section className="greeting">
@@ -62,7 +68,7 @@ export function HomeView(props: {
             <CalendarDays size={23} />
           </span>
           <span>
-            <strong>צור לי לו״ז להיום</strong>
+            <strong>מה שונה היום?</strong>
             <small>נעשה סדר ביום שלך</small>
           </span>
           <ChevronLeft size={21} />
@@ -88,9 +94,9 @@ export function HomeView(props: {
             לכל המשימות <ChevronLeft size={16} />
           </button>
         </div>
-        {relevant.length ? (
+        {shown.length ? (
           <div className="task-list">
-            {relevant.slice(0, 3).map((t) => (
+            {shown.map((t) => (
               <TaskCard
                 state={props.state}
                 busy={props.busy}

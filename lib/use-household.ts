@@ -7,6 +7,7 @@ import {
   migrateState,
 } from "./model";
 import { applyActions } from "./engine";
+import { syncDailyPlanAfterActions } from "./domain/planning/sync-daily-plan";
 import { supabase, authFetch } from "./supabase-browser";
 import {
   fingerprintState,
@@ -163,6 +164,14 @@ export function useHousehold() {
               "המידע השתנה בחלון אחר. צריך לטעון מחדש לפני שינוי נוסף.",
             );
           next = applyActions(before.state, actions, new Date(), confirmed);
+          const synced = syncDailyPlanAfterActions({
+            state: next,
+            actions,
+            now: new Date(),
+            revision: before.revision,
+          });
+          next = synced.state;
+          if (synced.planSyncFailed && synced.notice) setNotice(synced.notice);
           persistLocalState(next);
           revision = before.revision + 1;
         } else if (before.mode === "cloud") {
@@ -192,6 +201,8 @@ export function useHousehold() {
           if (!res.ok) throw new Error(data.error);
           next = migrateState(data.state);
           revision = data.revision;
+          if (typeof data.notice === "string" && data.notice)
+            setNotice(data.notice);
           pendingCommit.current = null;
         } else throw new Error("צריך לבחור איך להתחיל.");
 

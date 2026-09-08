@@ -94,7 +94,17 @@ export function useChatController(
             }),
           });
           const data = await response.json();
-          if (!response.ok) throw new Error(data.error);
+          if (!response.ok) {
+            const err = new Error(
+              typeof data.error === "string"
+                ? data.error
+                : "השיחה התעכבה.",
+            ) as Error & { code?: string; requestId?: string };
+            if (typeof data.code === "string") err.code = data.code;
+            if (typeof data.requestId === "string")
+              err.requestId = data.requestId;
+            throw err;
+          }
 
           if (data.state && typeof data.revision === "number") {
             h.adoptRemote(data.state, data.revision);
@@ -203,11 +213,24 @@ export function useChatController(
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "השיחה התעכבה.";
+        const code =
+          e && typeof e === "object" && "code" in e
+            ? String((e as { code?: string }).code ?? "")
+            : "";
+        const requestId =
+          e && typeof e === "object" && "requestId" in e
+            ? String((e as { requestId?: string }).requestId ?? "")
+            : "";
         h.setError(msg);
         setDraft(message);
         sessionStorage.setItem(
           CHAT_UI_KEY,
-          JSON.stringify({ error: msg, at: Date.now() }),
+          JSON.stringify({
+            error: msg,
+            code: code || undefined,
+            requestId: requestId || undefined,
+            at: Date.now(),
+          }),
         );
         // Keep CHAT_PENDING_KEY for cloud retry of the same turn.
       } finally {
