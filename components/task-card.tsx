@@ -1,9 +1,10 @@
 "use client";
-import { Check, Clock3, MessageCircle } from "lucide-react";
+import { Check, ChevronLeft, Clock3, MessageCircle } from "lucide-react";
 import type { Action, AppState, Task } from "@/lib/model";
 import { categoryLabel } from "@/lib/taxonomy";
 import { estimatedMinutes, shouldAskWorkTime, blocked } from "@/lib/engine";
 import { formatTime } from "@/lib/time";
+import { emojiForTask } from "@/lib/task-emoji";
 
 export function TaskCard({
   task: t,
@@ -16,6 +17,7 @@ export function TaskCard({
   onComplete,
   onAction,
   highlight = null,
+  compact = false,
 }: {
   task: Task;
   state: AppState;
@@ -27,10 +29,74 @@ export function TaskCard({
   onComplete: (t: Task) => void;
   onAction: (a: Action) => Promise<void>;
   highlight?: "urgent" | "important" | null;
+  compact?: boolean;
 }) {
   const isDone = t.status === "done";
   const mark =
     highlight === "urgent" ? " דחוף" : highlight === "important" ? " חשוב" : "";
+
+  const completeOrToggle = () =>
+    isDone
+      ? void onAction({ type: "task.status", id: t.id, status: "open" })
+      : shouldAskWorkTime(t, state)
+        ? onComplete(t)
+        : void onAction({
+            type: "task.status",
+            id: t.id,
+            status: "done",
+          });
+
+  if (compact) {
+    const timeLabel = t.dueAt
+      ? new Intl.DateTimeFormat("he-IL", {
+          timeZone: state.profile.timezone,
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23",
+        }).format(new Date(t.dueAt))
+      : null;
+    return (
+      <article
+        className={
+          "task-card compact " +
+          (isDone ? "is-done " : "") +
+          (highlight === "urgent"
+            ? "is-urgent "
+            : highlight === "important"
+              ? "is-important "
+              : "")
+        }
+      >
+        <div className="task-top">
+          <button
+            className="task-check"
+            aria-label={
+              isDone ? "החזרת " + t.title + " לרשימה" : "סיום " + t.title
+            }
+            disabled={busy}
+            onClick={completeOrToggle}
+          >
+            {isDone && <Check size={14} />}
+          </button>
+          {timeLabel ? <span className="task-time">{timeLabel}</span> : null}
+          <span className="task-emoji" aria-hidden="true">
+            {emojiForTask(t.title, t.categoryId)}
+          </span>
+          <button className="task-title" onClick={() => onEdit(t)}>
+            <strong>{t.title}</strong>
+          </button>
+          <button
+            className="task-chevron"
+            aria-label={"פתיחת " + t.title}
+            onClick={() => onEdit(t)}
+          >
+            <ChevronLeft size={16} />
+          </button>
+        </div>
+      </article>
+    );
+  }
+
   return (
     <article
       className={
@@ -50,17 +116,7 @@ export function TaskCard({
             isDone ? "החזרת " + t.title + " לרשימה" : "סיום " + t.title
           }
           disabled={busy}
-          onClick={() =>
-            isDone
-              ? void onAction({ type: "task.status", id: t.id, status: "open" })
-              : shouldAskWorkTime(t, state)
-                ? onComplete(t)
-                : void onAction({
-                    type: "task.status",
-                    id: t.id,
-                    status: "done",
-                  })
-          }
+          onClick={completeOrToggle}
         >
           {isDone && <Check size={17} />}
         </button>

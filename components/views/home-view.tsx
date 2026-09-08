@@ -94,13 +94,14 @@ export function HomeView(props: {
           </button>
         </div>
         {shown.length ? (
-          <div className="task-list">
+          <div className="task-list compact">
             {shown.map((t) => (
               <TaskCard
                 state={props.state}
                 busy={props.busy}
                 clock={props.clock}
-                detailed={props.detailed}
+                detailed={false}
+                compact
                 onEdit={props.onEdit}
                 onChat={props.onChat}
                 onComplete={props.onComplete}
