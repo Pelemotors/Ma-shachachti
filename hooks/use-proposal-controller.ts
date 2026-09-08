@@ -32,10 +32,15 @@ export function useProposalController(
   }>({ proposalId: null, summary: "", similarHints: [] });
   const proposalRevision = useRef(0);
   const approveLock = useRef(false);
+  /** Stable per proposal approval attempt — reused on network retry. */
+  const approveIdempotencyKey = useRef<string | null>(null);
+  const approveKeyProposalId = useRef<string | null>(null);
 
   const clearProposal = useCallback(() => {
     setProposal(null);
     setProposalMeta({ proposalId: null, summary: "", similarHints: [] });
+    approveIdempotencyKey.current = null;
+    approveKeyProposalId.current = null;
     sessionStorage.removeItem(CHAT_UI_KEY);
   }, []);
 
@@ -180,7 +185,14 @@ export function useProposalController(
     approveLock.current = true;
     try {
       if (opts.mode === "cloud" && proposalMeta.proposalId) {
-        const key = crypto.randomUUID();
+        if (
+          approveKeyProposalId.current !== proposalMeta.proposalId ||
+          !approveIdempotencyKey.current
+        ) {
+          approveKeyProposalId.current = proposalMeta.proposalId;
+          approveIdempotencyKey.current = crypto.randomUUID();
+        }
+        const key = approveIdempotencyKey.current;
         const res = await authFetch("/api/proposals/approve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -194,7 +206,7 @@ export function useProposalController(
         if (!res.ok) throw new Error(data.error);
         h.adoptRemote(data.state, data.revision);
         clearProposal();
-        h.setNotice(data.notice || "השינוי נשמר");
+        h.setNotice(data.notice || "נוספה משימה.");
         return;
       }
 
@@ -228,9 +240,7 @@ export function useProposalController(
       if (added && skip)
         h.setNotice(`נוספו ${added} משימות. ${skip} כבר היו ברשימה.`);
       else if (added)
-        h.setNotice(
-          added === 1 ? "נוספה משימה אחת." : `נוספו ${added} משימות.`,
-        );
+        h.setNotice(added === 1 ? "נוספה משימה." : `נוספו ${added} משימות.`);
       else if (skip) h.setNotice("המשימות כבר היו ברשימה.");
     } catch (e) {
       h.setError(e instanceof Error ? e.message : "לא נשמר");

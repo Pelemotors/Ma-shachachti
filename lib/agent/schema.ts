@@ -138,6 +138,20 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
     a.title = a.item;
   if (a.type === "reminder.add" && typeof a.at === "string" && a.dueAt == null)
     a.dueAt = a.at;
+  if (a.type === "task.create") {
+    const task =
+      a.task && typeof a.task === "object" && !Array.isArray(a.task)
+        ? { ...(a.task as Record<string, unknown>) }
+        : {};
+    if (typeof a.title === "string" && typeof task.title !== "string")
+      task.title = a.title;
+    if (typeof a.text === "string" && typeof task.title !== "string")
+      task.title = a.text;
+    if (task.kind == null) task.kind = "task";
+    a.task = task;
+    delete a.title;
+    delete a.text;
+  }
   if (a.type === "fact.add") {
     if (typeof a.id === "string" && a.id.startsWith("forecast:")) {
       if (typeof a.text !== "string" || !a.text.startsWith("forecast:"))
@@ -247,20 +261,27 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       if (parsed.success) proposedActions.push(parsed.data);
       else rejected.push(item);
     }
+    const reasonAllowed = [
+      "ai_invented_plan",
+      "bulk_change",
+      "schedule_shift",
+      "shopping_derived",
+      "destructive",
+      "new_tasks",
+      "other",
+    ] as const;
+    const reasonRaw = typeof pRaw.reason === "string" ? pRaw.reason : "other";
+    const reason = (reasonAllowed as readonly string[]).includes(reasonRaw)
+      ? reasonRaw
+      : proposedActions.some((a) => a.type === "task.create")
+        ? "new_tasks"
+        : "other";
     const head = z
       .object({
         summary: z.string().min(1).max(800),
-        reason: z.enum([
-          "ai_invented_plan",
-          "bulk_change",
-          "schedule_shift",
-          "shopping_derived",
-          "destructive",
-          "new_tasks",
-          "other",
-        ]),
+        reason: z.enum(reasonAllowed),
       })
-      .safeParse({ summary: pRaw.summary, reason: pRaw.reason ?? "other" });
+      .safeParse({ summary: pRaw.summary, reason });
     if (head.success)
       proposal = {
         summary: head.data.summary,

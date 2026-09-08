@@ -9,6 +9,7 @@ import {
 } from "@/lib/domain/tasks/dedupe";
 import { syncDailyPlanAfterActions } from "@/lib/domain/planning/sync-daily-plan";
 import {
+  buildApproveTaskNotice,
   countPlannedCreates,
   resolveRequestedTodayTaskIds,
   stampTaskCreateIds,
@@ -296,44 +297,18 @@ export async function approvePendingProposal(
     .filter((t) => !beforeIds.has(t.id))
     .map((t) => t.id);
   const plannedCreates = countPlannedCreates(newTaskIds, plan?.items);
-
-  let notice = "";
-  if (synced.planSyncFailed) {
-    notice =
-      appliedCount > 0
-        ? `נוספו ${appliedCount} משימות. הלו״ז לא עודכן.`
-        : "המשימות נשמרו אבל הלו״ז לא עודכן.";
-  } else if (synced.requiresProposal) {
-    notice =
-      appliedCount > 0
-        ? `נוספו ${appliedCount} משימות. ${synced.notice ?? "עדכון הלו״ז דורש אישור."}`
-        : (synced.notice ?? "");
-  } else if (appliedCount && skippedCount)
-    notice = `נוספו ${appliedCount} משימות. ${skippedCount} כבר היו ברשימה.`;
-  else if (
-    appliedCount &&
-    (payload.affectsToday || payload.requestedTodayTaskIds.length) &&
-    plan
-  ) {
-    const inPlan = plannedCreates;
-    notice =
-      inPlan < appliedCount
-        ? `שמרתי את כל ${appliedCount} המשימות. ${inPlan} נכנסו ללו״ז של היום והשאר נשארו להמשך.`
-        : inPlan === 0
-          ? appliedCount === 1
-            ? "נוספה משימה אחת."
-            : `נוספו ${appliedCount} משימות.`
-          : appliedCount === 1
-            ? "נוספה משימה אחת ללו״ז."
-            : `נוספו ${appliedCount} משימות ללו״ז.`;
-  } else if (appliedCount)
-    notice =
-      appliedCount === 1 ? "נוספה משימה אחת." : `נוספו ${appliedCount} משימות.`;
-  else if (skippedCount)
-    notice =
-      skippedCount === 1
-        ? "המשימה כבר הייתה ברשימה."
-        : `${skippedCount} משימות כבר היו ברשימה.`;
+  const todayIntent = Boolean(
+    payload.affectsToday || payload.requestedTodayTaskIds.length,
+  );
+  const notice = buildApproveTaskNotice({
+    appliedCount,
+    skippedCount,
+    todayIntent,
+    plannedCreates,
+    planSyncFailed: synced.planSyncFailed,
+    requiresProposal: synced.requiresProposal,
+    syncedNotice: synced.notice,
+  });
 
   return {
     state: finalState,

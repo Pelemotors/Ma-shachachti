@@ -24,14 +24,15 @@ export function resolveRequestedTodayTaskIds(input: {
   requestedTodayCreateIndexes?: number[] | null;
   existingIds?: string[];
 }): string[] {
-  if (input.existingIds?.length && !input.affectsToday) {
+  // Prefer already-resolved server IDs (survives re-stamp / re-persist).
+  if (input.existingIds?.length) {
     return [...new Set(input.existingIds)];
   }
   const creates = input.actions.filter(
     (a): a is Extract<Action, { type: "task.create" }> =>
       a.type === "task.create" && Boolean(a.task.id),
   );
-  if (!input.affectsToday && !input.existingIds?.length) return [];
+  if (!input.affectsToday) return [];
 
   const indexes = input.requestedTodayCreateIndexes;
   if (indexes && indexes.length > 0) {
@@ -42,10 +43,59 @@ export function resolveRequestedTodayTaskIds(input: {
     return [...new Set(picked)];
   }
 
-  if (input.affectsToday) {
-    return [...new Set(creates.map((c) => c.task.id!).filter(Boolean))];
+  return [...new Set(creates.map((c) => c.task.id!).filter(Boolean))];
+}
+
+/** Truthful post-approve notices — never claim plan placement without exact taskId. */
+export function buildApproveTaskNotice(input: {
+  appliedCount: number;
+  skippedCount: number;
+  todayIntent: boolean;
+  plannedCreates: number;
+  planSyncFailed?: boolean;
+  requiresProposal?: boolean;
+  syncedNotice?: string;
+}): string {
+  const { appliedCount, skippedCount, todayIntent, plannedCreates } = input;
+  if (input.planSyncFailed) {
+    return appliedCount > 0
+      ? appliedCount === 1
+        ? "נוספה משימה. הלו״ז לא עודכן."
+        : `נוספו ${appliedCount} משימות. הלו״ז לא עודכן.`
+      : "המשימות נשמרו אבל הלו״ז לא עודכן.";
   }
-  return [...new Set(input.existingIds ?? [])];
+  if (input.requiresProposal) {
+    return appliedCount > 0
+      ? `${appliedCount === 1 ? "נוספה משימה." : `נוספו ${appliedCount} משימות.`} ${input.syncedNotice ?? "עדכון הלו״ז דורש אישור."}`
+      : (input.syncedNotice ?? "");
+  }
+  if (appliedCount && skippedCount) {
+    return `נוספו ${appliedCount} משימות. ${skippedCount} כבר היו ברשימה.`;
+  }
+  if (appliedCount && todayIntent) {
+    if (plannedCreates <= 0) {
+      return appliedCount === 1
+        ? "המשימה נשמרה, אבל לא נכנסה כרגע ללו״ז של היום."
+        : "המשימות נשמרו, אבל לא נכנסו כרגע ללו״ז של היום.";
+    }
+    if (plannedCreates >= appliedCount) {
+      return appliedCount === 1
+        ? "נוספה משימה ללו״ז של היום."
+        : `נוספו ${appliedCount} משימות ללו״ז של היום.`;
+    }
+    return `נוספו ${appliedCount} משימות. ${plannedCreates} נכנסו ללו״ז של היום והשאר נשארו להמשך.`;
+  }
+  if (appliedCount) {
+    return appliedCount === 1
+      ? "נוספה משימה."
+      : `נוספו ${appliedCount} משימות.`;
+  }
+  if (skippedCount) {
+    return skippedCount === 1
+      ? "המשימה כבר הייתה ברשימה."
+      : `${skippedCount} משימות כבר היו ברשימה.`;
+  }
+  return "";
 }
 
 export function taskCreateRelevantToToday(
