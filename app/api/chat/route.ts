@@ -45,6 +45,51 @@ function deploymentVersion() {
   );
 }
 
+/**
+ * Server-grounded execution acknowledgement. The model's reply is deliberately
+ * pre-persistence; only this layer confirms a mutation after the same atomic
+ * save path has accepted the actions.
+ */
+export function buildExecutionReceipt(actions: Action[]) {
+  if (!actions.length) return "";
+  if (actions.length > 1) return "ביצעתי את העדכונים.";
+  const action = actions[0]!;
+  switch (action.type) {
+    case "reminder.add":
+      return "התזכורת נוספה.";
+    case "reminder.update":
+      return "התזכורת עודכנה.";
+    case "reminder.cancel":
+      return "התזכורת בוטלה.";
+    case "shopping.add":
+    case "shopping.check":
+      return "רשימת הקניות עודכנה.";
+    case "fact.add":
+      return "המידע נשמר.";
+    case "fact.update":
+      return "המידע עודכן.";
+    case "profile.update":
+    case "member.upsert":
+    case "homeArea.upsert":
+      return "פרטי הבית עודכנו.";
+    case "planning.set":
+    case "planning.clear":
+      return "השינוי להיום נשמר.";
+    case "template.exclude":
+    case "template.restore":
+      return "ההעדפה נשמרה.";
+    case "task.update":
+    case "task.status":
+    case "task.start":
+    case "task.defer":
+    case "task.deferUntil":
+    case "task.step":
+      return "המשימה עודכנה.";
+    default:
+      return "בוצע.";
+  }
+}
+
 async function saveTurnState(
   db: Awaited<ReturnType<typeof authorize>>["db"],
   input: {
@@ -86,32 +131,31 @@ async function saveTurnState(
   );
   if (saveError) {
     if (saveError.message.includes("revision_conflict")) {
-      // R07: re-read latest, revalidate, keep reply path viable.
-      // Re-apply policy learning to the latest state exactly once for this turn.
+      // Re-read and revalidate the ordered batch as a whole. Never silently
+      // drop one semantic action while preserving a reply that assumes it ran.
       const latest = await readState(db, input.userId);
       const latestLearned = applyAgentPolicySignals(
         latest.state,
         input.policySignals ?? [],
         new Date(),
       );
-      const retryActions: Action[] = [];
-      for (const action of input.actions) {
-        try {
-          applyActions(latestLearned, [action], new Date(), false);
-          retryActions.push(action);
-        } catch {
-          /* drop invalid against latest */
+      let simulated = latestLearned;
+      try {
+        for (const action of input.actions) {
+          simulated = applyActions(simulated, [action], new Date(), false);
         }
+      } catch {
+        throw new ApiError(
+          409,
+          "המידע השתנה בזמן השיחה. אפשר לשלוח שוב כדי שאעדכן לפי המצב החדש.",
+          "revision_conflict",
+        );
       }
-      let retryState = applyActions(
-        latestLearned,
-        retryActions,
-        new Date(),
-        false,
-      );
+
+      let retryState = simulated;
       const retrySync = syncDailyPlanAfterActions({
         state: retryState,
-        actions: retryActions,
+        actions: input.actions,
         affectsToday: input.affectsToday,
         requestedTodayTaskIds: input.requestedTodayTaskIds,
         now: new Date(),
@@ -183,12 +227,14 @@ export async function POST(req: Request) {
         );
       }
     }
+
     const body = z
       .object({
         message: z.string().trim().min(1).max(6000),
         contextTaskId: z.string().uuid().nullable().optional(),
         idempotencyKey: z.string().uuid(),
         turnId: z.string().uuid().optional(),
+        surface: z.enum(["chat", "memory", "planning"]).optional(),
       })
       .parse(await jsonBody(req, 20_000));
     turnId = body.turnId ?? body.idempotencyKey;
@@ -199,6 +245,7 @@ export async function POST(req: Request) {
           message: body.message,
           contextTaskId: body.contextTaskId ?? null,
           turnId,
+          surface: body.surface ?? "chat",
         }),
       )
       .digest("hex");
@@ -246,15 +293,20 @@ export async function POST(req: Request) {
       contextTaskId: body.contextTaskId ?? null,
       turnId,
       requestId,
+      surface: body.surface ?? "chat",
     });
     selectedModel = result.selectedModel;
 
     stage = "grounding";
-    const assistantText =
+    const conversationalText =
       result.clarification?.question &&
       !result.reply.includes(result.clarification.question)
         ? `${result.reply}\n\n${result.clarification.question}`
         : result.reply;
+    const receipt = buildExecutionReceipt(result.explicitActions ?? []);
+    const assistantText = receipt
+      ? `${conversationalText}\n\n${receipt}`
+      : conversationalText;
 
     const memoryActions: Action[] = [];
     if (
@@ -314,7 +366,7 @@ export async function POST(req: Request) {
     let similarHints: { title: string; existingTitle: string }[] = [];
     let proposalSummary = result.proposal?.summary ?? "";
     if (proposedActions.length) {
-      // Stamp IDs early so today-intent indexes resolve before filtering drops creates.
+      // Stamp IDs early so composed proposal actions can reference created tasks.
       const stampedEarly = stampTaskCreateIds(proposedActions);
       let requestedTodayTaskIds = resolveRequestedTodayTaskIds({
         actions: stampedEarly,
