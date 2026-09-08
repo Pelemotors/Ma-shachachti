@@ -10,7 +10,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "lint": "npm run typecheck",
-    "format:check": "prettier --check . --ignore-path .gitignore || (prettier --write lib/domain/agent-policy.ts tests/personal-agent-policy.test.ts && git diff -- lib/domain/agent-policy.ts tests/personal-agent-policy.test.ts && exit 1)",
+    "format:check": "prettier --check . --ignore-path .gitignore",
     "format": "prettier --write . --ignore-path .gitignore",
     "e2e": "playwright test",
     "deps:check": "node scripts/check-dep-boundaries.mjs",
