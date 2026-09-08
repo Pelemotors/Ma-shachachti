@@ -167,6 +167,11 @@ export const ProfileSchema = z.object({
   }, "Invalid timezone"),
   quietStart: z.number().int().min(0).max(23),
   quietEnd: z.number().int().min(0).max(23),
+  /** UI seasonal theme: auto by calendar month, or fixed choice. */
+  themeMode: z.enum(["auto", "fixed"]).default("auto"),
+  fixedTheme: z
+    .enum(["spring", "summer", "autumn", "winter"])
+    .default("spring"),
   /** Weekdays 0=Sun … 6=Sat when household typically cleans. */
   householdRoutines: z
     .object({
@@ -627,6 +632,8 @@ export function emptyState(): AppState {
       timezone: "Asia/Jerusalem",
       quietStart: 22,
       quietEnd: 7,
+      themeMode: "auto",
+      fixedTheme: "spring",
       householdRoutines: { cleaningDays: [] },
       cleaner: { enabled: false, visitsPerWeek: 0, days: [] },
     },

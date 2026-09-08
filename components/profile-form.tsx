@@ -1,6 +1,12 @@
 "use client";
 import { useState } from "react";
 import { Profile, Action } from "@/lib/model";
+import {
+  SEASON_THEMES,
+  THEME_LABELS,
+  type SeasonTheme,
+  type ThemeMode,
+} from "@/lib/theme-config";
 export function ProfileForm({
   profile,
   onSave,
@@ -33,6 +39,8 @@ export function ProfileForm({
           householdRoutines: {
             cleaningDays: p.householdRoutines?.cleaningDays ?? [],
           },
+          themeMode: p.themeMode ?? "auto",
+          fixedTheme: p.fixedTheme ?? "spring",
           onboarded: true,
         },
       });
@@ -263,6 +271,41 @@ export function ProfileForm({
       </fieldset>
       {!onboarding && (
         <>
+          <fieldset className="stack theme-settings">
+            <legend>ערכת נושא עונתית</legend>
+            <label>
+              מצב
+              <select
+                value={p.themeMode ?? "auto"}
+                onChange={(e) =>
+                  patch({ themeMode: e.target.value as ThemeMode })
+                }
+              >
+                <option value="auto">אוטומטי לפי עונה</option>
+                <option value="fixed">קבוע</option>
+              </select>
+            </label>
+            {(p.themeMode ?? "auto") === "fixed" && (
+              <label>
+                עונה קבועה
+                <select
+                  value={p.fixedTheme ?? "spring"}
+                  onChange={(e) =>
+                    patch({ fixedTheme: e.target.value as SeasonTheme })
+                  }
+                >
+                  {SEASON_THEMES.map((theme) => (
+                    <option key={theme} value={theme}>
+                      {THEME_LABELS[theme]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <small>
+              במצב אוטומטי הצבעים משתנים לפי החודש באזור הזמן של הבית.
+            </small>
+          </fieldset>
           <label className="check-line">
             <input
               type="checkbox"
