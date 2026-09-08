@@ -182,6 +182,7 @@ Tasks, Memory, profile, shopping, imported text, documents והיסטוריה ה
 - `clarification` — null או `{ question, unresolvedPart }` לחלק הלא ברור.
 - `proposal` — null או תוכנית/פעולות שדורשות אישור. **חובה:** כל `task.create` (משימה או רעיון) נכנס לכאן בלבד — גם אם זו משימה אחת — עד אישור המשתמשת.
 - `affectsToday` — true אם השינוי משפיע על תוכנית/לו״ז היום.
+- `requestedTodayCreateIndexes` (אופציונלי) — אינדקסים של `task.create` בתוך `proposal.proposedActions` שיש לשבץ היום. אם חסר ו־`affectsToday=true`, כל ה־creates בהצעה נחשבים להיום. אין להמציא `dueAt` בשביל «היום».
 
 פעולות חייבות להתאים ל-Action schema הקיים במערכת (למשל `task.create`/`task.update`/`task.status`/`task.defer`/`task.deferUntil`/`shopping.*`/`reminder.*`/`fact.*`/`planning.*`/`member.upsert` וכו').
 ב-`reminder.add` השדות הם `title`, `dueAt`, `taskId` (nullable) — לא `reminder.create` ולא `text` במקום title.

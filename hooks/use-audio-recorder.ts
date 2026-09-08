@@ -10,6 +10,10 @@ import {
   shouldKeepBlobAfterTranscribe,
 } from "@/lib/audio/recorder-helpers";
 import { messageForCode } from "@/lib/errors";
+import {
+  queryMicrophoneStatus,
+  requestMicrophonePermission,
+} from "@/hooks/use-device-permissions";
 
 export type { RecorderPhase };
 export {
@@ -22,15 +26,12 @@ export {
   shouldKeepBlobAfterTranscribe,
 } from "@/lib/audio/recorder-helpers";
 
+const MIC_BLOCKED_HE = "המיקרופון חסום. אפשר לשנות זאת בהרשאות.";
+
+/** Thin wrapper — prefer requestMicrophonePermission for rich status/codes. */
 export async function requestMicPermissionOnly(): Promise<boolean> {
-  try {
-    if (!navigator.mediaDevices?.getUserMedia) return false;
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((t) => t.stop());
-    return true;
-  } catch {
-    return false;
-  }
+  const result = await requestMicrophonePermission();
+  return result.status === "granted";
 }
 
 export function useAudioRecorder() {
@@ -131,6 +132,12 @@ export function useAudioRecorder() {
         typeof MediaRecorder === "undefined"
       )
         throw new Error(messageForCode("recording_unsupported"));
+      const known = await queryMicrophoneStatus();
+      if (known === "denied") {
+        setPhase("error");
+        setError(MIC_BLOCKED_HE);
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (cancelled.current) {
         stream.getTracks().forEach((t) => t.stop());
@@ -201,7 +208,7 @@ export function useAudioRecorder() {
         (e.name === "NotAllowedError" || e.name === "PermissionDeniedError");
       setError(
         denied
-          ? messageForCode("microphone_denied")
+          ? MIC_BLOCKED_HE
           : e instanceof Error
             ? e.message
             : messageForCode("recording_unsupported"),

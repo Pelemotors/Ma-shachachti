@@ -52,7 +52,7 @@ ai.failure stage=load_agent code=agent_instructions_unavailable deployment=abc12
 **אסור:**
 
 ```ts
-await readFile(process.cwd() + "/lib/agent/INSTRUCTIONS.he.md")
+await readFile(process.cwd() + "/lib/agent/INSTRUCTIONS.he.md");
 ```
 
 **חובה:** הוראות כחלק מה־bundle, למשל `lib/agent/instructions.ts`:
@@ -96,7 +96,9 @@ import { AGENT_INSTRUCTIONS } from "./instructions";
 להחזיר למשל:
 
 ```ts
-{ buildVersion, gitCommitSha, schemaVersion, agentContractVersion }
+{
+  (buildVersion, gitCommitSha, schemaVersion, agentContractVersion);
+}
 ```
 
 מטרה: לדעת איזו Frontend דיברה עם איזו Backend.
@@ -106,8 +108,8 @@ import { AGENT_INSTRUCTIONS } from "./instructions";
 ## R05 — Versioned Chat Contract
 
 ```ts
-CHAT_API_VERSION = 2
-AGENT_CONTRACT_VERSION = 2
+CHAT_API_VERSION = 2;
+AGENT_CONTRACT_VERSION = 2;
 ```
 
 Client שולח `apiVersion`, `clientVersion`, `message`, `turnId`.
@@ -121,9 +123,9 @@ Client שולח `apiVersion`, `clientVersion`, `message`, `turnId`.
 
 על `client_upgrade_required`:
 
-1. לשמור draft + pending turn  
-2. UI: „עלתה גרסה חדשה… מעדכן”  
-3. Reload מבוקר  
+1. לשמור draft + pending turn
+2. UI: „עלתה גרסה חדשה… מעדכן”
+3. Reload מבוקר
 
 לא להשאיר Send על Client לא תואם.
 
@@ -169,10 +171,10 @@ POST /api/chat
 
 Retry אחרי ניתוק רשת:
 
-- לא יוצר Task חדש  
-- לא שולח הודעת משתמש שוב  
-- לא מפעיל Action פעמיים  
-- מחזיר את אותה תוצאה  
+- לא יוצר Task חדש
+- לא שולח הודעת משתמש שוב
+- לא מפעיל Action פעמיים
+- מחזיר את אותה תוצאה
 
 ---
 
@@ -193,9 +195,9 @@ Structured Output נשאר.
 
 **לא** על:
 
-- insufficient_quota  
-- invalid API key  
-- global configuration error  
+- insufficient_quota
+- invalid API key
+- global configuration error
 
 ---
 
@@ -289,12 +291,12 @@ UI: „לא הצלחתי לקבל תשובה כרגע. ההודעה שלך נש�
 
 ## R21 — Error UX לפי סוג
 
-| סוג | מסר |
-|-----|-----|
-| timeout | לקח יותר מדי זמן — לנסות שוב |
-| provider | שירות ה־AI לא זמין כרגע |
-| client old | עלתה גרסה חדשה — מעדכן |
-| DB/version | המערכת מתעדכנת — נסי בעוד רגע |
+| סוג             | מסר                                 |
+| --------------- | ----------------------------------- |
+| timeout         | לקח יותר מדי זמן — לנסות שוב        |
+| provider        | שירות ה־AI לא זמין כרגע             |
+| client old      | עלתה גרסה חדשה — מעדכן              |
+| DB/version      | המערכת מתעדכנת — נסי בעוד רגע       |
 | action conflict | להציג reply ולהסביר שהשינוי לא נשמר |
 
 ---
@@ -352,8 +354,8 @@ Schema נבנה; valid decision עובר; invalid נכשל; parser isolation ע�
 
 ## R29 — Smoke scripts
 
-- `scripts/ai-smoke.ts` — Provider/Agent  
-- `scripts/prod-chat-smoke.ts` — Chat application flow  
+- `scripts/ai-smoke.ts` — Provider/Agent
+- `scripts/prod-chat-smoke.ts` — Chat application flow
 
 ---
 
@@ -375,14 +377,14 @@ PRODUCTION CHAT SMOKE = PASS
 
 ## סדר ביצוע מומלץ
 
-| Phase | פריטים |
-|-------|--------|
-| 1 — נקודת שבר | R01–R04 |
-| 2 — Turn עמיד | R07–R12 |
-| 3 — Deploy safety | R05–R06, R13–R18 |
-| 4 — UX/אבחון | R19–R23 |
-| 5 — Failure tests | R24–R29 |
-| 6 — Release policy | R30 |
+| Phase              | פריטים           |
+| ------------------ | ---------------- |
+| 1 — נקודת שבר      | R01–R04          |
+| 2 — Turn עמיד      | R07–R12          |
+| 3 — Deploy safety  | R05–R06, R13–R18 |
+| 4 — UX/אבחון       | R19–R23          |
+| 5 — Failure tests  | R24–R29          |
+| 6 — Release policy | R30              |
 
 **התחלה מומלצת בקוד:** שמירה על Instructions ב־bundle + revision revalidate בשרת + Plan sync אחרי approve (לא regex NLP).
 
@@ -392,12 +394,12 @@ PRODUCTION CHAT SMOKE = PASS
 
 לפני סגירת התקלה:
 
-1. Deploy ראשון/שני/שלישי — Chat לפני ואחרי; PWA פתוח ממשיך.  
-2. Retry לא מכפיל.  
-3. Migration לא שוברת Chat.  
-4. Timeout מציג Retry.  
-5. Revision conflict לא מעלים reply.  
-6. Health מזהה OpenAI שבור.  
+1. Deploy ראשון/שני/שלישי — Chat לפני ואחרי; PWA פתוח ממשיך.
+2. Retry לא מכפיל.
+3. Migration לא שוברת Chat.
+4. Timeout מציג Retry.
+5. Revision conflict לא מעלים reply.
+6. Health מזהה OpenAI שבור.
 7. Release Gate תופס לפני משתמש.
 
 Semantic-first נשאר בתוקף: אין „תיקון” באמצעות מילוני regex.
@@ -459,16 +461,16 @@ Production build לא יכול לעלות בלי Instructions.
 
 ## T05 — OpenAI provider mocked failures
 
-| Mock | Expected code |
-|------|----------------|
-| 401/403 | `ai_configuration` |
-| 429 quota | `ai_insufficient_quota` |
-| 429 רגיל | `ai_rate_limited` |
-| 500/502 | `ai_upstream` |
-| timeout | `ai_timeout` |
-| network | `ai_network` |
-| completed בלי text | `ai_empty` |
-| status ≠ completed | `ai_incomplete` |
+| Mock               | Expected code           |
+| ------------------ | ----------------------- |
+| 401/403            | `ai_configuration`      |
+| 429 quota          | `ai_insufficient_quota` |
+| 429 רגיל           | `ai_rate_limited`       |
+| 500/502            | `ai_upstream`           |
+| timeout            | `ai_timeout`            |
+| network            | `ai_network`            |
+| completed בלי text | `ai_empty`              |
+| status ≠ completed | `ai_incomplete`         |
 
 ---
 
@@ -557,7 +559,11 @@ Mismatch ידוע → Health/readiness מפורש; לא Internal Error על `/ap
 ## T17 — Error payload אחיד
 
 ```ts
-{ error: string; code: string; requestId: string; /* + version metadata אם יש */ }
+{
+  error: string;
+  code: string;
+  requestId: string; /* + version metadata אם יש */
+}
 ```
 
 Client שומר `code` + `requestId`, לא רק `throw new Error(data.error)`.
@@ -612,30 +618,30 @@ E2E שדורש auth/credentials/מכשיר → `skipped` עם סיבה. לדוו
 
 ## תנאי PASS — טבלת סיום חובה
 
-| תחום | תוצאה |
-|------|--------|
-| Chat contract | PASS/FAIL |
-| Backward compatibility | PASS/FAIL |
-| Turn idempotency | PASS/FAIL |
-| Retry after failure | PASS/FAIL |
-| Revision conflict | PASS/FAIL |
-| Agent schema/parser | PASS/FAIL |
-| OpenAI mocked failures | PASS/FAIL |
-| Model fallback | PASS/FAIL |
-| Production build chat | PASS/FAIL |
-| Health/versioning | PASS/FAIL |
-| DB/state compatibility | PASS/FAIL |
-| Service Worker no API cache | PASS/FAIL |
-| UI error/retry | PASS/FAIL |
-| Live OpenAI smoke | PASS / NOT RUN |
-| Playwright | X pass / Y skipped |
+| תחום                        | תוצאה              |
+| --------------------------- | ------------------ |
+| Chat contract               | PASS/FAIL          |
+| Backward compatibility      | PASS/FAIL          |
+| Turn idempotency            | PASS/FAIL          |
+| Retry after failure         | PASS/FAIL          |
+| Revision conflict           | PASS/FAIL          |
+| Agent schema/parser         | PASS/FAIL          |
+| OpenAI mocked failures      | PASS/FAIL          |
+| Model fallback              | PASS/FAIL          |
+| Production build chat       | PASS/FAIL          |
+| Health/versioning           | PASS/FAIL          |
+| DB/state compatibility      | PASS/FAIL          |
+| Service Worker no API cache | PASS/FAIL          |
+| UI error/retry              | PASS/FAIL          |
+| Live OpenAI smoke           | PASS / NOT RUN     |
+| Playwright                  | X pass / Y skipped |
 
 בנוסף לדוח:
 
-1. מספר tests לפני/אחרי  
-2. Bugs שנמצאו  
-3. Bugs שתוקנו  
-4. בדיקות שלא בוצעו ולמה  
+1. מספר tests לפני/אחרי
+2. Bugs שנמצאו
+3. Bugs שתוקנו
+4. בדיקות שלא בוצעו ולמה
 5. **לא לערבב אוטומציה שעברה עם Manual QA שעוד לא בוצע**
 
 המיקוד: **Chat עמיד לגרסאות, Retry, State changes וכשלי OpenAI/DB — בלי Push פיזי בסבב הזה.**

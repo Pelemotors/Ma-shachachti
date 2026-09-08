@@ -14,16 +14,19 @@ import { Action, AppState } from "@/lib/model";
 import { ProfileForm } from "@/components/profile-form";
 import { ViewHeader } from "@/components/view-header";
 import type { AppView } from "@/components/view-header";
+import { DevicePermissionsPanel } from "@/components/device-permissions-panel";
 
 export function SettingsView(props: {
   state: AppState;
   mode: string;
   pushBusy: boolean;
   pushEnabled: boolean;
+  pushReady?: boolean;
   run: (actions: Action[], confirmed?: boolean) => Promise<void>;
   onNavigate: (v: AppView) => void;
   onExport: () => void;
-  onTogglePush: () => void;
+  onEnablePush: () => void;
+  onDisablePush: () => void;
   onClearHistory: () => void;
   onSignOut: () => void;
 }) {
@@ -119,6 +122,13 @@ export function SettingsView(props: {
           הוספה
         </button>
       </section>
+      <DevicePermissionsPanel
+        mode={props.mode}
+        pushEnabled={props.pushEnabled}
+        pushBusy={props.pushBusy}
+        pushReady={props.pushReady}
+        onEnablePush={props.onEnablePush}
+      />
       <div className="settings-links">
         <button onClick={() => props.onNavigate("memory")}>
           <BookOpen size={20} />
@@ -147,10 +157,10 @@ export function SettingsView(props: {
           <Download size={20} />
           שחזור גיבוי
         </button>
-        {props.mode === "cloud" && (
-          <button disabled={props.pushBusy} onClick={props.onTogglePush}>
+        {props.mode === "cloud" && props.pushEnabled && (
+          <button disabled={props.pushBusy} onClick={props.onDisablePush}>
             <Bell size={20} />
-            {props.pushEnabled ? "כיבוי התראות במכשיר" : "הפעלת התראות במכשיר"}
+            כיבוי התראות במכשיר
           </button>
         )}
         <button onClick={props.onClearHistory}>

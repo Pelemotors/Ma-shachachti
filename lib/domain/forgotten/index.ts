@@ -28,7 +28,11 @@ export function isRoutineException(
   now: Date,
 ): boolean {
   if (task.priority >= 3) return true;
-  if (task.dueAt) return true;
+  if (task.dueAt) {
+    const hours = (Date.parse(task.dueAt) - now.getTime()) / 3600000;
+    // Only near/overdue deadlines elevate routine into WhatForgot.
+    if (Number.isFinite(hours) && hours < 48) return true;
+  }
   if (
     task.categoryId === "laundry" &&
     task.waitMinutes > 0 &&
@@ -37,10 +41,15 @@ export function isRoutineException(
     return true;
   const dependsOnWaiting = task.dependsOn.some((id) => {
     const d = state.tasks.find((x) => x.id === id);
-    return d && d.waitMinutes > 0 && d.status === "done";
+    return (
+      d &&
+      d.waitMinutes > 0 &&
+      d.status === "done" &&
+      d.completedAt &&
+      Date.parse(d.completedAt) + d.waitMinutes * 60000 <= now.getTime()
+    );
   });
   if (dependsOnWaiting && isRoutineHousehold(task)) return true;
-  void now;
   return false;
 }
 

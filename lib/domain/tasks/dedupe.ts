@@ -19,9 +19,7 @@ export type TaskDedupeMatch =
 
 function isActiveOpen(t: Task) {
   return (
-    t.status === "open" ||
-    t.status === "in_progress" ||
-    t.status === "unknown"
+    t.status === "open" || t.status === "in_progress" || t.status === "unknown"
   );
 }
 
@@ -61,8 +59,7 @@ export function classifyTaskDuplicate(
   }
 
   const exact = active.find(
-    (t) =>
-      normalize(t.title) === title && t.kind === kind && t.dueAt === dueAt,
+    (t) => normalize(t.title) === title && t.kind === kind && t.dueAt === dueAt,
   );
   if (exact) return { confidence: "exact", task: exact };
 

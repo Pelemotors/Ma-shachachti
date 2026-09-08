@@ -51,6 +51,11 @@ export const AgentDecisionSchema = z.object({
   clarification: ClarificationSchema.nullable(),
   proposal: AgentProposalSchema.nullable(),
   affectsToday: z.boolean(),
+  /** Optional indexes into proposal.proposedActions task.create list (0-based). */
+  requestedTodayCreateIndexes: z
+    .array(z.number().int().min(0).max(19))
+    .max(20)
+    .optional(),
 });
 
 /** @deprecated Prefer AgentDecisionSchema — kept for gradual test migration helpers */
@@ -212,6 +217,14 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
   if (!reply) throw new Error("agent_reply_missing");
 
   const affectsToday = Boolean(obj.affectsToday);
+  let requestedTodayCreateIndexes: number[] | undefined;
+  if (Array.isArray(obj.requestedTodayCreateIndexes)) {
+    const idxs = obj.requestedTodayCreateIndexes
+      .map((x) => (typeof x === "number" ? x : Number(x)))
+      .filter((x) => Number.isInteger(x) && x >= 0 && x <= 19)
+      .slice(0, 20);
+    if (idxs.length) requestedTodayCreateIndexes = idxs;
+  }
 
   let clarification: AgentDecision["clarification"] = null;
   if (obj.clarification != null) {
@@ -279,6 +292,7 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
     clarification,
     proposal,
     affectsToday,
+    requestedTodayCreateIndexes,
   };
 
   return { decision, rejectedActions: rejected, parseWarnings: warnings };
@@ -357,6 +371,10 @@ export function agentDecisionJsonSchema() {
         ],
       },
       affectsToday: { type: "boolean" },
+      requestedTodayCreateIndexes: {
+        type: "array",
+        items: { type: "integer", minimum: 0, maximum: 19 },
+      },
     },
     required: [
       "reply",

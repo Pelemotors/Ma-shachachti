@@ -98,9 +98,7 @@ export function ChatView(props: {
                       ? ` — ${props.state.tasks.find((t) => t.id === a.id)?.title}`
                       : ""}
                     {a.type === "task.create" &&
-                    props.similarHints?.some(
-                      (h) => h.title === a.task.title,
-                    )
+                    props.similarHints?.some((h) => h.title === a.task.title)
                       ? ` (דומה ל־«${
                           props.similarHints.find(
                             (h) => h.title === a.task.title,
@@ -132,7 +130,10 @@ export function ChatView(props: {
               >
                 לאשר ולשמור
               </button>
-              <button className="secondary" onClick={() => void props.onReject()}>
+              <button
+                className="secondary"
+                onClick={() => void props.onReject()}
+              >
                 לוותר
               </button>
             </div>

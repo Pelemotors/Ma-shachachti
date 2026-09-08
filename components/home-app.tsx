@@ -189,12 +189,7 @@ export function HomeApp() {
             <button
               className="icon-button"
               aria-label="תזכורות"
-              onClick={() => {
-                navigate("reminders");
-                // P43: Bell primes Notification + Mic independently (neither cancels the other).
-                if (mode === "cloud")
-                  void reminders.requestIndependentPermissions();
-              }}
+              onClick={() => navigate("reminders")}
             >
               <Bell size={20} />
             </button>

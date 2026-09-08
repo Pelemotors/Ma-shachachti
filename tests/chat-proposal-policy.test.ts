@@ -155,9 +155,7 @@ test("P1: revalidate drops invalid ids but keeps valid creates", () => {
 
 test("P1: revision-unrelated state still revalidates proposal actions", () => {
   let state = emptyState();
-  state = applyActions(state, [
-    { type: "shopping.add", title: "לחם" },
-  ]);
+  state = applyActions(state, [{ type: "shopping.add", title: "לחם" }]);
   const { applicable } = revalidateProposalActions(state, [
     { type: "task.create", task: { title: "שאיבה", kind: "task" } },
   ]);
@@ -169,7 +167,10 @@ test("P1: agent instructions are bundled — no runtime readFile dependency mark
   assert.ok(AGENT_INSTRUCTIONS.includes("task.create"));
   assert.ok(AGENT_CONTRACT_VERSION.length > 0);
   const orch = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "../lib/agent/orchestration.ts"),
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../lib/agent/orchestration.ts",
+    ),
     "utf8",
   );
   assert.ok(!orch.includes("readFile("));

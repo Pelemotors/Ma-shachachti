@@ -64,7 +64,7 @@ async function callAgent(
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
-      signal: AbortSignal.timeout(22_000),
+      signal: AbortSignal.timeout(18_000),
       body: JSON.stringify({
         model,
         store: false,
@@ -165,6 +165,7 @@ export type ChatOrchestrationResult = {
   clarification: AgentDecision["clarification"];
   proposal: AgentDecision["proposal"];
   affectsToday: boolean;
+  requestedTodayCreateIndexes?: number[];
   rejectedActionCount: number;
   basedOnRevision: number;
   requestId: string;
@@ -359,6 +360,7 @@ export async function orchestrateChatTurn(
     clarification: decision.clarification,
     proposal: decision.proposal,
     affectsToday: decision.affectsToday,
+    requestedTodayCreateIndexes: decision.requestedTodayCreateIndexes,
     rejectedActionCount: rejectedFromParse.length + rejectedApply.length,
     basedOnRevision: input.revision,
     requestId: input.requestId,

@@ -32,8 +32,7 @@ export function HomeView(props: {
     props.clock,
   );
   // Above-the-fold hint only for whatMatters fallback — never truncate DailyPlan.
-  const shown =
-    source === "daily_plan" ? relevant : relevant.slice(0, 6);
+  const shown = source === "daily_plan" ? relevant : relevant.slice(0, 6);
   return (
     <>
       <section className="greeting">

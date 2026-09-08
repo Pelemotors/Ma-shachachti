@@ -18,7 +18,10 @@ async function main() {
     console.log("AI_SMOKE: NOT RUN — missing SMOKE_ACCESS_TOKEN");
     process.exit(2);
   }
-  if (!process.env.OPENAI_API_KEY && process.env.SMOKE_REQUIRE_LOCAL_KEY === "1") {
+  if (
+    !process.env.OPENAI_API_KEY &&
+    process.env.SMOKE_REQUIRE_LOCAL_KEY === "1"
+  ) {
     console.log("AI_SMOKE: NOT RUN — missing OPENAI_API_KEY");
     process.exit(2);
   }

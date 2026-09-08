@@ -18,9 +18,23 @@ export function ProfileForm({
     e.preventDefault();
     setBusy(true);
     try {
+      const cleaner = p.cleaner?.enabled
+        ? {
+            enabled: true,
+            visitsPerWeek: Math.max(1, p.cleaner.visitsPerWeek || 1),
+            days: p.cleaner.days ?? [],
+          }
+        : { enabled: false, visitsPerWeek: 0, days: [] as number[] };
       await onSave({
         type: "profile.update",
-        patch: { ...p, onboarded: true },
+        patch: {
+          ...p,
+          cleaner,
+          householdRoutines: {
+            cleaningDays: p.householdRoutines?.cleaningDays ?? [],
+          },
+          onboarded: true,
+        },
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "לא נשמר");
@@ -121,19 +135,86 @@ export function ProfileForm({
           והצעות. אפשר לכבות בכל רגע. גם בלי זה אפשר לנהל משימות ולבנות תוכנית.
         </p>
       </div>
-      {!onboarding && (
-        <>
-          <label className="check-line">
-            <input
-              type="checkbox"
-              checked={p.autoApply}
-              onChange={(e) => patch({ autoApply: e.target.checked })}
-            />
-            שמירה אוטומטית של פעולות פשוטות והפיכות מהשיחה
-          </label>
-          <small>הסרת מידע, ביטול ומשימות רבות יחד תמיד יוצגו לאישור.</small>
-          <fieldset>
-            <legend>ימי ניקיון בבית</legend>
+      <fieldset>
+        <legend>ימי ניקיון בבית</legend>
+        <div className="feature-checks">
+          {(
+            [
+              [0, "א׳"],
+              [1, "ב׳"],
+              [2, "ג׳"],
+              [3, "ד׳"],
+              [4, "ה׳"],
+              [5, "ו׳"],
+              [6, "ש׳"],
+            ] as const
+          ).map(([day, label]) => {
+            const checked = (p.householdRoutines?.cleaningDays ?? []).includes(
+              day,
+            );
+            return (
+              <label className="check-line" key={day}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => {
+                    const cur = p.householdRoutines?.cleaningDays ?? [];
+                    patch({
+                      householdRoutines: {
+                        cleaningDays: e.target.checked
+                          ? [...cur, day]
+                          : cur.filter((d) => d !== day),
+                      },
+                    });
+                  }}
+                />
+                {label}
+              </label>
+            );
+          })}
+        </div>
+        <small>בונוס עדין בלו״ז לימי ניקיון — לא מחליף דדליין.</small>
+      </fieldset>
+      <fieldset>
+        <legend>מנקה בבית</legend>
+        <label className="check-line">
+          <input
+            type="checkbox"
+            checked={p.cleaner?.enabled ?? false}
+            onChange={(e) =>
+              patch({
+                cleaner: e.target.checked
+                  ? {
+                      enabled: true,
+                      visitsPerWeek: Math.max(1, p.cleaner?.visitsPerWeek || 1),
+                      days: p.cleaner?.days ?? [],
+                    }
+                  : { enabled: false, visitsPerWeek: 0, days: [] },
+              })
+            }
+          />
+          יש מנקה קבוע
+        </label>
+        {(p.cleaner?.enabled ?? false) && (
+          <>
+            <label>
+              ביקורים בשבוע
+              <input
+                type="number"
+                min={1}
+                max={7}
+                value={p.cleaner?.visitsPerWeek || 1}
+                onChange={(e) =>
+                  patch({
+                    cleaner: {
+                      enabled: true,
+                      visitsPerWeek: Math.max(1, +e.target.value || 1),
+                      days: p.cleaner?.days ?? [],
+                    },
+                  })
+                }
+              />
+            </label>
             <div className="feature-checks">
               {(
                 [
@@ -146,19 +227,22 @@ export function ProfileForm({
                   [6, "ש׳"],
                 ] as const
               ).map(([day, label]) => {
-                const checked = (
-                  p.householdRoutines?.cleaningDays ?? []
-                ).includes(day);
+                const checked = (p.cleaner?.days ?? []).includes(day);
                 return (
-                  <label className="check-line" key={day}>
+                  <label className="check-line" key={`c-${day}`}>
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={(e) => {
-                        const cur = p.householdRoutines?.cleaningDays ?? [];
+                        const cur = p.cleaner?.days ?? [];
                         patch({
-                          householdRoutines: {
-                            cleaningDays: e.target.checked
+                          cleaner: {
+                            enabled: true,
+                            visitsPerWeek: Math.max(
+                              1,
+                              p.cleaner?.visitsPerWeek || 1,
+                            ),
+                            days: e.target.checked
                               ? [...cur, day]
                               : cur.filter((d) => d !== day),
                           },
@@ -170,89 +254,24 @@ export function ProfileForm({
                 );
               })}
             </div>
-            <small>בונוס עדין בלו״ז לימי ניקיון — לא מחליף דדליין.</small>
-          </fieldset>
-          <fieldset>
-            <legend>מנקה בבית</legend>
-            <label className="check-line">
-              <input
-                type="checkbox"
-                checked={p.cleaner?.enabled ?? false}
-                onChange={(e) =>
-                  patch({
-                    cleaner: {
-                      enabled: e.target.checked,
-                      visitsPerWeek: p.cleaner?.visitsPerWeek ?? 0,
-                      days: p.cleaner?.days ?? [],
-                    },
-                  })
-                }
-              />
-              יש מנקה קבוע
-            </label>
-            {(p.cleaner?.enabled ?? false) && (
-              <>
-                <label>
-                  ביקורים בשבוע
-                  <input
-                    type="number"
-                    min={0}
-                    max={7}
-                    value={p.cleaner?.visitsPerWeek ?? 0}
-                    onChange={(e) =>
-                      patch({
-                        cleaner: {
-                          enabled: true,
-                          visitsPerWeek: +e.target.value,
-                          days: p.cleaner?.days ?? [],
-                        },
-                      })
-                    }
-                  />
-                </label>
-                <div className="feature-checks">
-                  {(
-                    [
-                      [0, "א׳"],
-                      [1, "ב׳"],
-                      [2, "ג׳"],
-                      [3, "ד׳"],
-                      [4, "ה׳"],
-                      [5, "ו׳"],
-                      [6, "ש׳"],
-                    ] as const
-                  ).map(([day, label]) => {
-                    const checked = (p.cleaner?.days ?? []).includes(day);
-                    return (
-                      <label className="check-line" key={`c-${day}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const cur = p.cleaner?.days ?? [];
-                            patch({
-                              cleaner: {
-                                enabled: true,
-                                visitsPerWeek: p.cleaner?.visitsPerWeek ?? 0,
-                                days: e.target.checked
-                                  ? [...cur, day]
-                                  : cur.filter((d) => d !== day),
-                              },
-                            });
-                          }}
-                        />
-                        {label}
-                      </label>
-                    );
-                  })}
-                </div>
-                <small>
-                  בימי מנקה משימות ניקיון מקבלות עדיפות נמוכה יותר — בלי סימון
-                  אוטומטי כבוצע.
-                </small>
-              </>
-            )}
-          </fieldset>
+            <small>
+              בימי מנקה משימות כבדות שעשויות להתאים למנקה מקבלות עדיפות נמוכה —
+              בלי סימון אוטומטי כבוצע.
+            </small>
+          </>
+        )}
+      </fieldset>
+      {!onboarding && (
+        <>
+          <label className="check-line">
+            <input
+              type="checkbox"
+              checked={p.autoApply}
+              onChange={(e) => patch({ autoApply: e.target.checked })}
+            />
+            שמירה אוטומטית של פעולות פשוטות והפיכות מהשיחה
+          </label>
+          <small>הסרת מידע, ביטול ומשימות רבות יחד תמיד יוצגו לאישור.</small>
           <label>
             אזור זמן
             <input

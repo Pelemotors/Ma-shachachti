@@ -17,6 +17,12 @@ test("P56 domain barrel exports key modules", () => {
 test("P62 error codes include recorder/scan/conflict and Hebrew map", () => {
   for (const code of [
     "microphone_denied",
+    "microphone_unavailable",
+    "microphone_busy",
+    "microphone_unsupported",
+    "microphone_insecure_context",
+    "notification_denied",
+    "notification_unsupported",
     "transcription_failed",
     "scan_analysis_failed",
     "revision_conflict",

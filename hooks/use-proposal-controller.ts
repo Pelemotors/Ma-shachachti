@@ -49,8 +49,7 @@ export function useProposalController(
         sourceRevision?: number;
       },
     ) => {
-      proposalRevision.current =
-        meta?.sourceRevision ?? h.currentRevision();
+      proposalRevision.current = meta?.sourceRevision ?? h.currentRevision();
       setProposal(actions);
       setProposalMeta({
         proposalId: meta?.proposalId ?? null,
@@ -81,15 +80,17 @@ export function useProposalController(
           const res = await authFetch("/api/proposals", { cache: "no-store" });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error);
-          const first = (data.proposals as Array<{
-            id: string;
-            payload: {
-              summary?: string;
-              proposedActions?: unknown;
-              similarHints?: { title: string; existingTitle: string }[];
-            };
-            source_revision: number;
-          }>)?.[0];
+          const first = (
+            data.proposals as Array<{
+              id: string;
+              payload: {
+                summary?: string;
+                proposedActions?: unknown;
+                similarHints?: { title: string; existingTitle: string }[];
+              };
+              source_revision: number;
+            }>
+          )?.[0];
           if (first && !cancelled) {
             const parsed = ActionBatch.safeParse(
               first.payload?.proposedActions,
@@ -210,7 +211,10 @@ export function useProposalController(
             templateId: a.task.templateId,
             dueAt: a.task.dueAt,
           });
-          if (match.confidence === "exact" || match.confidence === "canonical") {
+          if (
+            match.confidence === "exact" ||
+            match.confidence === "canonical"
+          ) {
             skipped.push(a);
             continue;
           }
@@ -224,7 +228,9 @@ export function useProposalController(
       if (added && skip)
         h.setNotice(`נוספו ${added} משימות. ${skip} כבר היו ברשימה.`);
       else if (added)
-        h.setNotice(added === 1 ? "נוספה משימה אחת." : `נוספו ${added} משימות.`);
+        h.setNotice(
+          added === 1 ? "נוספה משימה אחת." : `נוספו ${added} משימות.`,
+        );
       else if (skip) h.setNotice("המשימות כבר היו ברשימה.");
     } catch (e) {
       h.setError(e instanceof Error ? e.message : "לא נשמר");

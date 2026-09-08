@@ -41,6 +41,13 @@ export const ERROR_CODES = [
   "budget_unavailable",
   "reminder_read_failed",
   "microphone_denied",
+  "microphone_unavailable",
+  "microphone_busy",
+  "microphone_unsupported",
+  "microphone_insecure_context",
+  "microphone_failed",
+  "notification_denied",
+  "notification_unsupported",
   "transcription_failed",
   "transcription_consent_required",
   "transcription_not_configured",
@@ -70,8 +77,7 @@ export const ERROR_MESSAGES_HE: Record<ErrorCode, string> = {
   ai_upstream: "הסוכן לא הצליח לענות כרגע. לא בוצעו שינויים; אפשר לנסות שוב.",
   ai_consent_required:
     "אפשר להפעיל עזרה אישית בהגדרות, לאחר הסכמה לשימוש במידע.",
-  ai_not_configured:
-    "הסוכן עדיין לא מחובר. אפשר להוסיף ולנהל משימות ידנית.",
+  ai_not_configured: "הסוכן עדיין לא מחובר. אפשר להוסיף ולנהל משימות ידנית.",
   ai_failed: "הסוכן לא הצליח לענות כרגע.",
   chat_idempotency_conflict: "מזהה ניסיון השיחה כבר שייך להודעה אחרת.",
   chat_turn_in_progress:
@@ -84,8 +90,7 @@ export const ERROR_MESSAGES_HE: Record<ErrorCode, string> = {
   proposal_expired: "פג תוקף ההצעה.",
   proposal_not_found: "ההצעה לא נמצאה.",
   proposal_not_pending: "ההצעה אינה ממתינה לאישור.",
-  proposal_empty_after_revalidate:
-    "אין פעולות תקפות לאישור מול המצב העדכני.",
+  proposal_empty_after_revalidate: "אין פעולות תקפות לאישור מול המצב העדכני.",
   proposals_read_failed: "לא ניתן לקרוא הצעות ממתינות.",
   proposals_write_failed: "לא ניתן לשמור הצעה.",
   proposals_update_failed: "לא ניתן לעדכן הצעה.",
@@ -107,6 +112,15 @@ export const ERROR_MESSAGES_HE: Record<ErrorCode, string> = {
   reminder_read_failed: "לא ניתן לקרוא את מצב התזכורות.",
   microphone_denied:
     "לא ניתנה גישה למיקרופון. אפשר לשנות בהגדרות הדפדפן או להקליד.",
+  microphone_unavailable: "לא נמצא מיקרופון זמין במכשיר.",
+  microphone_busy: "המיקרופון תפוס כרגע באפליקציה אחרת.",
+  microphone_unsupported: "הדפדפן או המכשיר לא תומכים במיקרופון כאן.",
+  microphone_insecure_context:
+    "צריך לפתוח את האפליקציה בכתובת מאובטחת (HTTPS) כדי לאשר מיקרופון.",
+  microphone_failed: "לא הצלחנו לבקש גישה למיקרופון. אפשר לנסות שוב.",
+  notification_denied:
+    "התראות חסומות בדפדפן. אפשר לאפשר אותן מחדש בהרשאות האתר.",
+  notification_unsupported: "הדפדפן הזה לא תומך בהתראות.",
   transcription_failed: "לא הצלחתי לתמלל. אפשר לנסות שוב או להקליד.",
   transcription_consent_required: "נדרשת הסכמה לשימוש בשירות התמלול.",
   transcription_not_configured: "התמלול עדיין לא מחובר. אפשר להקליד.",

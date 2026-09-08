@@ -49,7 +49,7 @@ export function emptyLevels(count = 16): number[] {
   return Array.from({ length: count }, () => 0.1);
 }
 
-/** Independent permission outcomes — one rejection must not cancel the other. */
+/** Independent permission outcomes — notice helper only; APIs must stay separate. */
 export type PermissionPairResult = {
   notification: "granted" | "denied" | "default" | "unsupported" | "skipped";
   microphone: "granted" | "denied" | "unsupported";

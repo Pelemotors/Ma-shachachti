@@ -12,13 +12,21 @@ import {
 import { orchestrateChatTurn } from "@/lib/agent/orchestration";
 import { applyActions } from "@/lib/engine";
 import { StateSchema, type Action, type AppState } from "@/lib/model";
-import { claimChatReceipt, completeChatReceipt } from "@/lib/server/chat-receipts";
+import {
+  claimChatReceipt,
+  completeChatReceipt,
+} from "@/lib/server/chat-receipts";
 import {
   createPendingProposal,
   revalidateProposalActions,
 } from "@/lib/server/proposals";
 import { syncDailyPlanAfterActions } from "@/lib/domain/planning/sync-daily-plan";
+import {
+  resolveRequestedTodayTaskIds,
+  stampTaskCreateIds,
+} from "@/lib/domain/planning/plan-intent";
 import { AGENT_CONTRACT_VERSION } from "@/lib/agent/instructions";
+import { CHAT_API_SUPPORTED, CHAT_API_VERSION } from "@/lib/version";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -40,6 +48,7 @@ async function saveTurnState(
     revision: number;
     actions: Action[];
     affectsToday: boolean;
+    requestedTodayTaskIds?: string[];
     idempotencyKey: string;
     requestHash: string;
   },
@@ -49,6 +58,7 @@ async function saveTurnState(
     state: working,
     actions: input.actions,
     affectsToday: input.affectsToday,
+    requestedTodayTaskIds: input.requestedTodayTaskIds,
     now: new Date(),
     revision: input.revision,
   });
@@ -86,6 +96,7 @@ async function saveTurnState(
         state: retryState,
         actions: retryActions,
         affectsToday: input.affectsToday,
+        requestedTodayTaskIds: input.requestedTodayTaskIds,
         now: new Date(),
         revision: latest.revision,
       });
@@ -141,6 +152,20 @@ export async function POST(req: Request) {
     const { db, userId } = await authorize(req);
     dbRef = db;
     ownerId = userId;
+    const clientChatApi = req.headers.get("x-chat-api-version");
+    if (clientChatApi != null && clientChatApi !== "") {
+      const v = Number(clientChatApi);
+      if (
+        !Number.isInteger(v) ||
+        !(CHAT_API_SUPPORTED as readonly number[]).includes(v)
+      ) {
+        throw new ApiError(
+          409,
+          "צריך לרענן את האפליקציה כדי להמשיך.",
+          "client_upgrade_required",
+        );
+      }
+    }
     const body = z
       .object({
         message: z.string().trim().min(1).max(6000),
@@ -260,7 +285,12 @@ export async function POST(req: Request) {
     if (proposedActions.length) {
       const revalidated = revalidateProposalActions(nextState, proposedActions);
       similarHints = revalidated.similarHints;
-      proposedActions = revalidated.applicable;
+      proposedActions = stampTaskCreateIds(revalidated.applicable);
+      const requestedTodayTaskIds = resolveRequestedTodayTaskIds({
+        actions: proposedActions,
+        affectsToday: Boolean(result.affectsToday),
+        requestedTodayCreateIndexes: result.requestedTodayCreateIndexes,
+      });
       if (proposedActions.length) {
         const created = await createPendingProposal(db, {
           userId,
@@ -271,11 +301,11 @@ export async function POST(req: Request) {
           sourceRevision: nextRevision,
           payload: {
             summary:
-              result.proposal?.summary ??
-              "יש פעולות שדורשות אישור לפני ביצוע.",
+              result.proposal?.summary ?? "יש פעולות שדורשות אישור לפני ביצוע.",
             proposedActions,
             similarHints,
             affectsToday: Boolean(result.affectsToday),
+            requestedTodayTaskIds,
           },
         });
         proposalId = created.id;
@@ -291,8 +321,7 @@ export async function POST(req: Request) {
       proposal: proposedActions.length
         ? {
             summary:
-              result.proposal?.summary ??
-              "יש פעולות שדורשות אישור לפני ביצוע.",
+              result.proposal?.summary ?? "יש פעולות שדורשות אישור לפני ביצוע.",
             reason: result.proposal?.reason ?? "other",
             proposedActions,
           }
@@ -304,6 +333,7 @@ export async function POST(req: Request) {
       revision: nextRevision,
       deploymentVersion: deploymentVersion(),
       agentContractVersion: AGENT_CONTRACT_VERSION,
+      chatApiVersion: CHAT_API_VERSION,
       turnId,
       requestId,
       planSyncFailed: saved.planSyncFailed,

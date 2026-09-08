@@ -21,12 +21,20 @@ const SCAN_ANALYSIS_FAIL_HE = messageForCode("scan_analysis_failed");
 /** Prefer server semantic scan when authenticated; else local heuristic only. */
 async function analyzeScanPreferSemantic(
   text: string,
+  opts?: { aiConsent?: boolean },
 ): Promise<FirstScanAnalysis> {
   const { supabase, authFetch } = await import("@/lib/supabase-browser");
   // Local-demo / e2e clear Supabase: never hit the API (avoids next-dev compile/HMR races).
   if (!supabase) return analyzeFirstScan(text);
   const session = (await supabase.auth.getSession()).data.session;
   if (!session) return analyzeFirstScan(text);
+  if (opts?.aiConsent === false) {
+    const err = new Error(messageForCode("ai_consent_required")) as Error & {
+      code?: string;
+    };
+    err.code = "ai_consent_required";
+    throw err;
+  }
   try {
     const res = await authFetch("/api/first-scan/analyze", {
       method: "POST",
@@ -39,10 +47,33 @@ async function analyzeScanPreferSemantic(
       };
       if (data.analysis) return data.analysis;
     }
-  } catch {
-    /* offline / auth — heuristic fallback */
+    const data = (await res.json().catch(() => ({}))) as {
+      code?: string;
+      error?: string;
+    };
+    if (data.code === "ai_consent_required") {
+      const err = new Error(
+        data.error || messageForCode("ai_consent_required"),
+      ) as Error & { code?: string };
+      err.code = "ai_consent_required";
+      throw err;
+    }
+    const err = new Error(SCAN_ANALYSIS_FAIL_HE) as Error & { code?: string };
+    err.code = "scan_analysis_failed";
+    throw err;
+  } catch (e) {
+    if (
+      e &&
+      typeof e === "object" &&
+      "code" in e &&
+      ((e as { code?: string }).code === "ai_consent_required" ||
+        (e as { code?: string }).code === "scan_analysis_failed")
+    )
+      throw e;
+    const err = new Error(SCAN_ANALYSIS_FAIL_HE) as Error & { code?: string };
+    err.code = "scan_analysis_failed";
+    throw err;
   }
-  return analyzeFirstScan(text);
 }
 
 export function FirstScanPanel(props: {
@@ -150,9 +181,19 @@ export function FirstScanPanel(props: {
 
       let a: FirstScanAnalysis;
       try {
-        a = await analyzeScanPreferSemantic(text);
-      } catch {
-        setAnalysisError(SCAN_ANALYSIS_FAIL_HE);
+        a = await analyzeScanPreferSemantic(text, {
+          aiConsent: props.state.profile.aiConsent,
+        });
+      } catch (e) {
+        const code =
+          e && typeof e === "object" && "code" in e
+            ? String((e as { code?: string }).code ?? "")
+            : "";
+        setAnalysisError(
+          code === "ai_consent_required"
+            ? messageForCode("ai_consent_required")
+            : SCAN_ANALYSIS_FAIL_HE,
+        );
         return;
       }
 
@@ -185,7 +226,9 @@ export function FirstScanPanel(props: {
         setLocalError("אין חלקים שמורים לניתוח מחדש.");
         return;
       }
-      const a = await analyzeScanPreferSemantic(text);
+      const a = await analyzeScanPreferSemantic(text, {
+        aiConsent: props.state.profile.aiConsent,
+      });
       const stamp = new Date().toISOString();
       await props.act({
         type: "scan.set",
@@ -201,8 +244,16 @@ export function FirstScanPanel(props: {
       });
       setAnalysis(a);
       setPhase("review");
-    } catch {
-      setAnalysisError(SCAN_ANALYSIS_FAIL_HE);
+    } catch (e) {
+      const code =
+        e && typeof e === "object" && "code" in e
+          ? String((e as { code?: string }).code ?? "")
+          : "";
+      setAnalysisError(
+        code === "ai_consent_required"
+          ? messageForCode("ai_consent_required")
+          : SCAN_ANALYSIS_FAIL_HE,
+      );
     }
   }
 

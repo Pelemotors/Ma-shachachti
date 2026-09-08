@@ -3,8 +3,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { Action, ActionBatch, AppState, StateSchema } from "@/lib/model";
 import { applyActions, activeDailyPlan } from "@/lib/engine";
-import { classifyTaskDuplicate, isHardDuplicate } from "@/lib/domain/tasks/dedupe";
+import {
+  classifyTaskDuplicate,
+  isHardDuplicate,
+} from "@/lib/domain/tasks/dedupe";
 import { syncDailyPlanAfterActions } from "@/lib/domain/planning/sync-daily-plan";
+import {
+  countPlannedCreates,
+  resolveRequestedTodayTaskIds,
+  stampTaskCreateIds,
+} from "@/lib/domain/planning/plan-intent";
 import { ApiError } from "./errors";
 import { readState } from "./state-store";
 
@@ -21,6 +29,7 @@ export const ProposalPayloadSchema = z.object({
     .max(20)
     .optional(),
   affectsToday: z.boolean().default(false),
+  requestedTodayTaskIds: z.array(z.string().uuid()).default([]),
 });
 
 export type ProposalPayload = z.infer<typeof ProposalPayloadSchema>;
@@ -47,17 +56,28 @@ export async function createPendingProposal(
     expiresAt?: string;
   },
 ) {
-  const payload = ProposalPayloadSchema.parse(input.payload);
+  const payload = ProposalPayloadSchema.parse({
+    ...input.payload,
+    proposedActions: stampTaskCreateIds(input.payload.proposedActions),
+  });
+  const requestedTodayTaskIds = resolveRequestedTodayTaskIds({
+    actions: payload.proposedActions,
+    affectsToday: payload.affectsToday,
+    existingIds: payload.requestedTodayTaskIds,
+  });
+  const stampedPayload: ProposalPayload = {
+    ...payload,
+    requestedTodayTaskIds,
+  };
   const expiresAt =
-    input.expiresAt ??
-    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    input.expiresAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await db
     .from("pending_proposals")
     .insert({
       owner_id: input.userId,
       turn_id: input.turnId,
       type: input.type,
-      payload,
+      payload: stampedPayload,
       source_revision: input.sourceRevision,
       status: "pending",
       expires_at: expiresAt,
@@ -162,7 +182,11 @@ export async function approvePendingProposal(
   }
 
   if (prop.status !== "pending")
-    throw new ApiError(409, "ההצעה אינה ממתינה לאישור.", "proposal_not_pending");
+    throw new ApiError(
+      409,
+      "ההצעה אינה ממתינה לאישור.",
+      "proposal_not_pending",
+    );
   if (new Date(prop.expires_at).getTime() <= Date.now()) {
     await db
       .from("pending_proposals")
@@ -178,11 +202,10 @@ export async function approvePendingProposal(
     : payload.proposedActions;
 
   const { state, revision } = await readState(db, input.userId);
-  const {
-    applicable,
-    skippedDuplicates,
-    rejected,
-  } = revalidateProposalActions(state, selected);
+  const { applicable, skippedDuplicates, rejected } = revalidateProposalActions(
+    state,
+    selected,
+  );
 
   if (!applicable.length && !skippedDuplicates.length) {
     throw new ApiError(
@@ -200,6 +223,9 @@ export async function approvePendingProposal(
     state: nextApplied,
     actions: applicable,
     affectsToday: payload.affectsToday,
+    requestedTodayTaskIds: payload.requestedTodayTaskIds,
+    authorizeBroadReplan:
+      payload.affectsToday && payload.requestedTodayTaskIds.length > 0,
     now: new Date(),
     revision,
   });
@@ -213,9 +239,19 @@ export async function approvePendingProposal(
     )
     .digest("hex");
 
+  const proposalStatus =
+    rejected.length || skippedDuplicates.length ? "partial" : "accepted";
+
   const { data: saved, error: saveError } = await db.rpc(
-    "idempotent_save_app_state",
+    "approve_pending_proposal_save",
     {
+      p_proposal_id: prop.id,
+      p_owner_id: input.userId,
+      p_new_status: proposalStatus,
+      p_payload: {
+        ...payload,
+        proposedActions: selected,
+      },
       p_data: StateSchema.parse(next),
       p_expected_revision: revision,
       p_key: input.idempotencyKey,
@@ -235,56 +271,31 @@ export async function approvePendingProposal(
         "מזהה אישור כבר שייך לפעולה אחרת.",
         "action_idempotency_conflict",
       );
+    if (saveError.message.includes("proposal_not_pending"))
+      throw new ApiError(
+        409,
+        "ההצעה אינה ממתינה לאישור.",
+        "proposal_not_pending",
+      );
+    if (saveError.message.includes("proposal_not_found"))
+      throw new ApiError(404, "ההצעה לא נמצאה.", "proposal_not_found");
     throw new ApiError(503, "השמירה לא הצליחה.", "state_save_failed");
   }
 
-  const proposalStatus =
-    rejected.length || skippedDuplicates.length ? "partial" : "accepted";
-  const { error: statusError } = await db
-    .from("pending_proposals")
-    .update({
-      status: proposalStatus,
-      payload: {
-        ...payload,
-        proposedActions: selected,
-      },
-    })
-    .eq("id", prop.id)
-    .eq("owner_id", input.userId)
-    .eq("status", "pending");
-  if (statusError)
-    throw new ApiError(
-      503,
-      "המשימות נשמרו אך עדכון סטטוס ההצעה נכשל.",
-      "proposals_update_failed",
-    );
-
-  const appliedCount = applicable.filter((a) => a.type === "task.create").length;
+  const alreadyApplied = Boolean(saved?.alreadyApplied);
+  const finalState = StateSchema.parse(saved.state);
+  const appliedCount = applicable.filter(
+    (a) => a.type === "task.create",
+  ).length;
   const skippedCount = skippedDuplicates.filter(
     (a) => a.type === "task.create",
   ).length;
-  const finalState = StateSchema.parse(saved.state);
   const plan = activeDailyPlan(finalState);
-  const createIds = new Set(
-    applicable
-      .filter((a): a is Extract<Action, { type: "task.create" }> =>
-        a.type === "task.create",
-      )
-      .map((a) => a.task.id)
-      .filter(Boolean),
-  );
-  // Newly created tasks may not carry client ids — match by presence in plan after apply.
   const beforeIds = new Set(state.tasks.map((t) => t.id));
   const newTaskIds = finalState.tasks
     .filter((t) => !beforeIds.has(t.id))
     .map((t) => t.id);
-  const plannedCreates = plan
-    ? newTaskIds.filter((id) => plan.items.some((item) => item.taskId === id))
-        .length ||
-      [...createIds].filter((id) =>
-        plan.items.some((item) => item.taskId === id),
-      ).length
-    : 0;
+  const plannedCreates = countPlannedCreates(newTaskIds, plan?.items);
 
   let notice = "";
   if (synced.planSyncFailed) {
@@ -292,21 +303,32 @@ export async function approvePendingProposal(
       appliedCount > 0
         ? `נוספו ${appliedCount} משימות. הלו״ז לא עודכן.`
         : "המשימות נשמרו אבל הלו״ז לא עודכן.";
+  } else if (synced.requiresProposal) {
+    notice =
+      appliedCount > 0
+        ? `נוספו ${appliedCount} משימות. ${synced.notice ?? "עדכון הלו״ז דורש אישור."}`
+        : (synced.notice ?? "");
   } else if (appliedCount && skippedCount)
     notice = `נוספו ${appliedCount} משימות. ${skippedCount} כבר היו ברשימה.`;
-  else if (appliedCount && payload.affectsToday && plan) {
-    const inPlan = plannedCreates || Math.min(appliedCount, plan.items.length);
+  else if (
+    appliedCount &&
+    (payload.affectsToday || payload.requestedTodayTaskIds.length) &&
+    plan
+  ) {
+    const inPlan = plannedCreates;
     notice =
       inPlan < appliedCount
         ? `שמרתי את כל ${appliedCount} המשימות. ${inPlan} נכנסו ללו״ז של היום והשאר נשארו להמשך.`
-        : appliedCount === 1
-          ? "נוספה משימה אחת ללו״ז."
-          : `נוספו ${appliedCount} משימות ללו״ז.`;
+        : inPlan === 0
+          ? appliedCount === 1
+            ? "נוספה משימה אחת."
+            : `נוספו ${appliedCount} משימות.`
+          : appliedCount === 1
+            ? "נוספה משימה אחת ללו״ז."
+            : `נוספו ${appliedCount} משימות ללו״ז.`;
   } else if (appliedCount)
     notice =
-      appliedCount === 1
-        ? "נוספה משימה אחת."
-        : `נוספו ${appliedCount} משימות.`;
+      appliedCount === 1 ? "נוספה משימה אחת." : `נוספו ${appliedCount} משימות.`;
   else if (skippedCount)
     notice =
       skippedCount === 1
@@ -314,13 +336,14 @@ export async function approvePendingProposal(
         : `${skippedCount} משימות כבר היו ברשימה.`;
 
   return {
-    state: StateSchema.parse(saved.state),
+    state: finalState,
     revision: Number(saved.revision),
-    proposalStatus: proposalStatus as "accepted" | "partial",
+    proposalStatus: (saved.proposalStatus ?? proposalStatus) as
+      "accepted" | "partial",
     appliedActions: applicable,
     skippedDuplicates,
     rejectedActions: rejected,
-    alreadyApplied: false,
+    alreadyApplied,
     notice,
   };
 }

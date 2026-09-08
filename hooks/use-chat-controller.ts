@@ -96,9 +96,7 @@ export function useChatController(
           const data = await response.json();
           if (!response.ok) {
             const err = new Error(
-              typeof data.error === "string"
-                ? data.error
-                : "השיחה התעכבה.",
+              typeof data.error === "string" ? data.error : "השיחה התעכבה.",
             ) as Error & { code?: string; requestId?: string };
             if (typeof data.code === "string") err.code = data.code;
             if (typeof data.requestId === "string")
@@ -127,7 +125,9 @@ export function useChatController(
           // Safety: never auto-apply task.create even if server mis-buckets.
           void auto;
           if (needConfirm.length || proposed.length) {
-            const actions = (needConfirm.length ? needConfirm : proposed) as Action[];
+            const actions = (
+              needConfirm.length ? needConfirm : proposed
+            ) as Action[];
             persistProposal(actions, {
               proposalId: data.proposalId ?? null,
               summary: data.proposal?.summary,
@@ -238,17 +238,7 @@ export function useChatController(
         setThinking(false);
       }
     },
-    [
-      draft,
-      thinking,
-      busy,
-      proposal,
-      state,
-      mode,
-      context,
-      h,
-      persistProposal,
-    ],
+    [draft, thinking, busy, proposal, state, mode, context, h, persistProposal],
   );
 
   return {

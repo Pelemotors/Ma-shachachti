@@ -109,19 +109,18 @@ export function evaluateNotificationPolicy(input: {
     };
   }
 
-  if (
-    task.waitMinutes > 0 &&
-    task.status === "done" &&
-    task.completedAt &&
-    Date.parse(task.completedAt) > now.getTime() - task.waitMinutes * 60000
-  ) {
-    return {
-      shouldNotify: !quiet,
-      urgency: "medium",
-      reason: "wait_complete",
-      channel: quiet ? "digest" : "immediate",
-      groupKey: `wait:${task.id}`,
-    };
+  if (task.waitMinutes > 0 && task.status === "done" && task.completedAt) {
+    const readyAt = Date.parse(task.completedAt) + task.waitMinutes * 60000;
+    // Notify only after wait ended, within a short ready window (not while machine still runs).
+    if (readyAt <= now.getTime() && now.getTime() - readyAt < 45 * 60000) {
+      return {
+        shouldNotify: !quiet,
+        urgency: "medium",
+        reason: "wait_complete",
+        channel: quiet ? "digest" : "immediate",
+        groupKey: `wait:${task.id}`,
+      };
+    }
   }
 
   if (task.dueAt) {

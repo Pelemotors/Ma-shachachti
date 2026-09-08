@@ -287,14 +287,12 @@ export function AppViewRouter(props: {
         mode={mode}
         pushBusy={reminders.pushBusy}
         pushEnabled={reminders.pushEnabled}
+        pushReady={reminders.pushReady}
         run={tasks.run}
         onNavigate={navigate}
         onExport={props.onExport}
-        onTogglePush={() =>
-          void (reminders.pushEnabled
-            ? reminders.disablePush()
-            : reminders.enablePush())
-        }
+        onEnablePush={() => void reminders.enablePush()}
+        onDisablePush={() => void reminders.disablePush()}
         onClearHistory={() => tasks.setConfirm([{ type: "history.clear" }])}
         onSignOut={props.onSignOut}
       />

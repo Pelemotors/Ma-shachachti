@@ -2,9 +2,12 @@
  * Authenticated chat application smoke.
  * Exit codes: 0 = PASS, 1 = FAIL, 2 = NOT RUN (missing credentials).
  *
- * Env:
- *   SMOKE_BASE_URL — default http://127.0.0.1:3000
- *   SMOKE_ACCESS_TOKEN — Bearer token
+ * Env (never commit tokens):
+ *   SMOKE_BASE_URL — default http://127.0.0.1:3000 or production URL
+ *   SMOKE_ACCESS_TOKEN — Bearer token for a dedicated smoke test user
+ *
+ * Provider smoke is separate: npm run smoke:ai → /api/health/ai
+ * This script is application Chat smoke, not OpenAI-only.
  */
 const base = (process.env.SMOKE_BASE_URL || "http://127.0.0.1:3000").replace(
   /\/$/,

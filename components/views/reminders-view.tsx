@@ -1,6 +1,7 @@
 import { AppState } from "@/lib/model";
 import { formatTime } from "@/lib/time";
 import { ViewHeader } from "@/components/view-header";
+import { DevicePermissionsPanel } from "@/components/device-permissions-panel";
 
 export function RemindersView(props: {
   state: AppState;
@@ -29,17 +30,13 @@ export function RemindersView(props: {
             ? "המכשיר רשום להתראות. מסירה תלויה בחיבור ובשעות השקט. תזכורת דחופה יכולה לעבור גם בשעות השקט."
             : "התזכורות נשמרות ברשימה. כדי לקבל התראה צריך להפעיל התראות במכשיר."}
       </p>
-      {props.mode === "cloud" && !props.pushEnabled && (
-        <button
-          className="secondary"
-          disabled={props.pushBusy || !props.pushReady}
-          onClick={() => void props.onEnablePush()}
-        >
-          {props.pushReady
-            ? "הפעלת התראות במכשיר"
-            : "שליחת התראות עדיין לא מחוברת"}
-        </button>
-      )}
+      <DevicePermissionsPanel
+        mode={props.mode}
+        pushEnabled={props.pushEnabled}
+        pushBusy={props.pushBusy}
+        pushReady={props.pushReady}
+        onEnablePush={props.onEnablePush}
+      />
       <form
         className="panel stack"
         onSubmit={(e) => {

@@ -16,10 +16,7 @@ import {
 import { enrichTaskLocal } from "./enrichment";
 import { applyLifeAdminConfirm } from "./domain/notifications/life-admin";
 import { applyForecastEvent } from "./domain/forecast";
-import {
-  classifyTaskDuplicate,
-  isHardDuplicate,
-} from "./domain/tasks/dedupe";
+import { classifyTaskDuplicate, isHardDuplicate } from "./domain/tasks/dedupe";
 
 /** Structured marker from semantic forecast_event — not NLP. */
 const FORECAST_FACT_RE =
@@ -556,7 +553,17 @@ export function visible(t: Task, now = new Date()) {
   );
 }
 
-export function score(t: Task, s: AppState, now = new Date()) {
+export type PlanScoreOpts = {
+  /** Ephemeral scheduling preference for this plan build — not persisted task priority. */
+  requestedTodayTaskIds?: ReadonlySet<string>;
+};
+
+export function score(
+  t: Task,
+  s: AppState,
+  now = new Date(),
+  opts?: PlanScoreOpts,
+) {
   let n = t.priority * 10;
   if (t.kind === "idea") n -= 35;
   if (t.dueAt) {
@@ -566,6 +573,8 @@ export function score(t: Task, s: AppState, now = new Date()) {
   n +=
     s.tasks.filter((x) => x.status === "open" && x.dependsOn.includes(t.id))
       .length * 15;
+
+  if (opts?.requestedTodayTaskIds?.has(t.id)) n += 80;
 
   // Soft routine bonus (deadline urgency above still dominates).
   const dayOfWeek = (() => {
@@ -586,15 +595,28 @@ export function score(t: Task, s: AppState, now = new Date()) {
   })();
   const cleaningDays = s.profile.householdRoutines?.cleaningDays ?? [];
   const cleaner = s.profile.cleaner;
-  const isCleaningCat =
+  const heavyCleanerEligible =
     t.categoryId === "cleaning_reset" ||
     t.categoryId === "floors" ||
     t.categoryId === "bathroom_toilets" ||
     t.categoryId === "living_spaces" ||
-    t.categoryId === "laundry";
-  if (cleaningDays.includes(dayOfWeek) && isCleaningCat) n += 12;
-  if (cleaner?.enabled && cleaner.days.includes(dayOfWeek) && isCleaningCat)
-    n -= 8;
+    t.categoryId === "bedrooms_bedding";
+  const dailyMaintenance =
+    t.categoryId === "laundry" ||
+    t.categoryId === "kitchen_dishes" ||
+    t.categoryId === "organization_storage";
+  if (
+    cleaningDays.includes(dayOfWeek) &&
+    (heavyCleanerEligible || dailyMaintenance)
+  )
+    n += 12;
+  // Cleaner day: de-prioritize heavy jobs the cleaner can cover; keep daily maintenance.
+  if (
+    cleaner?.enabled &&
+    cleaner.days.includes(dayOfWeek) &&
+    heavyCleanerEligible
+  )
+    n -= 18;
 
   return n;
 }
@@ -683,11 +705,29 @@ function nextWorkStart(start: number, work: number, busy: BusyWindow[]) {
   return next;
 }
 
+function preferredWindowAllows(t: Task, start: number, end: number, now: Date) {
+  const win = t.preferredWindow;
+  if (!win?.start && !win?.end) return true;
+  // Explicit preferred window is a hard scheduling constraint for planDay.
+  if (win.start) {
+    const winStart = minuteOffset(win.start, now);
+    if (end <= winStart) return false;
+    if (start < winStart) return false;
+  }
+  if (win.end) {
+    const winEnd = minuteOffset(win.end, now);
+    if (start >= winEnd) return false;
+    if (end > winEnd) return false;
+  }
+  return true;
+}
+
 export function planDay(
   s: AppState,
   minutes: number,
   effort: number,
   now = new Date(),
+  opts?: PlanScoreOpts,
 ) {
   const constraint = planConstraint(s, now);
   const startFloor = constraint?.availableFrom
@@ -714,7 +754,7 @@ export function planDay(
         t.kind === "task" &&
         t.effort <= allowedEffort,
     )
-    .sort((a, b) => score(b, s, now) - score(a, s, now));
+    .sort((a, b) => score(b, s, now, opts) - score(a, s, now, opts));
   const selected: { task: Task; start: number; end: number }[] = [];
   let workCursor = startFloor;
   const finished = new Map<string, number>(
@@ -731,14 +771,21 @@ export function planDay(
         ...t.dependsOn.map((id) => finished.get(id) ?? startFloor),
       );
       const work = estimatedMinutes(t, s);
-      const rawStart = Math.max(workCursor, dependencyReady);
+      let rawStart = Math.max(workCursor, dependencyReady);
+      if (t.preferredWindow?.start) {
+        rawStart = Math.max(
+          rawStart,
+          minuteOffset(t.preferredWindow.start, now),
+        );
+      }
       const start = nextWorkStart(rawStart, work, busy);
       const end = start + work + t.waitMinutes;
       const bufferedWorkEnd = start + work + Math.ceil(work * 0.15);
       if (
         bufferedWorkEnd > planEnd ||
         end > planEnd ||
-        !deadlineAllows(t, end, now)
+        !deadlineAllows(t, end, now) ||
+        !preferredWindowAllows(t, start, end, now)
       )
         continue;
       selected.push({ task: t, start, end });
@@ -758,8 +805,9 @@ export function buildDailyPlanSession(
   effort: 1 | 2 | 3,
   revision: number,
   now = new Date(),
+  opts?: PlanScoreOpts,
 ): import("./model").DailyPlanSession {
-  const computed = planDay(s, minutes, effort, now);
+  const computed = planDay(s, minutes, effort, now, opts);
   const stamp = now.toISOString();
   return {
     id: crypto.randomUUID(),
@@ -796,6 +844,7 @@ export function activeDailyPlan(s: AppState, now = new Date()) {
 export function replanDailyPlan(
   s: AppState,
   now = new Date(),
+  opts?: PlanScoreOpts,
 ): {
   plan: import("./model").DailyPlanSession | null;
   requiresProposal: boolean;
@@ -831,10 +880,20 @@ export function replanDailyPlan(
       )
     );
   }, 0);
-  const remainingMinutes = Math.max(
-    15,
-    existing.availableMinutes - usedMinutes,
-  );
+  const remainingMinutes = Math.max(0, existing.availableMinutes - usedMinutes);
+  if (remainingMinutes <= 0) {
+    return {
+      plan: {
+        ...existing,
+        updatedAt: now.toISOString(),
+        items: preserved.map((i, order) => ({ ...i, order })),
+      },
+      requiresProposal: false,
+      shiftedTaskIds: existing.items
+        .filter((i) => !preservedIds.has(i.taskId))
+        .map((i) => i.taskId),
+    };
+  }
   const shadow: AppState = {
     ...s,
     tasks: s.tasks.map((t) =>
@@ -848,6 +907,7 @@ export function replanDailyPlan(
     remainingMinutes,
     existing.effort as 1 | 2 | 3,
     now,
+    opts,
   );
   const futureItems = rebuilt.selected
     .filter((row) => !preservedIds.has(row.task.id))

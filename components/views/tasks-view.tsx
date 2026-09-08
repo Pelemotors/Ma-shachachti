@@ -1,7 +1,7 @@
 import { Plus, Search } from "lucide-react";
 import { Action, AppState, Task } from "@/lib/model";
 import { TASK_CATEGORIES } from "@/lib/taxonomy";
-import { isActiveVisibleTask } from "@/lib/domain/tasks";
+import { getActiveTasksForList, isActiveVisibleTask } from "@/lib/domain/tasks";
 import { ViewHeader } from "@/components/view-header";
 import { TaskCard } from "@/components/task-card";
 import { Empty } from "@/components/empty-state";
@@ -106,10 +106,11 @@ export function TasksView(props: {
         </div>
       ) : (
         <div className="task-list">
-          {props.state.tasks
-            .filter(
-              (t) => isActiveVisibleTask(t, props.clock) && props.matches(t),
-            )
+          {getActiveTasksForList(props.state, props.clock, {
+            text: props.filter,
+            categoryId: props.category,
+          })
+            .filter((t) => props.matches(t))
             .map((t) => (
               <TaskCard
                 state={props.state}
@@ -127,9 +128,10 @@ export function TasksView(props: {
         </div>
       )}
       {props.detailed &&
-        !props.state.tasks.some(
-          (t) => isActiveVisibleTask(t, props.clock) && props.matches(t),
-        ) && (
+        !getActiveTasksForList(props.state, props.clock, {
+          text: props.filter,
+          categoryId: props.category,
+        }).some((t) => props.matches(t)) && (
           <Empty
             text="אין כרגע משימות בתצוגה הזאת."
             action={props.onNewTask}

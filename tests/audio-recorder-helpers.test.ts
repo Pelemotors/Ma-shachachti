@@ -51,7 +51,7 @@ test("P47 clock formatting and empty waveform levels", () => {
   assert.ok(levels.every((n) => n === 0.1));
 });
 
-test("P43 independent permission notices do not cancel each other", () => {
+test("P43 independent permission notices remain for separate outcomes", () => {
   assert.equal(
     mergePermissionNotices({
       notification: "granted",

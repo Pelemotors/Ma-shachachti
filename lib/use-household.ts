@@ -1,11 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import {
-  AppState,
-  Action,
-  emptyState,
-  migrateState,
-} from "./model";
+import { AppState, Action, emptyState, migrateState } from "./model";
 import { applyActions } from "./engine";
 import { syncDailyPlanAfterActions } from "./domain/planning/sync-daily-plan";
 import { supabase, authFetch } from "./supabase-browser";
@@ -213,11 +208,11 @@ export function useHousehold() {
           throw new Error("החשבון השתנה בזמן השמירה. השינוי לא הוצג.");
         adopt(next, revision, before.mode);
 
-        const createCount = actions.filter((a) => a.type === "task.create")
-          .length;
+        const createCount = actions.filter(
+          (a) => a.type === "task.create",
+        ).length;
         const addedTasks = next.tasks.length - before.state.tasks.length;
-        const duplicateCreate =
-          createCount > 0 && addedTasks < createCount;
+        const duplicateCreate = createCount > 0 && addedTasks < createCount;
 
         if (remember) {
           if (opts.turnId && !opts.sealTurn) {

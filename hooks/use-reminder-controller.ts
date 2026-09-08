@@ -3,11 +3,8 @@ import { useState, useCallback, useEffect } from "react";
 import { Action } from "@/lib/model";
 import { authFetch } from "@/lib/supabase-browser";
 import { useHousehold } from "@/lib/use-household";
-import {
-  mergePermissionNotices,
-  type PermissionPairResult,
-} from "@/lib/audio/recorder-helpers";
-import { requestMicPermissionOnly } from "@/hooks/use-audio-recorder";
+import { requestNotificationPermission } from "@/hooks/use-device-permissions";
+import { messageForCode } from "@/lib/errors";
 
 type Household = ReturnType<typeof useHousehold>;
 
@@ -51,54 +48,9 @@ export function useReminderController(
     };
   }, [mode]);
 
-  /** P43–P44: Notification + Mic independently; one rejection does not cancel the other. */
-  const requestIndependentPermissions =
-    useCallback(async (): Promise<PermissionPairResult> => {
-      let notification: PermissionPairResult["notification"] = "skipped";
-      let microphone: PermissionPairResult["microphone"] = "unsupported";
-
-      const micPromise = (async () => {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          microphone = "unsupported";
-          return;
-        }
-        microphone = (await requestMicPermissionOnly()) ? "granted" : "denied";
-      })();
-
-      const notifPromise = (async () => {
-        if (typeof Notification === "undefined") {
-          notification = "unsupported";
-          return;
-        }
-        try {
-          if (Notification.permission === "granted") {
-            notification = "granted";
-            return;
-          }
-          if (Notification.permission === "denied") {
-            notification = "denied";
-            return;
-          }
-          const permission = await Notification.requestPermission();
-          notification =
-            permission === "granted"
-              ? "granted"
-              : permission === "denied"
-                ? "denied"
-                : "default";
-        } catch {
-          notification = "denied";
-        }
-      })();
-
-      await Promise.allSettled([micPromise, notifPromise]);
-      return { notification, microphone };
-    }, []);
-
+  /** Notification permission + push subscription only — never pairs with microphone. */
   const enablePush = useCallback(async () => {
     setPushBusy(true);
-    const pair = await requestIndependentPermissions();
-    const merged = mergePermissionNotices(pair);
     try {
       if (!("serviceWorker" in navigator) || !("PushManager" in window))
         throw new Error(
@@ -108,10 +60,28 @@ export function useReminderController(
       const config = await status.json();
       if (!status.ok || !config.ready)
         throw new Error("ההתראות עדיין לא מחוברות. התזכורות נשמרות ברשימה.");
-      if (pair.notification !== "granted")
-        throw new Error(
-          "לא ניתנה הרשאה להתראות. אפשר לשנות אותה בהגדרות הדפדפן.",
-        );
+
+      let notificationOk =
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted";
+      if (!notificationOk) {
+        if (typeof Notification === "undefined") {
+          throw new Error(messageForCode("notification_unsupported"));
+        }
+        if (Notification.permission === "denied") {
+          throw new Error(messageForCode("notification_denied"));
+        }
+        const result = await requestNotificationPermission();
+        notificationOk = result.status === "granted";
+        if (!notificationOk) {
+          throw new Error(
+            result.code
+              ? messageForCode(result.code)
+              : messageForCode("notification_denied"),
+          );
+        }
+      }
+
       const reg = await navigator.serviceWorker.ready;
       const key = Uint8Array.from(
         atob(config.publicKey.replace(/-/g, "+").replace(/_/g, "/")),
@@ -131,21 +101,13 @@ export function useReminderController(
       if (!res.ok)
         throw new Error("הרשאת ההתראות לא נשמרה בענן. אפשר לנסות שוב.");
       setPushEnabled(true);
-      h.setNotice(
-        merged.notice ??
-          (pair.microphone === "granted"
-            ? "המכשיר נרשם לקבלת התראות"
-            : "המכשיר נרשם להתראות. מיקרופון לא אושר — אפשר לאשר כשתקליטו."),
-      );
+      h.setNotice("המכשיר נרשם לקבלת התראות");
     } catch (e) {
-      // Mic may still have succeeded independently.
-      if (pair.microphone === "granted" && merged.notice)
-        h.setNotice(merged.notice);
       h.setError(e instanceof Error ? e.message : "לא הצלחנו להפעיל התראות");
     } finally {
       setPushBusy(false);
     }
-  }, [h, requestIndependentPermissions]);
+  }, [h]);
 
   const disablePush = useCallback(async () => {
     setPushBusy(true);
@@ -200,7 +162,6 @@ export function useReminderController(
     enablePush,
     disablePush,
     addReminder,
-    requestIndependentPermissions,
   };
 }
 

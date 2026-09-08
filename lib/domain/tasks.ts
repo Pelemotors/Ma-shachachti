@@ -31,6 +31,8 @@ export {
   type TaskDedupeMatch,
 } from "./tasks/dedupe";
 
+export { getActiveTasksForList } from "./tasks/list-order";
+
 /** Prefer domain visibility; keep engine `visible` semantics via re-export after align. */
 export { visible } from "../engine";
 

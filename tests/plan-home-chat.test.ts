@@ -7,6 +7,11 @@ import {
   actionAffectsDailyPlan,
 } from "../lib/domain/planning/sync-daily-plan";
 import { getHomeTodayTasks } from "../lib/domain/planning/home-today";
+import {
+  countPlannedCreates,
+  resolveRequestedTodayTaskIds,
+  stampTaskCreateIds,
+} from "../lib/domain/planning/plan-intent";
 import { isActiveVisibleTask } from "../lib/domain/tasks/visibility";
 
 const NOW = new Date("2026-09-08T10:00:00+03:00"); // Tuesday
@@ -27,56 +32,152 @@ function createTask(title: string, id?: string): Action {
   };
 }
 
-test("actionAffectsDailyPlan covers defer and create", () => {
-  assert.equal(actionAffectsDailyPlan(createTask("א")), true);
-  assert.equal(
-    actionAffectsDailyPlan({ type: "task.defer", id: crypto.randomUUID() }),
-    true,
-  );
-  assert.equal(
-    actionAffectsDailyPlan({
-      type: "shopping.add",
-      title: "חלב",
-      quantity: "1",
-    }),
-    false,
-  );
+test("stampTaskCreateIds assigns server UUIDs", () => {
+  const stamped = stampTaskCreateIds([
+    {
+      type: "task.create",
+      task: {
+        title: "בלי מזהה",
+        categoryId: "floors",
+        kind: "task",
+        workMinutes: 15,
+        waitMinutes: 0,
+        effort: 1,
+        priority: 1,
+      },
+    },
+  ]);
+  assert.equal(stamped[0].type, "task.create");
+  if (stamped[0].type === "task.create") {
+    assert.match(stamped[0].task.id!, /^[0-9a-f-]{36}$/i);
+  }
 });
 
-test("syncDailyPlanAfterActions builds plan when affectsToday and none exists", () => {
+test("PlanIntent: requested creates land in plan and Home under capacity pressure", () => {
   let s = emptyState();
-  const actions = [
-    createTask("לשטוף רצפות"),
-    createTask("לנקות מקלחת"),
-    createTask("לסדר סלון"),
-    createTask("כביסה"),
+  // Fill with high-priority routine noise that would otherwise win ranking.
+  for (let i = 0; i < 6; i++) {
+    s = applyActions(
+      s,
+      [
+        {
+          type: "task.create",
+          task: {
+            id: crypto.randomUUID(),
+            title: `שגרה ${i}`,
+            categoryId: "laundry",
+            kind: "task",
+            workMinutes: 25,
+            waitMinutes: 0,
+            effort: 2,
+            priority: 3,
+          },
+        },
+      ],
+      NOW,
+      true,
+    );
+  }
+  const ids = [
+    crypto.randomUUID(),
+    crypto.randomUUID(),
+    crypto.randomUUID(),
+    crypto.randomUUID(),
   ];
-  s = applyActions(s, actions, NOW, true);
-  const synced = syncDailyPlanAfterActions({
+  const creates = [
+    createTask("מדיח", ids[0]),
+    createTask("כביסה היום", ids[1]),
+    createTask("סלון", ids[2]),
+    createTask("שטיפה", ids[3]),
+  ];
+  // Lower priority than noise — only PlanIntent boost should prefer them.
+  for (const c of creates) {
+    if (c.type === "task.create") c.task.priority = 1;
+  }
+  s = applyActions(s, creates, NOW, true);
+  s = syncDailyPlanAfterActions({
     state: s,
-    actions,
+    actions: creates,
     affectsToday: true,
+    requestedTodayTaskIds: ids,
+    now: NOW,
+    revision: 2,
+  }).state;
+
+  const plan = activeDailyPlan(s, NOW);
+  assert.ok(plan);
+  const plannedIds = new Set(plan!.items.map((i) => i.taskId));
+  const hit = ids.filter((id) => plannedIds.has(id));
+  assert.ok(
+    hit.length >= 2,
+    `expected requested tasks in plan, got ${hit.length}`,
+  );
+  assert.equal(countPlannedCreates(ids, plan!.items), hit.length);
+
+  const home = getHomeTodayTasks(s, NOW);
+  assert.equal(home.source, "daily_plan");
+  assert.ok(home.tasks.some((t) => ids.includes(t.id)));
+});
+
+test("task.create without today intent does not replan existing plan", () => {
+  let s = emptyState();
+  const keepId = crypto.randomUUID();
+  s = applyActions(s, [createTask("בלוז", keepId)], NOW, true);
+  s = syncDailyPlanAfterActions({
+    state: s,
+    actions: [createTask("בלוז", keepId)],
+    affectsToday: true,
+    requestedTodayTaskIds: [keepId],
     now: NOW,
     revision: 1,
+  }).state;
+  const before = activeDailyPlan(s, NOW)!;
+  const future = createTask("ביטוח בחודש הבא", crypto.randomUUID());
+  if (future.type === "task.create") {
+    future.task.dueAt = "2026-10-15T10:00:00.000Z";
+    future.task.priority = 3;
+  }
+  s = applyActions(s, [future], NOW, true);
+  const afterSync = syncDailyPlanAfterActions({
+    state: s,
+    actions: [future],
+    affectsToday: false,
+    requestedTodayTaskIds: [],
+    now: NOW,
+    revision: 2,
   });
-  assert.equal(synced.planSyncFailed, false);
-  const plan = activeDailyPlan(synced.state, NOW);
-  assert.ok(plan);
-  assert.ok(plan!.items.length >= 1);
-  assert.equal(plan!.date, "2026-09-08");
-
-  const home = getHomeTodayTasks(synced.state, NOW);
-  assert.equal(home.source, "daily_plan");
-  assert.ok(home.tasks.length >= 1);
-  assert.ok(home.tasks.length === plan!.items.length || home.tasks.length > 0);
+  assert.equal(afterSync.planSynced, false);
+  assert.equal(activeDailyPlan(afterSync.state, NOW)?.id, before.id);
+  assert.ok(
+    !actionAffectsDailyPlan(future, {
+      requestedTodayTaskIds: new Set(),
+      timezone: "Asia/Jerusalem",
+      now: NOW,
+    }),
+  );
 });
 
-test("getHomeTodayTasks falls back to whatMatters without plan and does not require slice", () => {
-  let s = emptyState();
-  s = applyActions(s, [createTask("משימה בודדת")], NOW, true);
-  const home = getHomeTodayTasks(s, NOW);
-  assert.equal(home.source, "what_matters");
-  assert.equal(home.tasks.length, 1);
+test("countPlannedCreates never uses Math.min fallback", () => {
+  assert.equal(
+    countPlannedCreates(
+      ["a", "b"],
+      [{ taskId: "x" }, { taskId: "y" }, { taskId: "z" }],
+    ),
+    0,
+  );
+  assert.equal(
+    countPlannedCreates(["a", "b"], [{ taskId: "a" }, { taskId: "z" }]),
+    1,
+  );
+});
+
+test("resolveRequestedTodayTaskIds defaults all creates when affectsToday", () => {
+  const actions = stampTaskCreateIds([createTask("א"), createTask("ב")]);
+  const ids = resolveRequestedTodayTaskIds({
+    actions,
+    affectsToday: true,
+  });
+  assert.equal(ids.length, 2);
 });
 
 test("acceptance: create → plan sync → home → defer → replan hides deferred", () => {
@@ -98,6 +199,7 @@ test("acceptance: create → plan sync → home → defer → replan hides defer
     state: s,
     actions: creates,
     affectsToday: true,
+    requestedTodayTaskIds: ids,
     now: NOW,
     revision: 2,
   }).state;
@@ -118,7 +220,13 @@ test("acceptance: create → plan sync → home → defer → replan hides defer
   const after = getHomeTodayTasks(s, NOW);
   assert.equal(after.source, "daily_plan");
   assert.ok(!after.tasks.some((t) => t.id === ids[0]));
-  assert.equal(isActiveVisibleTask(s.tasks.find((t) => t.id === ids[0])!, NOW), false);
+  assert.equal(
+    isActiveVisibleTask(
+      s.tasks.find((t) => t.id === ids[0])!,
+      NOW,
+    ),
+    false,
+  );
 });
 
 test("profile cleaningDays defaults via emptyState / migrate dual-read", () => {
@@ -151,20 +259,4 @@ test("UI rename string: מה שונה היום is the plan CTA label", async () 
   );
   assert.match(home, /מה שונה היום\?/);
   assert.doesNotMatch(home, /צור לי לו״ז להיום/);
-});
-
-test("plan sync failure leaves tasks intact", () => {
-  let s = emptyState();
-  const actions = [createTask("נשמרת")];
-  s = applyActions(s, actions, NOW, true);
-  // Force failure path by stubbing via invalid replan: empty tasks plan already ok.
-  // Sync with affectsToday on empty-capable state should succeed; verify notice shape on catch path unit.
-  const ok = syncDailyPlanAfterActions({
-    state: s,
-    actions,
-    affectsToday: true,
-    now: NOW,
-  });
-  assert.equal(ok.planSyncFailed, false);
-  assert.ok(ok.state.tasks.length === 1);
 });

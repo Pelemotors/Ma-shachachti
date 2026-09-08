@@ -9,7 +9,7 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
-    "lint": "tsc --noEmit",
+    "lint": "npm run typecheck",
     "format:check": "prettier --check . --ignore-path .gitignore",
     "format": "prettier --write . --ignore-path .gitignore",
     "e2e": "playwright test",
@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
-    "@playwright/test": "1.55.0",
+    "@playwright/test": "1.55.1",
     "@types/node": "26.4.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",

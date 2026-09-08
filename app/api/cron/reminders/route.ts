@@ -2,6 +2,12 @@ import webpush from "web-push";
 import { timingSafeEqual } from "node:crypto";
 import { adminDb, ApiError, fail } from "@/lib/server";
 import { validPushEndpoint } from "@/lib/push";
+import { migrateState } from "@/lib/model";
+import {
+  evaluateNotificationPolicy,
+  buildLifeAdminDigest,
+} from "@/lib/domain/notifications";
+import { dayKey } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -15,6 +21,8 @@ const pushOptions: Record<
   medium: { TTL: 3600, urgency: "normal" },
   low: { TTL: 21600, urgency: "low" },
 };
+
+const MEDIUM_CAP_PER_DAY = 3;
 
 export async function GET(req: Request) {
   const started = Date.now();
@@ -46,6 +54,7 @@ export async function GET(req: Request) {
     if (error)
       throw new ApiError(503, "Queue unavailable", "queue_unavailable");
 
+    const mediumSentToday = new Map<string, number>();
     let sent = 0;
     await Promise.all(
       (jobs ?? []).map(
@@ -55,30 +64,18 @@ export async function GET(req: Request) {
             .select("data")
             .eq("owner_id", job.owner_id)
             .single();
-          const profile = owner?.data?.profile;
-          const reminder = Array.isArray(owner?.data?.reminders)
-            ? owner.data.reminders.find((r: { id?: string }) => r.id === job.id)
-            : null;
-          const urgency: Urgency = ["urgent", "medium", "low"].includes(
-            reminder?.urgency,
-          )
-            ? reminder.urgency
-            : "medium";
-          const hour = Number(
-            new Intl.DateTimeFormat("en", {
-              timeZone: profile?.timezone ?? "Asia/Jerusalem",
-              hour: "numeric",
-              hourCycle: "h23",
-            }).format(new Date()),
-          );
-          const start = profile?.quietStart ?? 22,
-            end = profile?.quietEnd ?? 7;
-          const quiet =
-            start !== end &&
-            (start < end
-              ? hour >= start && hour < end
-              : hour >= start || hour < end);
-          if (quiet && urgency !== "urgent") {
+          const state = owner?.data ? migrateState(owner.data) : null;
+          const profile = state?.profile;
+          const reminder =
+            state?.reminders.find((r) => r.id === job.id) ?? null;
+          const decision = evaluateNotificationPolicy({
+            reminder,
+            profile: profile ?? null,
+            now: new Date(),
+          });
+          const urgency: Urgency = decision.urgency;
+
+          if (!decision.shouldNotify) {
             await db!
               .from("reminder_queue")
               .update({
@@ -88,6 +85,36 @@ export async function GET(req: Request) {
               .eq("id", job.id)
               .eq("status", "pending");
             return;
+          }
+
+          if (urgency === "medium") {
+            const day = dayKey(
+              new Date(),
+              profile?.timezone ?? "Asia/Jerusalem",
+            );
+            const key = `${job.owner_id}:${day}`;
+            const used = mediumSentToday.get(key) ?? 0;
+            if (used >= MEDIUM_CAP_PER_DAY) {
+              await db!
+                .from("reminder_queue")
+                .update({
+                  lease_until: new Date(Date.now() + 60 * 60000).toISOString(),
+                  attempts: job.attempts - 1,
+                  last_error: "medium_daily_cap",
+                })
+                .eq("id", job.id)
+                .eq("status", "pending");
+              return;
+            }
+            mediumSentToday.set(key, used + 1);
+          }
+
+          if (state && decision.channel === "digest" && urgency === "medium") {
+            void buildLifeAdminDigest(
+              state.tasks,
+              state.compactedMemory,
+              new Date(),
+            );
           }
 
           const { data: subs } = await db!
