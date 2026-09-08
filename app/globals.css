@@ -818,6 +818,110 @@ details .stack {
   color: var(--theme-text);
   font-weight: 600;
 }
+.theme-mode-options {
+  display: grid;
+  gap: 8px;
+}
+.theme-mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: right;
+  width: 100%;
+  min-height: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--theme-border);
+  background: rgba(255, 255, 255, 0.9);
+}
+.theme-mode-option strong {
+  font-size: 16px;
+  color: var(--theme-text);
+}
+.theme-mode-option span {
+  font-size: 13px;
+  color: var(--theme-muted);
+  line-height: 1.4;
+}
+.theme-mode-option.is-selected {
+  border-color: var(--theme-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-primary) 22%, transparent);
+  background: color-mix(in srgb, var(--theme-accent-soft) 55%, #fff);
+}
+.theme-season-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.theme-season-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  text-align: right;
+  min-height: 0;
+  padding: 8px;
+  border-radius: 14px;
+  border: 1.5px solid var(--theme-border);
+  background: rgba(255, 255, 255, 0.95);
+  overflow: hidden;
+}
+.theme-season-card.is-selected {
+  border-color: var(--season-primary, var(--theme-primary));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--season-primary, var(--theme-primary)) 28%, transparent);
+}
+.theme-season-preview {
+  display: block;
+  height: 52px;
+  border-radius: 10px;
+  background-color: color-mix(in srgb, var(--season-primary, #ccc) 18%, #fff);
+  background-image: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.55),
+      rgba(255, 255, 255, 0.2)
+    ),
+    var(--season-bg);
+  background-size: cover;
+  background-position: top right;
+}
+.theme-season-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.theme-season-emoji {
+  font-size: 16px;
+  line-height: 1;
+}
+.theme-season-meta strong {
+  flex: 1;
+  font-size: 14px;
+  color: var(--theme-text);
+}
+.theme-season-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--season-primary, var(--theme-primary));
+  flex-shrink: 0;
+}
+.theme-season-check {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--season-primary, var(--theme-primary));
+}
 .empty {
   padding: 35px 20px;
   text-align: center;

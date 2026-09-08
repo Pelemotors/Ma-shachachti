@@ -1,12 +1,38 @@
 "use client";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { Profile, Action } from "@/lib/model";
 import {
   SEASON_THEMES,
   THEME_LABELS,
+  THEME_TOKENS,
+  themeBackgroundUrl,
   type SeasonTheme,
   type ThemeMode,
 } from "@/lib/theme-config";
+
+const THEME_MODE_OPTIONS: {
+  mode: ThemeMode;
+  title: string;
+  description: string;
+}[] = [
+  {
+    mode: "auto",
+    title: "מתחלף",
+    description: "העיצוב משתנה אוטומטית לפי עונות השנה",
+  },
+  {
+    mode: "fixed",
+    title: "קבוע",
+    description: "אני רוצה להשאיר עיצוב אחד קבוע",
+  },
+];
+
+const SEASON_EMOJIS: Record<SeasonTheme, string> = {
+  spring: "🌿",
+  summer: "☀️",
+  autumn: "🍂",
+  winter: "❄️",
+};
 export function ProfileForm({
   profile,
   onSave,
@@ -272,38 +298,81 @@ export function ProfileForm({
       {!onboarding && (
         <>
           <fieldset className="stack theme-settings">
-            <legend>ערכת נושא עונתית</legend>
-            <label>
-              מצב
-              <select
-                value={p.themeMode ?? "auto"}
-                onChange={(e) =>
-                  patch({ themeMode: e.target.value as ThemeMode })
-                }
-              >
-                <option value="auto">אוטומטי לפי עונה</option>
-                <option value="fixed">קבוע</option>
-              </select>
-            </label>
+            <legend>עיצוב האפליקציה</legend>
+            <div
+              className="theme-mode-options"
+              role="radiogroup"
+              aria-label="מצב עיצוב"
+            >
+              {THEME_MODE_OPTIONS.map((opt) => {
+                const selected = (p.themeMode ?? "auto") === opt.mode;
+                return (
+                  <button
+                    key={opt.mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    className={
+                      "theme-mode-option" + (selected ? " is-selected" : "")
+                    }
+                    onClick={() => patch({ themeMode: opt.mode })}
+                  >
+                    <strong>{opt.title}</strong>
+                    <span>{opt.description}</span>
+                  </button>
+                );
+              })}
+            </div>
             {(p.themeMode ?? "auto") === "fixed" && (
-              <label>
-                עונה קבועה
-                <select
-                  value={p.fixedTheme ?? "spring"}
-                  onChange={(e) =>
-                    patch({ fixedTheme: e.target.value as SeasonTheme })
-                  }
-                >
-                  {SEASON_THEMES.map((theme) => (
-                    <option key={theme} value={theme}>
-                      {THEME_LABELS[theme]}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div
+                className="theme-season-grid"
+                role="radiogroup"
+                aria-label="עונה קבועה"
+              >
+                {SEASON_THEMES.map((theme) => {
+                  const selected = (p.fixedTheme ?? "spring") === theme;
+                  const tokens = THEME_TOKENS[theme];
+                  return (
+                    <button
+                      key={theme}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      className={
+                        "theme-season-card" + (selected ? " is-selected" : "")
+                      }
+                      style={
+                        {
+                          "--season-primary": tokens.primary,
+                          "--season-bg": `url(${themeBackgroundUrl(theme)})`,
+                        } as CSSProperties
+                      }
+                      onClick={() => patch({ fixedTheme: theme })}
+                    >
+                      <span className="theme-season-preview" aria-hidden="true" />
+                      <span className="theme-season-meta">
+                        <span className="theme-season-emoji" aria-hidden="true">
+                          {SEASON_EMOJIS[theme]}
+                        </span>
+                        <strong>{THEME_LABELS[theme]}</strong>
+                        <span
+                          className="theme-season-swatch"
+                          aria-hidden="true"
+                        />
+                      </span>
+                      {selected ? (
+                        <span className="theme-season-check" aria-hidden="true">
+                          ✓
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
             )}
             <small>
-              במצב אוטומטי הצבעים משתנים לפי החודש באזור הזמן של הבית.
+              במצב מתחלף הצבעים משתנים לפי החודש באזור הזמן של הבית. במצב קבוע
+              נשארת העונה שבחרת.
             </small>
           </fieldset>
           <label className="check-line">
