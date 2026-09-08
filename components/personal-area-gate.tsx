@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { authFetch, supabase } from "@/lib/supabase-browser";
 import { HomeApp } from "./home-app";
-import { SupportReport } from "./support-report";
 
 type GateState = "loading" | "ready" | "pending" | "error";
 
@@ -93,10 +92,5 @@ export function PersonalAreaGate() {
       </main>
     );
 
-  return (
-    <>
-      <HomeApp />
-      <SupportReport />
-    </>
-  );
+  return <HomeApp />;
 }

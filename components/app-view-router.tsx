@@ -47,6 +47,7 @@ export function AppViewRouter(props: {
   taskCardHandlers: TaskCardHandlers;
   navigate: (v: AppView) => void;
   onNotice: (msg: string) => void;
+  onError?: (msg: string) => void;
   onExport: () => void;
   onSignOut: () => void;
 }) {
@@ -147,11 +148,16 @@ export function AppViewRouter(props: {
             changedDay={plan.changedDay}
             planBusy={plan.planBusy}
             mode={mode}
+            aiConsent={state.profile.aiConsent}
             onDuration={plan.onDuration}
             onEffort={plan.setPlanEffort}
             onChangedDay={plan.setChangedDay}
             onBuild={() => void plan.buildPlan()}
             onChangedDaySubmit={() => void plan.submitChangedDay()}
+            onNeedConsent={() => navigate("settings")}
+            onError={(msg) =>
+              props.onError ? props.onError(msg) : props.onNotice(msg)
+            }
           />
         )}
         {(plan.planPhase === "result" || plan.persistedPlan) && (
@@ -192,6 +198,9 @@ export function AppViewRouter(props: {
         busy={busy}
         context={chat.context}
         thinking={chat.isThinking}
+        sendStatus={chat.sendStatus}
+        pendingUserMessage={chat.pendingUserMessage}
+        onRetrySend={() => void chat.retrySend()}
         proposal={chat.proposal}
         proposalSummary={chat.proposalMeta?.summary}
         similarHints={chat.proposalMeta?.similarHints}
@@ -262,12 +271,14 @@ export function AppViewRouter(props: {
         reminderTitle={reminders.reminderTitle}
         reminderDue={reminders.reminderDue}
         reminderUrgency={reminders.reminderUrgency}
+        reminders={reminders.remindersSorted}
         onTitle={reminders.setReminderTitle}
         onDue={reminders.setReminderDue}
         onUrgency={reminders.setReminderUrgency}
         onAdd={() => void reminders.addReminder()}
         onEnablePush={() => void reminders.enablePush()}
         onCancel={(id) => void tasks.act({ type: "reminder.cancel", id })}
+        onUpdate={(id, patch) => reminders.updateReminder(id, patch)}
       />
     );
   if (view === "history")

@@ -3,12 +3,19 @@ import { Plus, X } from "lucide-react";
 import { Action, AppState } from "@/lib/model";
 import { ViewHeader } from "@/components/view-header";
 import { describe } from "@/components/action-describe";
+import type {
+  ChatSendStatus,
+  PendingUserMessage,
+} from "@/hooks/use-chat-controller";
 
 export function ChatView(props: {
   state: AppState;
   busy: boolean;
   context: string | null;
   thinking: boolean;
+  sendStatus?: ChatSendStatus;
+  pendingUserMessage?: PendingUserMessage | null;
+  onRetrySend?: () => void;
   proposal: Action[] | null;
   proposalSummary?: string;
   similarHints?: { title: string; existingTitle: string }[];
@@ -33,6 +40,16 @@ export function ChatView(props: {
         : `זיהיתי ${taskCreates.length} משימות. להוסיף אותן לרשימת המשימות?`
       : "אלה השינויים המוצעים");
 
+  const pending = props.pendingUserMessage;
+  const showPending =
+    !!pending &&
+    !props.state.messages.some(
+      (m) =>
+        m.role === "user" &&
+        (m.turnId === pending.turnId || m.text === pending.text),
+    );
+  const failed = props.sendStatus === "failed" && !!pending;
+
   return (
     <>
       <ViewHeader view="chat">
@@ -52,7 +69,7 @@ export function ChatView(props: {
           <button onClick={props.onClearContext}>סיום ההקשר</button>
         </div>
       )}
-      {!props.state.messages.length && (
+      {!props.state.messages.length && !showPending && (
         <div className="chat-welcome">
           <div className="brand-mark">מ׳</div>
           <h2>אפשר פשוט לכתוב.</h2>
@@ -81,7 +98,29 @@ export function ChatView(props: {
             <p>{m.text}</p>
           </div>
         ))}
-        {props.thinking && (
+        {showPending && pending && (
+          <div
+            className={
+              "message user" + (failed ? " message-send-failed" : " message-pending")
+            }
+          >
+            <span className="sr-only">ההודעה שלך: </span>
+            <p>{pending.text}</p>
+            {failed && (
+              <div className="message-retry-row">
+                <span className="muted">השליחה לא הצליחה</span>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => props.onRetrySend?.()}
+                >
+                  נסה שוב
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {props.thinking && !failed && (
           <div className="message assistant">
             <p>חושב איתך…</p>
           </div>
@@ -122,19 +161,19 @@ export function ChatView(props: {
             {otherActions.length > 0 && taskCreates.length > 0 && (
               <p className="muted">כולל גם פעולות נוספות שדורשות אישור.</p>
             )}
-            <div className="button-row">
+            <div className="button-row approval-actions">
               <button
                 className="primary"
                 disabled={props.busy}
                 onClick={() => void props.onApprove()}
               >
-                לאשר ולשמור
+                יש אישור
               </button>
               <button
                 className="secondary"
                 onClick={() => void props.onReject()}
               >
-                לוותר
+                אין אישור
               </button>
             </div>
           </div>
