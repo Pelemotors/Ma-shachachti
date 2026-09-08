@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { emptyState } from "../lib/model";
 import { evaluateNotificationPolicy } from "../lib/domain/notifications/policy";
 
-const now = new Date("2026-09-08T10:00:00.000+03:00");
+// Use local wall-clock hour so quiet-hours assertions are stable on CI (UTC) and locally.
+const now = new Date();
+now.setHours(10, 0, 0, 0);
 
 test("domain10: quiet hours suppress non-urgent; urgent still immediate", () => {
   const profile = { ...emptyState().profile, quietStart: 9, quietEnd: 11 };
