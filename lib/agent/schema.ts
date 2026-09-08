@@ -1,27 +1,35 @@
 import { z } from "zod";
 import { Action, ActionSchema, AgentWorkingMemoryPatchSchema } from "../model";
+import { CATEGORY_IDS } from "../taxonomy";
 import { AGENT_POLICY_TRAITS } from "../domain/agent-policy";
+import {
+  AGENT_CAPABILITY_TYPES,
+  SAFE_AGENT_PROFILE_FIELDS,
+} from "./capabilities";
 
+const INTERNAL_AGENT_ACTION_TYPES = new Set([
+  "history.clear",
+  "message.add",
+  "operation.record",
+  "plan.set",
+  "plan.clear",
+  "plan.itemUpdate",
+  "suggestion.record",
+  "memory.lifeAdmin",
+  "pendingIntent.set",
+  "pendingIntent.clear",
+  "workingMemory.patch",
+  "workingMemory.clear",
+  "durationFeedback.markAsked",
+  "scan.set",
+]);
+
+/**
+ * Application actions the personal agent may choose after understanding the
+ * user. This is a capability allow-list, not a list of user intents.
+ */
 export const AgentActionSchema = ActionSchema.options.filter(
-  (x) =>
-    ![
-      "profile.update",
-      "history.clear",
-      "message.add",
-      "template.exclude",
-      "template.restore",
-      "operation.record",
-      "plan.set",
-      "plan.clear",
-      "plan.itemUpdate",
-      "suggestion.record",
-      "memory.lifeAdmin",
-      "pendingIntent.set",
-      "pendingIntent.clear",
-      "workingMemory.patch",
-      "workingMemory.clear",
-      "durationFeedback.markAsked",
-    ].includes(x.shape.type.value),
+  (x) => !INTERNAL_AGENT_ACTION_TYPES.has(x.shape.type.value),
 );
 
 const AgentActionUnion = z.discriminatedUnion(
@@ -59,6 +67,7 @@ export const AgentProposalSchema = z.object({
 });
 
 export const AgentDecisionSchema = z.object({
+  /** Conversational response before persistence. Execution confirmation is server-grounded. */
   reply: z.string().min(1).max(4000),
   explicitActions: z.array(AgentActionUnion).max(20),
   clarification: ClarificationSchema.nullable(),
@@ -86,16 +95,44 @@ export type AgentProposal = z.infer<typeof AgentProposalSchema>;
 
 export type ActionPolicyBucket = "auto" | "proposal" | "drop";
 
+function safeProfilePatch(raw: unknown) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const patch = raw as Record<string, unknown>;
+  const safe = new Set<string>(SAFE_AGENT_PROFILE_FIELDS);
+  return Object.fromEntries(
+    Object.entries(patch).filter(([key]) => safe.has(key)),
+  );
+}
+
 /**
- * Normalize common LLM field aliases before Action Zod parse.
- * This is schema compatibility — not natural-language understanding.
+ * Normalize schema/field aliases emitted by the model. This is executable
+ * capability compatibility only; it never interprets natural-language text.
  */
 export function normalizeLooseAgentAction(raw: unknown): unknown {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return raw;
   const a = { ...(raw as Record<string, unknown>) };
 
-  // Model sometimes emits { "task.status": "<uuid>", status: "done" }
-  // instead of { type: "task.status", id: "<uuid>", status: "done" }.
+  // Typed agent-facing inventory event; internal marker never appears in prompt/context.
+  if (a.type === "inventory.event") {
+    const eventType = a.eventType;
+    const subject = typeof a.subject === "string" ? a.subject.trim() : "";
+    if (
+      (eventType === "replenishment" ||
+        eventType === "depletion" ||
+        eventType === "correction") &&
+      subject
+    ) {
+      return {
+        type: "fact.add",
+        text: `forecast:${eventType}:${subject}`,
+        kind: "inference",
+        expiresAt: null,
+      };
+    }
+    return a;
+  }
+
+  // Model may emit { "task.status": "<uuid>", status: "done" }.
   if (a.type == null) {
     for (const key of Object.keys(a)) {
       if (!key.includes(".")) continue;
@@ -114,6 +151,8 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
   if (typeof a.reminderId === "string" && a.id == null) a.id = a.reminderId;
   if (typeof a.factId === "string" && a.id == null) a.id = a.factId;
   if (typeof a.memberId === "string" && a.id == null) a.id = a.memberId;
+  if (typeof a.homeAreaId === "string" && a.id == null) a.id = a.homeAreaId;
+
   if (
     a.status === "completed" ||
     a.status === "complete" ||
@@ -145,19 +184,17 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
   }
   if (
     a.type === "shopping.add" &&
-    typeof a.id === "string" &&
-    !/^[0-9a-f-]{36}$/i.test(a.id)
-  ) {
-    delete a.id;
-  }
-  if (
-    a.type === "shopping.add" &&
     typeof a.item === "string" &&
     a.title == null
   )
     a.title = a.item;
   if (a.type === "reminder.add" && typeof a.at === "string" && a.dueAt == null)
     a.dueAt = a.at;
+
+  if (a.type === "profile.update") {
+    a.patch = safeProfilePatch(a.patch);
+  }
+
   if (a.type === "task.create") {
     const task =
       a.task && typeof a.task === "object" && !Array.isArray(a.task)
@@ -172,7 +209,9 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
     delete a.title;
     delete a.text;
   }
+
   if (a.type === "fact.add") {
+    // Backward compatibility for previously emitted internal forecast markers.
     if (typeof a.id === "string" && a.id.startsWith("forecast:")) {
       if (typeof a.text !== "string" || !a.text.startsWith("forecast:"))
         a.text = a.id;
@@ -183,6 +222,7 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
     if (a.kind == null) a.kind = "inference";
     if (a.expiresAt === undefined) a.expiresAt = null;
   }
+
   return a;
 }
 
@@ -190,7 +230,7 @@ export function classifyActionPolicy(
   action: Action,
   opts: { userExplicitBulk?: boolean } = {},
 ): ActionPolicyBucket {
-  // Chat-extracted new tasks always need Preview confirmation (never autoApply).
+  // New tasks are previewed so the user controls commitments entering her system.
   if (action.type === "task.create") return "proposal";
   if (
     action.type === "task.status" &&
@@ -200,6 +240,8 @@ export function classifyActionPolicy(
   if (
     action.type === "fact.remove" ||
     action.type === "shopping.remove" ||
+    action.type === "member.remove" ||
+    action.type === "homeArea.remove" ||
     action.type === "history.clear"
   )
     return "proposal";
@@ -207,7 +249,7 @@ export function classifyActionPolicy(
   return "auto";
 }
 
-/** True when chat must show a confirmation Preview (e.g. new tasks). */
+/** True when chat must show a confirmation Preview. */
 export function chatActionsNeedProposal(actions: Action[]): boolean {
   return actions.some((a) => classifyActionPolicy(a) === "proposal");
 }
@@ -232,18 +274,18 @@ export type IsolatedDecision = {
   parseWarnings: string[];
 };
 
-/**
- * Parse model JSON with per-action isolation: one bad action does not drop the reply or siblings.
- */
+function parseAgentAction(item: unknown) {
+  return AgentActionUnion.safeParse(normalizeLooseAgentAction(item));
+}
+
+/** One malformed action does not destroy the natural-language reply or siblings. */
 export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
   const warnings: string[] = [];
   const rejected: unknown[] = [];
-
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
     throw new Error("agent_output_not_object");
-  }
-  const obj = raw as Record<string, unknown>;
 
+  const obj = raw as Record<string, unknown>;
   const reply =
     typeof obj.reply === "string" && obj.reply.trim()
       ? obj.reply.trim().slice(0, 4000)
@@ -295,9 +337,7 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       : [];
     const proposedActions: Action[] = [];
     for (const item of proposedRaw) {
-      const parsed = AgentActionUnion.safeParse(
-        normalizeLooseAgentAction(item),
-      );
+      const parsed = parseAgentAction(item);
       if (parsed.success) proposedActions.push(parsed.data);
       else rejected.push(item);
     }
@@ -323,11 +363,7 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       })
       .safeParse({ summary: pRaw.summary, reason });
     if (head.success)
-      proposal = {
-        summary: head.data.summary,
-        reason: head.data.reason,
-        proposedActions,
-      };
+      proposal = { summary: head.data.summary, reason: head.data.reason, proposedActions };
     else warnings.push("proposal_invalid");
   }
 
@@ -338,27 +374,28 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       : [];
   const explicitActions: Action[] = [];
   for (const item of explicitRaw) {
-    const parsed = AgentActionUnion.safeParse(normalizeLooseAgentAction(item));
-    if (parsed.success) {
-      explicitActions.push(parsed.data);
-    } else {
+    const parsed = parseAgentAction(item);
+    if (parsed.success) explicitActions.push(parsed.data);
+    else {
       rejected.push(item);
       warnings.push("action_rejected");
     }
   }
 
-  const decision: AgentDecision = {
-    reply,
-    explicitActions,
-    clarification,
-    proposal,
-    affectsToday,
-    policySignals,
-    workingMemoryUpdate,
-    requestedTodayCreateIndexes,
+  return {
+    decision: {
+      reply,
+      explicitActions,
+      clarification,
+      proposal,
+      affectsToday,
+      policySignals,
+      workingMemoryUpdate,
+      requestedTodayCreateIndexes,
+    },
+    rejectedActions: rejected,
+    parseWarnings: warnings,
   };
-
-  return { decision, rejectedActions: rejected, parseWarnings: warnings };
 }
 
 export function parseAgentDecisionText(text: string): IsolatedDecision {
@@ -366,52 +403,179 @@ export function parseAgentDecisionText(text: string): IsolatedDecision {
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/, "")
     .trim();
-  let json: unknown;
   try {
-    json = JSON.parse(cleaned);
-  } catch {
-    throw new Error("agent_invalid_json");
+    return parseAgentDecisionIsolated(JSON.parse(cleaned) as unknown);
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error("agent_invalid_json");
+    throw error;
   }
-  return parseAgentDecisionIsolated(json);
 }
 
-/** JSON Schema for OpenAI Responses API structured output. */
+const nullableString = { anyOf: [{ type: "string" }, { type: "null" }] };
+const stringArray = { type: "array", items: { type: "string" } };
+
+function actionJsonSchema() {
+  return {
+    type: "object",
+    additionalProperties: true,
+    properties: {
+      type: { type: "string", enum: [...AGENT_CAPABILITY_TYPES] },
+      id: { type: "string" },
+      taskId: nullableString,
+      stepId: { type: "string" },
+      status: {
+        type: "string",
+        enum: ["open", "done", "cancelled", "unknown", "in_progress"],
+      },
+      title: { type: "string" },
+      text: { type: "string" },
+      quantity: { type: "string" },
+      checked: { type: "boolean" },
+      dueAt: { type: "string" },
+      hiddenUntil: { type: "string" },
+      urgency: { type: "string", enum: ["urgent", "medium", "low"] },
+      eventType: {
+        type: "string",
+        enum: ["replenishment", "depletion", "correction"],
+      },
+      subject: { type: "string" },
+      task: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          id: { type: "string" },
+          title: { type: "string" },
+          categoryId: { type: "string", enum: [...CATEGORY_IDS] },
+          detailTypeId: nullableString,
+          kind: { type: "string", enum: ["task", "idea"] },
+          dueAt: nullableString,
+          workMinutes: { type: "integer", minimum: 1, maximum: 1440 },
+          waitMinutes: { type: "integer", minimum: 0, maximum: 1440 },
+          effort: { type: "integer", minimum: 1, maximum: 3 },
+          priority: { type: "integer", minimum: 0, maximum: 3 },
+          recurrenceDays: {
+            anyOf: [
+              { type: "integer", minimum: 1, maximum: 366 },
+              { type: "null" },
+            ],
+          },
+          notes: { type: "string" },
+          dependsOn: stringArray,
+          relatedMemberIds: stringArray,
+          homeAreaIds: stringArray,
+        },
+        required: ["title"],
+      },
+      patch: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          title: { type: "string" },
+          categoryId: { type: "string", enum: [...CATEGORY_IDS] },
+          detailTypeId: nullableString,
+          kind: { type: "string", enum: ["task", "idea"] },
+          dueAt: nullableString,
+          workMinutes: { type: "integer", minimum: 1, maximum: 1440 },
+          waitMinutes: { type: "integer", minimum: 0, maximum: 1440 },
+          effort: { type: "integer", minimum: 1, maximum: 3 },
+          priority: { type: "integer", minimum: 0, maximum: 3 },
+          recurrenceDays: {
+            anyOf: [
+              { type: "integer", minimum: 1, maximum: 366 },
+              { type: "null" },
+            ],
+          },
+          notes: { type: "string" },
+          relatedMemberIds: stringArray,
+          homeAreaIds: stringArray,
+          urgency: { type: "string", enum: ["urgent", "medium", "low"] },
+          name: { type: "string" },
+          addressAs: { type: "string", enum: ["feminine", "masculine", "neutral"] },
+          rooms: { type: "integer", minimum: 1, maximum: 30 },
+          bathrooms: { type: "integer", minimum: 1, maximum: 15 },
+          children: { type: "integer", minimum: 0, maximum: 20 },
+          garden: { type: "boolean" },
+          pets: { type: "boolean" },
+          car: { type: "boolean" },
+          dishwasher: { type: "boolean" },
+          dryer: { type: "boolean" },
+          householdRoutines: { type: "object", additionalProperties: true },
+          cleaner: { type: "object", additionalProperties: true },
+        },
+      },
+      member: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          type: { type: "string", enum: ["adult", "child", "pet", "other"] },
+          aliases: stringArray,
+        },
+        required: ["name"],
+      },
+      area: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          type: {
+            type: "string",
+            enum: [
+              "bedroom",
+              "bathroom",
+              "kids_room",
+              "living",
+              "kitchen",
+              "guest_toilet",
+              "other",
+            ],
+          },
+          aliases: stringArray,
+          parentAreaId: nullableString,
+          source: { type: "string", enum: ["user", "scan", "agent"] },
+        },
+        required: ["name"],
+      },
+      constraint: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          date: { type: "string" },
+          availableFrom: nullableString,
+          availableUntil: nullableString,
+          unavailable: { type: "array", items: { type: "object", additionalProperties: true } },
+          effort: { anyOf: [{ type: "integer", minimum: 1, maximum: 3 }, { type: "null" }] },
+          note: { type: "string" },
+        },
+        required: ["date", "availableFrom", "availableUntil", "unavailable", "effort", "note"],
+      },
+    },
+    required: ["type"],
+  };
+}
+
+/** Structured-output contract: open language understanding, closed executable hands. */
 export function agentDecisionJsonSchema() {
-  // OpenAI strict mode rejects `oneOf` inside array items (Zod discriminated unions).
-  // Keep a compatible object schema and validate with AgentDecisionSchema after parse.
+  const action = actionJsonSchema();
   return {
     type: "object",
     additionalProperties: true,
     properties: {
       reply: { type: "string" },
-      explicitActions: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: true,
-          properties: {
-            type: { type: "string" },
-            id: { type: "string" },
-            status: { type: "string" },
-            title: { type: "string" },
-            text: { type: "string" },
-            dueAt: { type: "string" },
-            task: { type: "object", additionalProperties: true },
-          },
-          required: ["type"],
-        },
-      },
+      explicitActions: { type: "array", maxItems: 20, items: action },
       clarification: {
         anyOf: [
           { type: "null" },
           {
             type: "object",
+            additionalProperties: false,
             properties: {
               question: { type: "string" },
-              unresolvedPart: { anyOf: [{ type: "string" }, { type: "null" }] },
+              unresolvedPart: nullableString,
             },
             required: ["question", "unresolvedPart"],
-            additionalProperties: true,
           },
         ],
       },
@@ -420,16 +584,24 @@ export function agentDecisionJsonSchema() {
           { type: "null" },
           {
             type: "object",
+            additionalProperties: true,
             properties: {
               summary: { type: "string" },
-              reason: { type: "string" },
-              proposedActions: {
-                type: "array",
-                items: { type: "object", additionalProperties: true },
+              reason: {
+                type: "string",
+                enum: [
+                  "ai_invented_plan",
+                  "bulk_change",
+                  "schedule_shift",
+                  "shopping_derived",
+                  "destructive",
+                  "new_tasks",
+                  "other",
+                ],
               },
+              proposedActions: { type: "array", maxItems: 20, items: action },
             },
             required: ["summary", "reason", "proposedActions"],
-            additionalProperties: true,
           },
         ],
       },
@@ -451,6 +623,7 @@ export function agentDecisionJsonSchema() {
       },
       requestedTodayCreateIndexes: {
         type: "array",
+        maxItems: 20,
         items: { type: "integer", minimum: 0, maximum: 19 },
       },
       workingMemoryUpdate: {
@@ -460,24 +633,35 @@ export function agentDecisionJsonSchema() {
             type: "object",
             additionalProperties: true,
             properties: {
-              objective: { anyOf: [{ type: "string" }, { type: "null" }] },
-              contextSummary: {
-                anyOf: [{ type: "string" }, { type: "null" }],
-              },
+              objective: nullableString,
+              contextSummary: nullableString,
               openLoops: {
                 type: "array",
-                items: { type: "object", additionalProperties: true },
+                maxItems: 8,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    summary: { type: "string" },
+                    relevantEntityIds: stringArray,
+                  },
+                  required: ["summary", "relevantEntityIds"],
+                },
               },
-              lastAgentQuestion: {
-                anyOf: [{ type: "string" }, { type: "null" }],
-              },
-              relevantEntityIds: {
-                type: "array",
-                items: { type: "string" },
-              },
+              lastAgentQuestion: nullableString,
+              relevantEntityIds: stringArray,
               assumptions: {
                 type: "array",
-                items: { type: "object", additionalProperties: true },
+                maxItems: 12,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    text: { type: "string" },
+                    confidence: { type: "number", minimum: 0, maximum: 1 },
+                  },
+                  required: ["text", "confidence"],
+                },
               },
             },
           },
@@ -490,6 +674,8 @@ export function agentDecisionJsonSchema() {
       "clarification",
       "proposal",
       "affectsToday",
+      "policySignals",
+      "workingMemoryUpdate",
     ],
   } as Record<string, unknown>;
 }
