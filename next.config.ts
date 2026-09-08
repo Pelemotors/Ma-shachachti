@@ -5,7 +5,7 @@ const config: NextConfig = {
   // `next dev --hostname 0.0.0.0` would otherwise block /_next assets.
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   outputFileTracingIncludes: {
-    "/api/chat": ["./lib/agent/INSTRUCTIONS.he.md"],
+    "/api/chat": ["./lib/agent/instructions.ts"],
   },
   async headers() {
     return [

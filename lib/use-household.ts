@@ -399,6 +399,9 @@ export function useHousehold() {
     restore,
     startLocal,
     cloudLoad,
+    adoptRemote: (next: AppState, revision: number) => {
+      adopt(migrateState(next), revision, "cloud");
+    },
     signOut,
     setError,
     setNotice,

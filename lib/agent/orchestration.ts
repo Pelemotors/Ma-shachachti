@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { ApiError } from "@/lib/server";
 import { activeFacts, whatMatters } from "@/lib/engine";
 import {
@@ -13,6 +12,10 @@ import { enforceReferentialIntegrity } from "@/lib/agent/semantic";
 import { outputText, type OpenAIResponse } from "@/lib/agent/client";
 import { nextDayStart } from "@/lib/time";
 import type { AppState } from "@/lib/model";
+import {
+  AGENT_INSTRUCTIONS,
+  AGENT_CONTRACT_VERSION,
+} from "@/lib/agent/instructions";
 
 function upstreamError(status: number, raw: string) {
   let code = "";
@@ -167,6 +170,7 @@ export type ChatOrchestrationResult = {
   requestId: string;
   turnId: string;
   selectedModel: string;
+  agentContractVersion: string;
 };
 
 export async function orchestrateChatTurn(
@@ -185,10 +189,7 @@ export async function orchestrateChatTurn(
       "ai_not_configured",
     );
 
-  const instructions = await readFile(
-    process.cwd() + "/lib/agent/INSTRUCTIONS.he.md",
-    "utf8",
-  );
+  const instructions = AGENT_INSTRUCTIONS;
   const now = new Date();
   const state = input.state;
   const activeTasks = state.tasks.filter(
@@ -283,28 +284,71 @@ export async function orchestrateChatTurn(
     );
 
   decision = enforceReferentialIntegrity(state, decision);
-  const { accepted, rejected: rejectedApply } = filterRunnableActions(
+  const explicitFiltered = filterRunnableActions(
     state,
     decision.explicitActions,
     now,
   );
-  decision = { ...decision, explicitActions: accepted };
-
-  const { auto, proposal: policyProposal } = partitionActionsByPolicy(accepted);
-  let proposal = decision.proposal;
-  if (policyProposal.length) {
-    proposal = {
-      summary: proposal?.summary ?? "יש פעולות שדורשות אישור לפני ביצוע.",
-      reason: proposal?.reason ?? "other",
-      proposedActions: [
-        ...(proposal?.proposedActions ?? []),
-        ...policyProposal,
-      ].slice(0, 20),
-    };
-  }
+  const proposalFiltered = filterRunnableActions(
+    state,
+    decision.proposal?.proposedActions ?? [],
+    now,
+  );
+  const rejectedApply = [
+    ...explicitFiltered.rejected,
+    ...proposalFiltered.rejected,
+  ];
   decision = {
     ...decision,
-    explicitActions: auto,
+    explicitActions: explicitFiltered.accepted,
+    proposal: decision.proposal
+      ? {
+          ...decision.proposal,
+          proposedActions: proposalFiltered.accepted,
+        }
+      : null,
+  };
+
+  const { auto, proposal: policyProposal } = partitionActionsByPolicy(
+    decision.explicitActions,
+  );
+  const fromModel = decision.proposal?.proposedActions ?? [];
+  const { auto: modelAuto, proposal: modelProposal } =
+    partitionActionsByPolicy(fromModel);
+  const allProposal = [...policyProposal, ...modelProposal].slice(0, 20);
+  const stillAuto = [...auto, ...modelAuto].filter(
+    (a, i, arr) =>
+      arr.findIndex((x) => JSON.stringify(x) === JSON.stringify(a)) === i,
+  );
+
+  let proposal =
+    allProposal.length === 0
+      ? null
+      : {
+          summary: (() => {
+            const taskCreates = allProposal.filter(
+              (a) => a.type === "task.create",
+            );
+            if (taskCreates.length === 1)
+              return "זיהיתי משימה אחת. להוסיף אותה לרשימת המשימות?";
+            if (taskCreates.length > 1)
+              return `זיהיתי ${taskCreates.length} משימות. להוסיף אותן לרשימת המשימות?`;
+            return (
+              decision.proposal?.summary ??
+              "יש פעולות שדורשות אישור לפני ביצוע."
+            );
+          })(),
+          reason: (allProposal.some((a) => a.type === "task.create")
+            ? "new_tasks"
+            : (decision.proposal?.reason ?? "other")) as NonNullable<
+            AgentDecision["proposal"]
+          >["reason"],
+          proposedActions: allProposal,
+        };
+
+  decision = {
+    ...decision,
+    explicitActions: stillAuto,
     proposal,
   };
 
@@ -320,5 +364,6 @@ export async function orchestrateChatTurn(
     requestId: input.requestId,
     turnId: input.turnId,
     selectedModel,
+    agentContractVersion: AGENT_CONTRACT_VERSION,
   };
 }

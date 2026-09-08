@@ -39,6 +39,7 @@ export const AgentProposalSchema = z.object({
     "schedule_shift",
     "shopping_derived",
     "destructive",
+    "new_tasks",
     "other",
   ]),
   proposedActions: z.array(AgentActionUnion).max(20),
@@ -150,6 +151,8 @@ export function classifyActionPolicy(
   action: Action,
   opts: { userExplicitBulk?: boolean } = {},
 ): ActionPolicyBucket {
+  // Chat-extracted new tasks always need Preview confirmation (never autoApply).
+  if (action.type === "task.create") return "proposal";
   if (
     action.type === "task.status" &&
     (action.status === "cancelled" || action.status === "unknown")
@@ -163,6 +166,11 @@ export function classifyActionPolicy(
     return "proposal";
   if (opts.userExplicitBulk) return "proposal";
   return "auto";
+}
+
+/** True when chat must show a confirmation Preview (e.g. new tasks). */
+export function chatActionsNeedProposal(actions: Action[]): boolean {
+  return actions.some((a) => classifyActionPolicy(a) === "proposal");
 }
 
 export function partitionActionsByPolicy(actions: Action[]) {
@@ -235,6 +243,7 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
           "schedule_shift",
           "shopping_derived",
           "destructive",
+          "new_tasks",
           "other",
         ]),
       })
