@@ -206,12 +206,53 @@ export function parseAgentDecisionText(text: string): IsolatedDecision {
   return parseAgentDecisionIsolated(json);
 }
 
-/** JSON Schema for OpenAI strict structured output (top-level object). */
+/** JSON Schema for OpenAI Responses API structured output. */
 export function agentDecisionJsonSchema() {
-  const base = z.toJSONSchema(AgentDecisionSchema, {
-    target: "draft-7",
-  }) as Record<string, unknown>;
-  // Ensure root is suitable for Responses API
-  delete base.$schema;
-  return base;
+  // OpenAI strict mode rejects `oneOf` inside array items (Zod discriminated unions).
+  // Keep a compatible object schema and validate with AgentDecisionSchema after parse.
+  return {
+    type: "object",
+    additionalProperties: true,
+    properties: {
+      reply: { type: "string" },
+      explicitActions: { type: "array", items: { type: "object" } },
+      clarification: {
+        anyOf: [
+          { type: "null" },
+          {
+            type: "object",
+            properties: {
+              question: { type: "string" },
+              unresolvedPart: { anyOf: [{ type: "string" }, { type: "null" }] },
+            },
+            required: ["question", "unresolvedPart"],
+            additionalProperties: true,
+          },
+        ],
+      },
+      proposal: {
+        anyOf: [
+          { type: "null" },
+          {
+            type: "object",
+            properties: {
+              summary: { type: "string" },
+              reason: { type: "string" },
+              proposedActions: { type: "array", items: { type: "object" } },
+            },
+            required: ["summary", "reason", "proposedActions"],
+            additionalProperties: true,
+          },
+        ],
+      },
+      affectsToday: { type: "boolean" },
+    },
+    required: [
+      "reply",
+      "explicitActions",
+      "clarification",
+      "proposal",
+      "affectsToday",
+    ],
+  } as Record<string, unknown>;
 }

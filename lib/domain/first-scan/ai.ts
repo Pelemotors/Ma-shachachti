@@ -66,8 +66,11 @@ export async function analyzeFirstScanSemantic(
           format: {
             type: "json_schema",
             name: "first_home_scan",
-            strict: true,
-            schema: scanJsonSchema(),
+            strict: false,
+            schema: {
+              type: "object",
+              additionalProperties: true,
+            },
           },
         },
         max_output_tokens: 2500,

@@ -71,7 +71,7 @@ async function callAgent(
           format: {
             type: "json_schema",
             name: "household_agent_decision",
-            strict: true,
+            strict: false,
             schema: agentDecisionJsonSchema(),
           },
         },
