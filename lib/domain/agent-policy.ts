@@ -114,14 +114,18 @@ function directives(traits: Record<AgentPolicyTrait, number>) {
     );
 
   if (traits.reminderSensitivity <= 0.4)
-    out.push("Avoid extra reminders unless clearly useful or explicitly requested.");
+    out.push(
+      "Avoid extra reminders unless clearly useful or explicitly requested.",
+    );
   else if (traits.reminderSensitivity >= 0.75)
     out.push(
       "Lean toward helpful reminders when the user has shown they value them.",
     );
 
   if (traits.verbosity <= 0.35)
-    out.push("Keep replies concise unless detail is needed to complete the task.");
+    out.push(
+      "Keep replies concise unless detail is needed to complete the task.",
+    );
   else if (traits.verbosity >= 0.7)
     out.push(
       "Give somewhat more explanation when it helps the user understand the decision.",
