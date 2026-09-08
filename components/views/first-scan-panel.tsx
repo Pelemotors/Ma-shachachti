@@ -18,12 +18,17 @@ import { messageForCode } from "@/lib/errors";
 
 const SCAN_ANALYSIS_FAIL_HE = messageForCode("scan_analysis_failed");
 
-/** Prefer server semantic scan; fall back to local heuristic only. */
+/** Prefer server semantic scan when authenticated; else local heuristic only. */
 async function analyzeScanPreferSemantic(
   text: string,
 ): Promise<FirstScanAnalysis> {
+  const { supabase, authFetch } = await import("@/lib/supabase-browser");
+  // Local-demo / e2e clear Supabase: never hit the API (avoids next-dev compile/HMR races).
+  if (!supabase) return analyzeFirstScan(text);
+  const session = (await supabase.auth.getSession()).data.session;
+  if (!session) return analyzeFirstScan(text);
   try {
-    const res = await fetch("/api/first-scan/analyze", {
+    const res = await authFetch("/api/first-scan/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
@@ -31,7 +36,6 @@ async function analyzeScanPreferSemantic(
     if (res.ok) {
       const data = (await res.json()) as {
         analysis?: FirstScanAnalysis;
-        source?: string;
       };
       if (data.analysis) return data.analysis;
     }
@@ -152,8 +156,6 @@ export function FirstScanPanel(props: {
         return;
       }
 
-      setAnalysis(a);
-      setPhase("review");
       const stamp = new Date().toISOString();
       await props.act({
         type: "scan.set",
@@ -167,6 +169,8 @@ export function FirstScanPanel(props: {
           },
         },
       });
+      setAnalysis(a);
+      setPhase("review");
     } catch {
       setAnalysisError(SCAN_ANALYSIS_FAIL_HE);
     }
@@ -182,8 +186,6 @@ export function FirstScanPanel(props: {
         return;
       }
       const a = await analyzeScanPreferSemantic(text);
-      setAnalysis(a);
-      setPhase("review");
       const stamp = new Date().toISOString();
       await props.act({
         type: "scan.set",
@@ -197,6 +199,8 @@ export function FirstScanPanel(props: {
           },
         },
       });
+      setAnalysis(a);
+      setPhase("review");
     } catch {
       setAnalysisError(SCAN_ANALYSIS_FAIL_HE);
     }
