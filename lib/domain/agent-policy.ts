@@ -116,12 +116,16 @@ function directives(traits: Record<AgentPolicyTrait, number>) {
   if (traits.reminderSensitivity <= 0.4)
     out.push("Avoid extra reminders unless clearly useful or explicitly requested.");
   else if (traits.reminderSensitivity >= 0.75)
-    out.push("Lean toward helpful reminders when the user has shown they value them.");
+    out.push(
+      "Lean toward helpful reminders when the user has shown they value them.",
+    );
 
   if (traits.verbosity <= 0.35)
     out.push("Keep replies concise unless detail is needed to complete the task.");
   else if (traits.verbosity >= 0.7)
-    out.push("Give somewhat more explanation when it helps the user understand the decision.");
+    out.push(
+      "Give somewhat more explanation when it helps the user understand the decision.",
+    );
 
   return out;
 }
@@ -150,7 +154,8 @@ const strengthDelta = {
 
 function signalRank(signal: AgentPolicySignal) {
   const evidence = signal.evidence === "explicit" ? 10 : 0;
-  const strength = signal.strength === "strong" ? 3 : signal.strength === "medium" ? 2 : 1;
+  const strength =
+    signal.strength === "strong" ? 3 : signal.strength === "medium" ? 2 : 1;
   return evidence + strength;
 }
 
@@ -201,7 +206,8 @@ export function applyAgentPolicySignals(
     const confidence: "low" | "medium" | "high" =
       samples >= 6 || explicitSamples >= 3
         ? "high"
-        : samples >= 2 || (signal.evidence === "explicit" && signal.strength === "strong")
+        : samples >= 2 ||
+            (signal.evidence === "explicit" && signal.strength === "strong")
           ? "medium"
           : "low";
 
