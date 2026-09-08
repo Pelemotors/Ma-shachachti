@@ -7,6 +7,10 @@ import {
 } from "@/hooks/use-audio-recorder";
 import { transcribeAudioBlob } from "@/lib/audio/transcribe-client";
 
+/**
+ * Voice capture only. Transcription becomes editable text and then enters the
+ * same chat/semantic agent path as typed messages — no separate voice parser.
+ */
 export function VoiceRecorder(props: {
   enabled: boolean;
   disabledHint?: string;

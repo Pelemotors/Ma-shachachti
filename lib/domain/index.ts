@@ -11,4 +11,7 @@ export * from "./starter";
 export * from "./forgotten";
 export * from "./notifications";
 export * from "./first-scan";
+export * from "./decision-context";
+export * from "./forecast";
+export * from "./learning/pace";
 export { applyActions, requiresConfirmation } from "./apply-actions";

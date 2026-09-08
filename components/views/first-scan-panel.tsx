@@ -2,10 +2,10 @@
 import { useRef, useState } from "react";
 import type { Action, AppState } from "@/lib/model";
 import {
-  analyzeScanText,
   applyScanCorrection,
   type FirstScanAnalysis,
 } from "@/lib/domain/first-scan/analyze";
+import { analyzeFirstScan } from "@/lib/domain/first-scan/semantic";
 import { buildScanApproveActions } from "@/lib/domain/first-scan/approve";
 import { DurationWheel, durationToMinutes } from "@/components/duration-wheel";
 import {
@@ -17,6 +17,33 @@ import { VoiceRecorder } from "@/components/voice-recorder";
 import { messageForCode } from "@/lib/errors";
 
 const SCAN_ANALYSIS_FAIL_HE = messageForCode("scan_analysis_failed");
+
+/** Prefer server semantic scan when authenticated; else local heuristic only. */
+async function analyzeScanPreferSemantic(
+  text: string,
+): Promise<FirstScanAnalysis> {
+  const { supabase, authFetch } = await import("@/lib/supabase-browser");
+  // Local-demo / e2e clear Supabase: never hit the API (avoids next-dev compile/HMR races).
+  if (!supabase) return analyzeFirstScan(text);
+  const session = (await supabase.auth.getSession()).data.session;
+  if (!session) return analyzeFirstScan(text);
+  try {
+    const res = await authFetch("/api/first-scan/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        analysis?: FirstScanAnalysis;
+      };
+      if (data.analysis) return data.analysis;
+    }
+  } catch {
+    /* offline / auth — heuristic fallback */
+  }
+  return analyzeFirstScan(text);
+}
 
 export function FirstScanPanel(props: {
   state: AppState;
@@ -123,14 +150,12 @@ export function FirstScanPanel(props: {
 
       let a: FirstScanAnalysis;
       try {
-        a = analyzeScanText(text);
+        a = await analyzeScanPreferSemantic(text);
       } catch {
         setAnalysisError(SCAN_ANALYSIS_FAIL_HE);
         return;
       }
 
-      setAnalysis(a);
-      setPhase("review");
       const stamp = new Date().toISOString();
       await props.act({
         type: "scan.set",
@@ -144,6 +169,8 @@ export function FirstScanPanel(props: {
           },
         },
       });
+      setAnalysis(a);
+      setPhase("review");
     } catch {
       setAnalysisError(SCAN_ANALYSIS_FAIL_HE);
     }
@@ -158,9 +185,7 @@ export function FirstScanPanel(props: {
         setLocalError("אין חלקים שמורים לניתוח מחדש.");
         return;
       }
-      const a = analyzeScanText(text);
-      setAnalysis(a);
-      setPhase("review");
+      const a = await analyzeScanPreferSemantic(text);
       const stamp = new Date().toISOString();
       await props.act({
         type: "scan.set",
@@ -174,6 +199,8 @@ export function FirstScanPanel(props: {
           },
         },
       });
+      setAnalysis(a);
+      setPhase("review");
     } catch {
       setAnalysisError(SCAN_ANALYSIS_FAIL_HE);
     }

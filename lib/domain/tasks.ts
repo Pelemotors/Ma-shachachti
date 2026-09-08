@@ -11,6 +11,7 @@ import {
   isTaskVisibleNow,
   isActiveTaskStatus,
 } from "./tasks/visibility";
+import { buildSharedDecisionContext, sharedRank } from "./decision-context";
 
 export {
   estimatedMinutes,
@@ -30,9 +31,12 @@ export function openTasks(state: AppState, now = new Date()): Task[] {
   return state.tasks.filter((t) => isActiveVisibleTask(t, now));
 }
 
+/** Shared ranking with DailyPlan / FreeTime / WhatForgot. */
 export function whatMatters(s: AppState, now = new Date()) {
-  return s.tasks
-    .filter((t) => isActiveVisibleTask(t, now) && t.kind === "task")
-    .sort((a, b) => score(b, s, now) - score(a, s, now))
-    .slice(0, 6);
+  const ctx = buildSharedDecisionContext(s, now);
+  return ctx.tasks
+    .filter((v) => isActiveVisibleTask(v.task, now) && v.task.kind === "task")
+    .sort((a, b) => sharedRank(b) - sharedRank(a))
+    .slice(0, 6)
+    .map((v) => v.task);
 }
