@@ -144,11 +144,13 @@ export function useChatController(
           });
           const data = await response.json();
           if (!response.ok) throw new Error(data.error);
-          if (data.basedOnRevision !== h.currentRevision()) {
-            sessionStorage.removeItem(CHAT_PENDING_KEY);
-            throw new Error(
-              "המידע השתנה בזמן השיחה. לא בוצעו שינויים; אפשר לשלוח שוב.",
-            );
+          // R07: never drop the whole AI turn on revision drift — show reply
+          // and still try to apply actions against the latest local revision.
+          if (
+            typeof data.basedOnRevision === "number" &&
+            data.basedOnRevision !== h.currentRevision()
+          ) {
+            data.reply = `${data.reply}\n\nבזמן שעניתי משהו השתנה אצלך — שמרתי את התשובה, וביצעתי רק שינויים שעדיין תקפים.`;
           }
           answer = data;
         }
@@ -177,35 +179,57 @@ export function useChatController(
           ? answer.proposal.proposedActions
           : [];
         if (actions.length) {
-          if (state.profile.autoApply && !requiresConfirmation(actions))
-            await h.commit(actions, false, true, {
-              turnId: idempotencyKey,
-              sealTurn: true,
-            });
-          else {
-            proposalRevision.current = h.currentRevision();
-            setProposal(actions);
-            sessionStorage.setItem(
-              CHAT_UI_KEY,
-              JSON.stringify({
-                proposal: actions,
-                revision: proposalRevision.current,
-                at: Date.now(),
-              }),
-            );
+          try {
+            if (state.profile.autoApply && !requiresConfirmation(actions))
+              await h.commit(actions, false, true, {
+                turnId: idempotencyKey,
+                sealTurn: true,
+              });
+            else {
+              proposalRevision.current = h.currentRevision();
+              setProposal(actions);
+              sessionStorage.setItem(
+                CHAT_UI_KEY,
+                JSON.stringify({
+                  proposal: actions,
+                  revision: proposalRevision.current,
+                  at: Date.now(),
+                }),
+              );
+              await h.commit(
+                [
+                  {
+                    type: "operation.record",
+                    turnId: idempotencyKey,
+                    summary: "proposal_pending",
+                    actionTypes: actions.map((a) => a.type),
+                  },
+                ],
+                false,
+                true,
+                { turnId: idempotencyKey, sealTurn: true },
+              );
+            }
+          } catch (actionError) {
+            // Reply already persisted; surface action failure without losing the turn.
+            const detail =
+              actionError instanceof Error
+                ? actionError.message
+                : "חלק מהשינויים לא נשמרו.";
+            h.setError(detail);
             await h.commit(
               [
                 {
                   type: "operation.record",
                   turnId: idempotencyKey,
-                  summary: "proposal_pending",
+                  summary: "chat_actions_failed",
                   actionTypes: actions.map((a) => a.type),
                 },
               ],
               false,
               true,
               { turnId: idempotencyKey, sealTurn: true },
-            );
+            ).catch(() => undefined);
           }
         } else {
           await h.commit(

@@ -1,16 +1,18 @@
 import { Action, AppState, emptyState, migrateState } from "../model";
 import { applyActions } from "../engine";
 import type { CommitOptions, StateRepository, StateSnapshot } from "./types";
-
-const LOCAL_KEY = "ma-shachachti:local:v1";
+import {
+  LOCAL_STATE_KEY,
+  loadAndReconcileLocalState,
+  persistLocalState,
+} from "./local-cas";
 
 export class LocalStateRepository implements StateRepository {
   private revision = 0;
 
   async read(): Promise<StateSnapshot> {
     try {
-      const raw = localStorage.getItem(LOCAL_KEY);
-      const state = raw ? migrateState(JSON.parse(raw)) : emptyState();
+      const state = loadAndReconcileLocalState();
       return { state, revision: this.revision };
     } catch {
       return { state: emptyState(), revision: 0 };
@@ -28,12 +30,15 @@ export class LocalStateRepository implements StateRepository {
       new Date(),
       options.confirmed ?? false,
     );
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(next));
+    persistLocalState(next);
     this.revision += 1;
     return { state: next, revision: this.revision };
   }
 
   static save(state: AppState) {
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(state));
+    persistLocalState(state);
   }
 }
+
+/** @deprecated Prefer LOCAL_STATE_KEY from local-cas */
+export const LOCAL_KEY = LOCAL_STATE_KEY;

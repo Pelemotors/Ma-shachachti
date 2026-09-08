@@ -4,13 +4,18 @@ import {
   AppState,
   Action,
   emptyState,
-  StateSchema,
   migrateState,
 } from "./model";
 import { applyActions } from "./engine";
 import { supabase, authFetch } from "./supabase-browser";
+import {
+  fingerprintState,
+  loadAndReconcileLocalState,
+  localStoredConflictsWith,
+  persistLocalState,
+  LOCAL_STATE_KEY,
+} from "./persistence/local-cas";
 
-const LOCAL_KEY = "ma-shachachti:local:v1";
 type UndoEntry = {
   state: AppState;
   revision: number;
@@ -30,7 +35,7 @@ type CommitOptions = {
   /** Seal the turn and expose one undo for the whole operation */
   sealTurn?: boolean;
 };
-const fingerprint = (state: AppState) => JSON.stringify(state);
+const fingerprint = fingerprintState;
 
 export function useHousehold() {
   const [state, setState] = useState<AppState>(emptyState),
@@ -107,8 +112,8 @@ export function useHousehold() {
 
   const startLocal = useCallback(() => {
     try {
-      const raw = localStorage.getItem(LOCAL_KEY);
-      adopt(raw ? migrateState(JSON.parse(raw)) : emptyState(), 0, "local");
+      const state = loadAndReconcileLocalState();
+      adopt(state, 0, "local");
       pendingCommit.current = null;
       turnAnchor.current = null;
       setUndo(null);
@@ -152,13 +157,13 @@ export function useHousehold() {
         let next: AppState,
           revision = before.revision;
         if (before.mode === "local") {
-          const stored = localStorage.getItem(LOCAL_KEY);
-          if (stored && stored !== fingerprint(before.state))
+          const stored = localStorage.getItem(LOCAL_STATE_KEY);
+          if (localStoredConflictsWith(stored, before.state))
             throw new Error(
               "המידע השתנה בחלון אחר. צריך לטעון מחדש לפני שינוי נוסף.",
             );
           next = applyActions(before.state, actions, new Date(), confirmed);
-          localStorage.setItem(LOCAL_KEY, fingerprint(next));
+          persistLocalState(next);
           revision = before.revision + 1;
         } else if (before.mode === "cloud") {
           const signature = JSON.stringify({
@@ -197,6 +202,12 @@ export function useHousehold() {
           throw new Error("החשבון השתנה בזמן השמירה. השינוי לא הוצג.");
         adopt(next, revision, before.mode);
 
+        const createCount = actions.filter((a) => a.type === "task.create")
+          .length;
+        const addedTasks = next.tasks.length - before.state.tasks.length;
+        const duplicateCreate =
+          createCount > 0 && addedTasks < createCount;
+
         if (remember) {
           if (opts.turnId && !opts.sealTurn) {
             // Mid-turn: keep undo unset until seal
@@ -211,7 +222,11 @@ export function useHousehold() {
             });
             turnAnchor.current = null;
             setNotice(
-              before.mode === "local" ? "נשמר במכשיר הזה" : "השינוי נשמר",
+              duplicateCreate
+                ? "נראה שכבר יש משימה דומה ברשימה."
+                : before.mode === "local"
+                  ? "נשמר במכשיר הזה"
+                  : "השינוי נשמר",
             );
           } else {
             setUndo({
@@ -222,7 +237,11 @@ export function useHousehold() {
               turnId: opts.turnId ?? null,
             });
             setNotice(
-              before.mode === "local" ? "נשמר במכשיר הזה" : "השינוי נשמר",
+              duplicateCreate
+                ? "נראה שכבר יש משימה דומה ברשימה."
+                : before.mode === "local"
+                  ? "נשמר במכשיר הזה"
+                  : "השינוי נשמר",
             );
           }
         } else if (!opts.turnId) {
@@ -253,10 +272,10 @@ export function useHousehold() {
       try {
         let revision = before.revision;
         if (before.mode === "local") {
-          const stored = localStorage.getItem(LOCAL_KEY);
-          if (stored && stored !== fingerprint(before.state))
+          const stored = localStorage.getItem(LOCAL_STATE_KEY);
+          if (localStoredConflictsWith(stored, before.state))
             throw new Error("המידע השתנה בחלון אחר. טענו מחדש לפני שחזור.");
-          localStorage.setItem(LOCAL_KEY, fingerprint(parsed));
+          persistLocalState(parsed);
           revision++;
         } else if (before.mode === "cloud") {
           const res = await authFetch("/api/state", {
@@ -307,12 +326,20 @@ export function useHousehold() {
       }
       let revision = current.revision;
       if (current.mode === "local") {
-        const stored = localStorage.getItem(LOCAL_KEY);
-        if (stored !== undo.afterFingerprint) {
+        const stored = localStorage.getItem(LOCAL_STATE_KEY);
+        let storedFingerprint = stored;
+        try {
+          storedFingerprint = stored
+            ? fingerprint(migrateState(JSON.parse(stored)))
+            : null;
+        } catch {
+          storedFingerprint = null;
+        }
+        if (storedFingerprint !== undo.afterFingerprint) {
           setUndo(null);
           throw new Error("אי אפשר לבטל כי המידע השתנה בחלון אחר.");
         }
-        localStorage.setItem(LOCAL_KEY, fingerprint(undo.state));
+        persistLocalState(undo.state);
         revision++;
       } else {
         const res = await authFetch("/api/state", {
