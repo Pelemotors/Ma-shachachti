@@ -4,7 +4,7 @@ import type { Action, AppState, Task } from "@/lib/model";
 import { categoryLabel } from "@/lib/taxonomy";
 import { estimatedMinutes, shouldAskWorkTime, blocked } from "@/lib/engine";
 import { formatTime } from "@/lib/time";
-import { emojiForCategory } from "@/lib/task-emoji";
+import { emojiForTask } from "@/lib/task-emoji";
 
 export function TaskCard({
   task: t,
@@ -80,7 +80,7 @@ export function TaskCard({
           </button>
           {timeLabel ? <span className="task-time">{timeLabel}</span> : null}
           <span className="task-emoji" aria-hidden="true">
-            {emojiForCategory(t.categoryId)}
+            {emojiForTask(t.title, t.categoryId)}
           </span>
           <button className="task-title" onClick={() => onEdit(t)}>
             <strong>{t.title}</strong>
