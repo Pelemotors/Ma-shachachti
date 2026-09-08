@@ -38,9 +38,7 @@ export function useTaskController(h: Household) {
         setConfirm([a]);
         return;
       }
-      try {
-        await run([a]);
-      } catch {}
+      await run([a]);
     },
     [run],
   );
@@ -53,25 +51,23 @@ export function useTaskController(h: Household) {
   const submitCompletion = useCallback(async () => {
     if (!completion) return;
     const finished = completion;
-    try {
-      await run([
-        {
-          type: "task.status",
-          id: finished.id,
-          status: "done",
-          ...(workActual ? { actualWorkMinutes: +workActual } : {}),
-        },
-      ]);
-      setCompletion(null);
-      if (
-        isLifeAdminTask(finished) &&
-        shouldAskLifeAdminWindowConfirm(state.compactedMemory)
-      ) {
-        setLifeAdminPrompt({
-          completedAtMinutes: minutesOfDay(new Date(), state.profile.timezone),
-        });
-      }
-    } catch {}
+    await run([
+      {
+        type: "task.status",
+        id: finished.id,
+        status: "done",
+        ...(workActual ? { actualWorkMinutes: +workActual } : {}),
+      },
+    ]);
+    setCompletion(null);
+    if (
+      isLifeAdminTask(finished) &&
+      shouldAskLifeAdminWindowConfirm(state.compactedMemory)
+    ) {
+      setLifeAdminPrompt({
+        completedAtMinutes: minutesOfDay(new Date(), state.profile.timezone),
+      });
+    }
   }, [
     completion,
     workActual,
@@ -83,26 +79,22 @@ export function useTaskController(h: Household) {
   const submitLifeAdminResponse = useCallback(
     async (response: LifeAdminConfirmResponse) => {
       if (!lifeAdminPrompt) return;
-      try {
-        await run([
-          {
-            type: "memory.lifeAdmin",
-            response,
-            completedAtMinutes: lifeAdminPrompt.completedAtMinutes,
-          },
-        ]);
-        setLifeAdminPrompt(null);
-      } catch {}
+      await run([
+        {
+          type: "memory.lifeAdmin",
+          response,
+          completedAtMinutes: lifeAdminPrompt.completedAtMinutes,
+        },
+      ]);
+      setLifeAdminPrompt(null);
     },
     [lifeAdminPrompt, run],
   );
 
   const confirmActions = useCallback(async () => {
     if (!confirm) return;
-    try {
-      await run(confirm, true);
-      setConfirm(null);
-    } catch {}
+    await run(confirm, true);
+    setConfirm(null);
   }, [confirm, run]);
 
   const matches = useCallback(

@@ -1,0 +1,37 @@
+---
+description: P0 AI Chat reliability — deploy/chat must not break after releases
+alwaysApply: true
+---
+
+# AI Chat Reliability — P0 Release Blocker
+
+לפני כל פיצ׳ר חדש: **אמינות הצ׳אט אחרי Deploy היא P0**.
+
+- תוכנית מלאה R01–R30: `docs/AI_CHAT_RELIABILITY.he.md`
+- בדיקות מיידיות T01–T22: אותו מסמך, סעיף „P0 — בדיקות מיידיות”
+
+## חורים ידועים (לתקן קודם)
+
+1. **אין `readFile` ל־Agent ב־runtime** — הוראות ב־bundle בלבד (`lib/agent/instructions.ts`).
+2. **`/api/health` ירוק ≠ צ׳אט חי** — גרסת build/SHA אמיתית + AI readiness נפרד.
+3. **Revision conflict לא מוחק תשובת AI** — revalidate actions; reply תמיד מוצג.
+4. **Turn = יחידה לוגית אחת בשרת** — הלקוח אינו האחראי הראשי לביצוע Turn.
+
+## חוקים קבועים
+
+- כשל Chat: `requestId`, `turnId`, `deploymentVersion`, `stage`, `errorCode`, `latencyMs`, `model`, `stateRevision` — בלי תוכן אישי.
+- Idempotency של Turn שלם; Retry לא מכפיל.
+- Fallback מודל רק על timeout/5xx/invalid output — לא על quota/invalid key.
+- DB: EXPAND → deploy → verify → CONTRACT. Client ישן: עובד או `client_upgrade_required` + draft.
+- **Deploy לא הושלם** על Vercel READY / build / health 200 בלבד — רק אם **PRODUCTION CHAT SMOKE = PASS**.
+- Semantic-first: אין לתקן כשלי AI עם מילוני regex.
+
+## מה לא לסמן כ־PASS אוטומטי
+
+- Push פיזי iPhone/Android, Notification Center, הרשאות OS במכשיר → **Manual QA נפרד**.
+- Live OpenAI בלי credentials → `NOT RUN`, לא FAIL ולא PASS מזויף.
+- E2E שדורש staging auth / credentials חיצוניים / מכשיר → `skipped` עם סיבה.
+
+## דוח סיום סבב בדיקות (חובה)
+
+להחזיר טבלת PASS/FAIL לפי התחומים ב־T01–T22 במסמך, כולל: bugs שנמצאו/תוקנו, מה לא הורץ ולמה, **בלי לערבב אוטומציה ב־Manual QA**.
