@@ -566,6 +566,36 @@ export function score(t: Task, s: AppState, now = new Date()) {
   n +=
     s.tasks.filter((x) => x.status === "open" && x.dependsOn.includes(t.id))
       .length * 15;
+
+  // Soft routine bonus (deadline urgency above still dominates).
+  const dayOfWeek = (() => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: s.profile.timezone,
+      weekday: "short",
+    }).format(now);
+    const map: Record<string, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+    return map[parts] ?? now.getDay();
+  })();
+  const cleaningDays = s.profile.householdRoutines?.cleaningDays ?? [];
+  const cleaner = s.profile.cleaner;
+  const isCleaningCat =
+    t.categoryId === "cleaning_reset" ||
+    t.categoryId === "floors" ||
+    t.categoryId === "bathroom_toilets" ||
+    t.categoryId === "living_spaces" ||
+    t.categoryId === "laundry";
+  if (cleaningDays.includes(dayOfWeek) && isCleaningCat) n += 12;
+  if (cleaner?.enabled && cleaner.days.includes(dayOfWeek) && isCleaningCat)
+    n -= 8;
+
   return n;
 }
 

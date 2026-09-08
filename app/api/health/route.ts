@@ -1,5 +1,8 @@
 import { AGENT_CONTRACT_VERSION } from "@/lib/agent/instructions";
 
+/** Canonical AppState schema major version (State V2). */
+const APP_SCHEMA_VERSION = 2;
+
 export function GET() {
   const required = [
     "NEXT_PUBLIC_SUPABASE_URL",
@@ -28,14 +31,18 @@ export function GET() {
   const aiConfigured = Boolean(
     process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL,
   );
+  // Light check only: ENV present for DB/RPC path — no network/OpenAI probe here.
+  const databaseReady = supabaseConfigured;
   const ready = missing.length === 0;
   return Response.json(
     {
       status: ready ? "ok" : "configuration_missing",
       version: appVersion,
       appVersion,
+      appSchemaVersion: APP_SCHEMA_VERSION,
       deploymentVersion,
       supabaseConfigured,
+      databaseReady,
       aiConfigured,
       agentContractVersion: AGENT_CONTRACT_VERSION,
       missing: ready ? undefined : missing,

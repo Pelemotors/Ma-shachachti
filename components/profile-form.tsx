@@ -132,6 +132,127 @@ export function ProfileForm({
             שמירה אוטומטית של פעולות פשוטות והפיכות מהשיחה
           </label>
           <small>הסרת מידע, ביטול ומשימות רבות יחד תמיד יוצגו לאישור.</small>
+          <fieldset>
+            <legend>ימי ניקיון בבית</legend>
+            <div className="feature-checks">
+              {(
+                [
+                  [0, "א׳"],
+                  [1, "ב׳"],
+                  [2, "ג׳"],
+                  [3, "ד׳"],
+                  [4, "ה׳"],
+                  [5, "ו׳"],
+                  [6, "ש׳"],
+                ] as const
+              ).map(([day, label]) => {
+                const checked = (
+                  p.householdRoutines?.cleaningDays ?? []
+                ).includes(day);
+                return (
+                  <label className="check-line" key={day}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const cur = p.householdRoutines?.cleaningDays ?? [];
+                        patch({
+                          householdRoutines: {
+                            cleaningDays: e.target.checked
+                              ? [...cur, day]
+                              : cur.filter((d) => d !== day),
+                          },
+                        });
+                      }}
+                    />
+                    {label}
+                  </label>
+                );
+              })}
+            </div>
+            <small>בונוס עדין בלו״ז לימי ניקיון — לא מחליף דדליין.</small>
+          </fieldset>
+          <fieldset>
+            <legend>מנקה בבית</legend>
+            <label className="check-line">
+              <input
+                type="checkbox"
+                checked={p.cleaner?.enabled ?? false}
+                onChange={(e) =>
+                  patch({
+                    cleaner: {
+                      enabled: e.target.checked,
+                      visitsPerWeek: p.cleaner?.visitsPerWeek ?? 0,
+                      days: p.cleaner?.days ?? [],
+                    },
+                  })
+                }
+              />
+              יש מנקה קבוע
+            </label>
+            {(p.cleaner?.enabled ?? false) && (
+              <>
+                <label>
+                  ביקורים בשבוע
+                  <input
+                    type="number"
+                    min={0}
+                    max={7}
+                    value={p.cleaner?.visitsPerWeek ?? 0}
+                    onChange={(e) =>
+                      patch({
+                        cleaner: {
+                          enabled: true,
+                          visitsPerWeek: +e.target.value,
+                          days: p.cleaner?.days ?? [],
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <div className="feature-checks">
+                  {(
+                    [
+                      [0, "א׳"],
+                      [1, "ב׳"],
+                      [2, "ג׳"],
+                      [3, "ד׳"],
+                      [4, "ה׳"],
+                      [5, "ו׳"],
+                      [6, "ש׳"],
+                    ] as const
+                  ).map(([day, label]) => {
+                    const checked = (p.cleaner?.days ?? []).includes(day);
+                    return (
+                      <label className="check-line" key={`c-${day}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const cur = p.cleaner?.days ?? [];
+                            patch({
+                              cleaner: {
+                                enabled: true,
+                                visitsPerWeek: p.cleaner?.visitsPerWeek ?? 0,
+                                days: e.target.checked
+                                  ? [...cur, day]
+                                  : cur.filter((d) => d !== day),
+                              },
+                            });
+                          }}
+                        />
+                        {label}
+                      </label>
+                    );
+                  })}
+                </div>
+                <small>
+                  בימי מנקה משימות ניקיון מקבלות עדיפות נמוכה יותר — בלי סימון
+                  אוטומטי כבוצע.
+                </small>
+              </>
+            )}
+          </fieldset>
           <label>
             אזור זמן
             <input

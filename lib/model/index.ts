@@ -145,6 +145,19 @@ export const ProfileSchema = z.object({
   }, "Invalid timezone"),
   quietStart: z.number().int().min(0).max(23),
   quietEnd: z.number().int().min(0).max(23),
+  /** Weekdays 0=Sun … 6=Sat when household typically cleans. */
+  householdRoutines: z
+    .object({
+      cleaningDays: z.array(z.number().int().min(0).max(6)).max(7).default([]),
+    })
+    .default({ cleaningDays: [] }),
+  cleaner: z
+    .object({
+      enabled: z.boolean().default(false),
+      visitsPerWeek: z.number().int().min(0).max(7).default(0),
+      days: z.array(z.number().int().min(0).max(6)).max(7).default([]),
+    })
+    .default({ enabled: false, visitsPerWeek: 0, days: [] }),
 });
 
 const BusyWindowSchema = z
@@ -590,6 +603,8 @@ export function emptyState(): AppState {
       timezone: "Asia/Jerusalem",
       quietStart: 22,
       quietEnd: 7,
+      householdRoutines: { cleaningDays: [] },
+      cleaner: { enabled: false, visitsPerWeek: 0, days: [] },
     },
     tasks: [],
     facts: [],

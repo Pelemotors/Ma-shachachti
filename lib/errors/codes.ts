@@ -1,12 +1,31 @@
 export const ERROR_CODES = [
   "revision_conflict",
   "ai_timeout",
+  "ai_network",
   "ai_invalid_output",
+  "ai_invalid_json",
+  "ai_empty",
+  "ai_incomplete",
   "ai_insufficient_quota",
   "ai_rate_limited",
   "ai_configuration",
   "ai_upstream",
+  "ai_consent_required",
+  "ai_not_configured",
+  "ai_failed",
+  "chat_idempotency_conflict",
+  "chat_turn_in_progress",
+  "chat_receipt_unavailable",
+  "chat_receipt_write_failed",
+  "chat_claim_invalid",
   "proposal_expired",
+  "proposal_not_found",
+  "proposal_not_pending",
+  "proposal_empty_after_revalidate",
+  "proposals_read_failed",
+  "proposals_write_failed",
+  "proposals_update_failed",
+  "action_idempotency_conflict",
   "state_save_failed",
   "state_read_failed",
   "auth_required",
@@ -28,6 +47,7 @@ export const ERROR_CODES = [
   "scan_analysis_failed",
   "recording_unsupported",
   "request_failed",
+  "client_upgrade_required",
   "internal_error",
 ] as const;
 
@@ -37,14 +57,39 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 export const ERROR_MESSAGES_HE: Record<ErrorCode, string> = {
   revision_conflict: "המידע השתנה בחלון אחר. טענו מחדש לפני ניסיון נוסף.",
   ai_timeout: "הסוכן לא הצליח לענות בזמן. לא בוצעו שינויים; אפשר לנסות שוב.",
+  ai_network: "תקלת רשת מול הסוכן. לא בוצעו שינויים; אפשר לנסות שוב.",
   ai_invalid_output: "התשובה מהסוכן לא הייתה תקינה. לא בוצעו שינויים.",
+  ai_invalid_json: "התשובה מהסוכן לא הייתה תקינה. לא בוצעו שינויים.",
+  ai_empty: "הסוכן לא החזיר תשובה. לא בוצעו שינויים.",
+  ai_incomplete: "התשובה לא הושלמה. לא בוצעו שינויים; אפשר לנסות שוב.",
   ai_insufficient_quota:
     "מכסת ה-AI הסתיימה כרגע. לא בוצעו שינויים; אפשר להמשיך ידנית או לנסות לאחר חידוש הקרדיט.",
   ai_rate_limited:
     "שירות ה-AI עמוס כרגע. לא בוצעו שינויים; אפשר לנסות שוב בעוד רגע.",
   ai_configuration: "חיבור ה-AI דורש תיקון בהגדרות השרת. לא בוצעו שינויים.",
   ai_upstream: "הסוכן לא הצליח לענות כרגע. לא בוצעו שינויים; אפשר לנסות שוב.",
-  proposal_expired: "המידע השתנה מאז ההצעה. יש לבקש הצעה חדשה.",
+  ai_consent_required:
+    "אפשר להפעיל עזרה אישית בהגדרות, לאחר הסכמה לשימוש במידע.",
+  ai_not_configured:
+    "הסוכן עדיין לא מחובר. אפשר להוסיף ולנהל משימות ידנית.",
+  ai_failed: "הסוכן לא הצליח לענות כרגע.",
+  chat_idempotency_conflict: "מזהה ניסיון השיחה כבר שייך להודעה אחרת.",
+  chat_turn_in_progress:
+    "אותו ניסיון שיחה עדיין בעיבוד. אפשר להמתין רגע ולנסות שוב.",
+  chat_receipt_unavailable:
+    "לא ניתן לבדוק ניסיון שיחה קודם. אפשר לנסות שוב בעוד רגע.",
+  chat_receipt_write_failed:
+    "השיחה עובדה אך שמירת האישור נכשלה. אפשר לנסות שוב באותו מפתח.",
+  chat_claim_invalid: "תשובת claim לא תקינה.",
+  proposal_expired: "פג תוקף ההצעה.",
+  proposal_not_found: "ההצעה לא נמצאה.",
+  proposal_not_pending: "ההצעה אינה ממתינה לאישור.",
+  proposal_empty_after_revalidate:
+    "אין פעולות תקפות לאישור מול המצב העדכני.",
+  proposals_read_failed: "לא ניתן לקרוא הצעות ממתינות.",
+  proposals_write_failed: "לא ניתן לשמור הצעה.",
+  proposals_update_failed: "לא ניתן לעדכן הצעה.",
+  action_idempotency_conflict: "מזהה ניסיון השמירה כבר שייך לפעולה אחרת.",
   state_save_failed: "השמירה לא הצליחה. השינוי עדיין לא נשמר.",
   state_read_failed: "לא ניתן לקרוא את המידע בענן.",
   auth_required: "צריך להתחבר כדי להמשיך.",
@@ -68,6 +113,7 @@ export const ERROR_MESSAGES_HE: Record<ErrorCode, string> = {
   scan_analysis_failed: "הסקירה שלך נשמרה, אבל לא הצלחתי לנתח אותה כרגע.",
   recording_unsupported: "הדפדפן הזה לא מאפשר הקלטה.",
   request_failed: "הפעולה לא הושלמה. אפשר לנסות שוב.",
+  client_upgrade_required: "צריך לרענן את האפליקציה כדי להמשיך.",
   internal_error: "הפעולה לא הושלמה. אפשר לנסות שוב.",
 };
 

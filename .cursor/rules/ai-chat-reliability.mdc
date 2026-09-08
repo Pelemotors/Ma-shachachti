@@ -12,9 +12,9 @@ alwaysApply: true
 
 ## חורים ידועים (לתקן קודם)
 
-1. **אין `readFile` ל־Agent ב־runtime** — הוראות ב־bundle בלבד (`lib/agent/instructions.ts`).
-2. **`/api/health` ירוק ≠ צ׳אט חי** — גרסת build/SHA אמיתית + AI readiness נפרד.
-3. **Revision conflict לא מוחק תשובת AI** — revalidate actions; reply תמיד מוצג.
+1. **הוראות Agent** — ב־bundle בלבד (`lib/agent/instructions.ts`); אין `readFile` ב־runtime.
+2. **`/api/health` ירוק ≠ צ׳אט חי** — גרסת build/SHA + `appSchemaVersion`/`databaseReady`; AI readiness נפרד ב־`/api/health/ai`.
+3. **Revision conflict לא מוחק תשובת AI** — revalidate actions; reply תמיד מוצג; receipt `failed` ל־reclaim.
 4. **Turn = יחידה לוגית אחת בשרת** — הלקוח אינו האחראי הראשי לביצוע Turn.
 
 ## חוקים קבועים

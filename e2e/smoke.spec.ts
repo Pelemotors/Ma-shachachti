@@ -24,7 +24,7 @@ test("P69 local demo can open app and create a minimal task", async ({
 
 test("P69 duration wheel appears on plan setup", async ({ page }) => {
   await openLocalDemo(page, buildLocalState([]));
-  await page.getByRole("button", { name: /צור לי לו.?ז להיום/i }).click();
+  await page.getByRole("button", { name: /מה שונה היום/i }).click();
   await expect(page.getByText(/שעות|דקות|משך|זמן/i).first()).toBeVisible({
     timeout: 10_000,
   });

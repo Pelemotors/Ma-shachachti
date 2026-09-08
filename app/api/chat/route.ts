@@ -11,12 +11,13 @@ import {
 } from "@/lib/server";
 import { orchestrateChatTurn } from "@/lib/agent/orchestration";
 import { applyActions } from "@/lib/engine";
-import { StateSchema } from "@/lib/model";
+import { StateSchema, type Action, type AppState } from "@/lib/model";
 import { claimChatReceipt, completeChatReceipt } from "@/lib/server/chat-receipts";
 import {
   createPendingProposal,
   revalidateProposalActions,
 } from "@/lib/server/proposals";
+import { syncDailyPlanAfterActions } from "@/lib/domain/planning/sync-daily-plan";
 import { AGENT_CONTRACT_VERSION } from "@/lib/agent/instructions";
 
 export const runtime = "nodejs";
@@ -31,6 +32,99 @@ function deploymentVersion() {
   );
 }
 
+async function saveTurnState(
+  db: Awaited<ReturnType<typeof authorize>>["db"],
+  input: {
+    userId: string;
+    state: AppState;
+    revision: number;
+    actions: Action[];
+    affectsToday: boolean;
+    idempotencyKey: string;
+    requestHash: string;
+  },
+) {
+  let working = applyActions(input.state, input.actions, new Date(), false);
+  const synced = syncDailyPlanAfterActions({
+    state: working,
+    actions: input.actions,
+    affectsToday: input.affectsToday,
+    now: new Date(),
+    revision: input.revision,
+  });
+  working = synced.state;
+
+  const { data: saved, error: saveError } = await db.rpc(
+    "idempotent_save_app_state",
+    {
+      p_data: StateSchema.parse(working),
+      p_expected_revision: input.revision,
+      p_key: input.idempotencyKey,
+      p_request_hash: input.requestHash,
+    },
+  );
+  if (saveError) {
+    if (saveError.message.includes("revision_conflict")) {
+      // R07: re-read latest, revalidate, keep reply path viable
+      const latest = await readState(db, input.userId);
+      const retryActions: Action[] = [];
+      for (const action of input.actions) {
+        try {
+          applyActions(latest.state, [action], new Date(), false);
+          retryActions.push(action);
+        } catch {
+          /* drop invalid against latest */
+        }
+      }
+      let retryState = applyActions(
+        latest.state,
+        retryActions,
+        new Date(),
+        false,
+      );
+      const retrySync = syncDailyPlanAfterActions({
+        state: retryState,
+        actions: retryActions,
+        affectsToday: input.affectsToday,
+        now: new Date(),
+        revision: latest.revision,
+      });
+      retryState = retrySync.state;
+      const { data: saved2, error: saveError2 } = await db.rpc(
+        "idempotent_save_app_state",
+        {
+          p_data: StateSchema.parse(retryState),
+          p_expected_revision: latest.revision,
+          p_key: input.idempotencyKey,
+          p_request_hash: input.requestHash,
+        },
+      );
+      if (saveError2) {
+        if (saveError2.message.includes("revision_conflict"))
+          throw new ApiError(
+            409,
+            "המידע השתנה בזמן השיחה. אפשר לשלוח שוב.",
+            "revision_conflict",
+          );
+        throw new ApiError(503, "שמירת תור השיחה נכשלה.", "state_save_failed");
+      }
+      return {
+        state: StateSchema.parse(saved2.state),
+        revision: Number(saved2.revision),
+        planSyncFailed: retrySync.planSyncFailed,
+        planNotice: retrySync.notice,
+      };
+    }
+    throw new ApiError(503, "שמירת תור השיחה נכשלה.", "state_save_failed");
+  }
+  return {
+    state: StateSchema.parse(saved.state),
+    revision: Number(saved.revision),
+    planSyncFailed: synced.planSyncFailed,
+    planNotice: synced.notice,
+  };
+}
+
 export async function POST(req: Request) {
   const requestId = crypto.randomUUID();
   const started = Date.now();
@@ -39,8 +133,13 @@ export async function POST(req: Request) {
   let turnId = "";
   let stateRevision = 0;
   let selectedModel = "";
+  let claimed = false;
+  let idempotencyKey = "";
+  let requestHash = "";
+  let dbRef: Awaited<ReturnType<typeof authorize>>["db"] | null = null;
   try {
     const { db, userId } = await authorize(req);
+    dbRef = db;
     ownerId = userId;
     const body = z
       .object({
@@ -51,7 +150,8 @@ export async function POST(req: Request) {
       })
       .parse(await jsonBody(req, 20_000));
     turnId = body.turnId ?? body.idempotencyKey;
-    const requestHash = createHash("sha256")
+    idempotencyKey = body.idempotencyKey;
+    requestHash = createHash("sha256")
       .update(
         JSON.stringify({
           message: body.message,
@@ -87,6 +187,7 @@ export async function POST(req: Request) {
         },
       });
     }
+    claimed = true;
 
     stage = "state_read";
     const { state, revision } = await readState(db, userId);
@@ -113,22 +214,22 @@ export async function POST(req: Request) {
         ? `${result.reply}\n\n${result.clarification.question}`
         : result.reply;
 
-    const turnActions = [
+    const turnActions: Action[] = [
       {
-        type: "message.add" as const,
-        role: "user" as const,
+        type: "message.add",
+        role: "user",
         text: body.message,
         turnId,
       },
       {
-        type: "message.add" as const,
-        role: "assistant" as const,
+        type: "message.add",
+        role: "assistant",
         text: assistantText,
         turnId,
       },
       ...(result.explicitActions ?? []),
       {
-        type: "operation.record" as const,
+        type: "operation.record",
         turnId,
         summary: result.proposal ? "proposal_pending" : "chat_turn",
         actionTypes: [
@@ -138,30 +239,18 @@ export async function POST(req: Request) {
       },
     ];
 
-    stage = "action_apply";
-    const nextStateDraft = applyActions(state, turnActions, new Date(), false);
-
     stage = "state_save";
-    const { data: saved, error: saveError } = await db.rpc(
-      "idempotent_save_app_state",
-      {
-        p_data: StateSchema.parse(nextStateDraft),
-        p_expected_revision: revision,
-        p_key: body.idempotencyKey,
-        p_request_hash: requestHash,
-      },
-    );
-    if (saveError) {
-      if (saveError.message.includes("revision_conflict"))
-        throw new ApiError(
-          409,
-          "המידע השתנה בזמן השיחה. אפשר לשלוח שוב.",
-          "revision_conflict",
-        );
-      throw new ApiError(503, "שמירת תור השיחה נכשלה.", "state_save_failed");
-    }
-    let nextState = StateSchema.parse(saved.state);
-    let nextRevision = Number(saved.revision);
+    const saved = await saveTurnState(db, {
+      userId,
+      state,
+      revision,
+      actions: turnActions,
+      affectsToday: Boolean(result.affectsToday),
+      idempotencyKey: body.idempotencyKey,
+      requestHash,
+    });
+    let nextState = saved.state;
+    let nextRevision = saved.revision;
     stateRevision = nextRevision;
 
     stage = "proposal_persist";
@@ -186,6 +275,7 @@ export async function POST(req: Request) {
               "יש פעולות שדורשות אישור לפני ביצוע.",
             proposedActions,
             similarHints,
+            affectsToday: Boolean(result.affectsToday),
           },
         });
         proposalId = created.id;
@@ -209,12 +299,15 @@ export async function POST(req: Request) {
         : null,
       proposalId,
       similarHints,
+      affectsToday: Boolean(result.affectsToday),
       state: nextState,
       revision: nextRevision,
       deploymentVersion: deploymentVersion(),
       agentContractVersion: AGENT_CONTRACT_VERSION,
       turnId,
       requestId,
+      planSyncFailed: saved.planSyncFailed,
+      notice: saved.planNotice,
     };
 
     stage = "receipt_save";
@@ -243,6 +336,23 @@ export async function POST(req: Request) {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (e) {
+    if (claimed && ownerId && dbRef && idempotencyKey && requestHash) {
+      try {
+        await completeChatReceipt(dbRef, {
+          userId: ownerId,
+          idempotencyKey,
+          requestHash,
+          response: {
+            error: e instanceof ApiError ? e.message : "failed",
+            code: e instanceof ApiError ? e.code : "internal_error",
+            requestId,
+          },
+          status: "failed",
+        });
+      } catch {
+        /* best-effort mark failed for reclaim */
+      }
+    }
     if (ownerId)
       await activity(ownerId, "ai.failure", {
         requestId,

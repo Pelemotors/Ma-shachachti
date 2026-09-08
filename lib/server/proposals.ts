@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { Action, ActionBatch, AppState, StateSchema } from "@/lib/model";
-import { applyActions } from "@/lib/engine";
+import { applyActions, activeDailyPlan } from "@/lib/engine";
 import { classifyTaskDuplicate, isHardDuplicate } from "@/lib/domain/tasks/dedupe";
+import { syncDailyPlanAfterActions } from "@/lib/domain/planning/sync-daily-plan";
 import { ApiError } from "./errors";
 import { readState } from "./state-store";
 
@@ -19,6 +20,7 @@ export const ProposalPayloadSchema = z.object({
     )
     .max(20)
     .optional(),
+  affectsToday: z.boolean().default(false),
 });
 
 export type ProposalPayload = z.infer<typeof ProposalPayloadSchema>;
@@ -190,10 +192,18 @@ export async function approvePendingProposal(
     );
   }
 
-  const next =
+  const nextApplied =
     applicable.length > 0
       ? applyActions(state, applicable, new Date(), true)
       : state;
+  const synced = syncDailyPlanAfterActions({
+    state: nextApplied,
+    actions: applicable,
+    affectsToday: payload.affectsToday,
+    now: new Date(),
+    revision,
+  });
+  const next = synced.state;
   const requestHash = createHash("sha256")
     .update(
       JSON.stringify({
@@ -253,10 +263,46 @@ export async function approvePendingProposal(
   const skippedCount = skippedDuplicates.filter(
     (a) => a.type === "task.create",
   ).length;
+  const finalState = StateSchema.parse(saved.state);
+  const plan = activeDailyPlan(finalState);
+  const createIds = new Set(
+    applicable
+      .filter((a): a is Extract<Action, { type: "task.create" }> =>
+        a.type === "task.create",
+      )
+      .map((a) => a.task.id)
+      .filter(Boolean),
+  );
+  // Newly created tasks may not carry client ids — match by presence in plan after apply.
+  const beforeIds = new Set(state.tasks.map((t) => t.id));
+  const newTaskIds = finalState.tasks
+    .filter((t) => !beforeIds.has(t.id))
+    .map((t) => t.id);
+  const plannedCreates = plan
+    ? newTaskIds.filter((id) => plan.items.some((item) => item.taskId === id))
+        .length ||
+      [...createIds].filter((id) =>
+        plan.items.some((item) => item.taskId === id),
+      ).length
+    : 0;
+
   let notice = "";
-  if (appliedCount && skippedCount)
+  if (synced.planSyncFailed) {
+    notice =
+      appliedCount > 0
+        ? `נוספו ${appliedCount} משימות. הלו״ז לא עודכן.`
+        : "המשימות נשמרו אבל הלו״ז לא עודכן.";
+  } else if (appliedCount && skippedCount)
     notice = `נוספו ${appliedCount} משימות. ${skippedCount} כבר היו ברשימה.`;
-  else if (appliedCount)
+  else if (appliedCount && payload.affectsToday && plan) {
+    const inPlan = plannedCreates || Math.min(appliedCount, plan.items.length);
+    notice =
+      inPlan < appliedCount
+        ? `שמרתי את כל ${appliedCount} המשימות. ${inPlan} נכנסו ללו״ז של היום והשאר נשארו להמשך.`
+        : appliedCount === 1
+          ? "נוספה משימה אחת ללו״ז."
+          : `נוספו ${appliedCount} משימות ללו״ז.`;
+  } else if (appliedCount)
     notice =
       appliedCount === 1
         ? "נוספה משימה אחת."
