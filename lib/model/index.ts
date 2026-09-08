@@ -152,6 +152,8 @@ export const TaskSchema = z.object({
   notes: z.string().max(2000),
   completedAt: Stamp.nullable(),
   actualWorkMinutes: z.number().int().min(1).max(1440).nullable(),
+  /** Once set, never ask duration feedback again for this task/lineage. */
+  durationFeedbackAskedAt: Stamp.nullable().default(null),
   relatedMemberIds: z.array(z.string().uuid()).max(20).default([]),
   homeAreaIds: z.array(z.string().uuid()).max(20).default([]),
 });
@@ -181,6 +183,8 @@ export const ReminderSchema = z.object({
   status: z.enum(["pending", "cancelled", "sent", "failed"]),
   taskId: z.string().uuid().nullable(),
   urgency: ReminderUrgencySchema.optional(),
+  /** Sort key: newest created first. Optional for legacy rows. */
+  createdAt: Stamp.optional(),
 });
 
 export const ProfileSchema = z.object({
@@ -296,7 +300,12 @@ export const HouseholdMemberSchema = z.object({
 export type HouseholdMember = z.infer<typeof HouseholdMemberSchema>;
 
 export const SuggestionHistorySchema = z.object({
-  taskId: z.string().uuid(),
+  /** Stable suggestion entity id (not the resulting task id). */
+  id: z.string().uuid(),
+  /** Catalog templateId or calendar:<normalized title>. */
+  suggestionKey: z.string().max(200),
+  source: z.enum(["catalog", "calendar"]).default("catalog"),
+  taskId: z.string().uuid().nullable().default(null),
   suggestedAt: Stamp,
   selectedAt: Stamp.nullable(),
   declinedAt: Stamp.nullable(),
@@ -555,6 +564,9 @@ function migrateTask(raw: z.infer<typeof TaskV1Schema>): Task {
     notes: raw.notes,
     completedAt: raw.completedAt,
     actualWorkMinutes: raw.actualWorkMinutes,
+    durationFeedbackAskedAt:
+      (raw as { durationFeedbackAskedAt?: string | null })
+        .durationFeedbackAskedAt ?? null,
     relatedMemberIds: raw.relatedMemberIds ?? [],
     homeAreaIds: (raw as { homeAreaIds?: string[] }).homeAreaIds ?? [],
   };
@@ -649,6 +661,44 @@ function hydrateWorkingMemoryFromLegacy(
       };
     }
   }
+
+  if (Array.isArray(next.tasks)) {
+    next.tasks = next.tasks.map((raw) => {
+      if (!raw || typeof raw !== "object") return raw;
+      const t = raw as Record<string, unknown>;
+      if (t.durationFeedbackAskedAt === undefined)
+        return { ...t, durationFeedbackAskedAt: null };
+      return t;
+    });
+  }
+
+  if (Array.isArray(next.suggestionHistory)) {
+    next.suggestionHistory = next.suggestionHistory.map((raw) => {
+      if (!raw || typeof raw !== "object") return raw;
+      const row = raw as Record<string, unknown>;
+      const id =
+        typeof row.id === "string"
+          ? row.id
+          : globalThis.crypto?.randomUUID?.() ??
+            `00000000-0000-4000-8000-${String(Math.random()).slice(2, 14).padEnd(12, "0")}`;
+      const suggestionKey =
+        typeof row.suggestionKey === "string"
+          ? row.suggestionKey
+          : typeof row.taskId === "string"
+            ? `legacy-task:${row.taskId}`
+            : `legacy:${id}`;
+      return {
+        id,
+        suggestionKey,
+        source: row.source === "calendar" ? "calendar" : "catalog",
+        taskId: typeof row.taskId === "string" ? row.taskId : null,
+        suggestedAt: row.suggestedAt,
+        selectedAt: row.selectedAt ?? null,
+        declinedAt: row.declinedAt ?? null,
+      };
+    });
+  }
+
   return next;
 }
 
@@ -819,6 +869,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
       recurrenceDays: true,
       relatedMemberIds: true,
       homeAreaIds: true,
+      durationFeedbackAskedAt: true,
     }).partial(),
   }),
   z.object({
@@ -874,7 +925,28 @@ export const ActionSchema = z.discriminatedUnion("type", [
     taskId: z.string().uuid().nullable(),
     urgency: ReminderUrgencySchema.optional(),
   }),
+  z.object({
+    type: z.literal("reminder.update"),
+    id: z.string().uuid(),
+    patch: z
+      .object({
+        title: z.string().min(1).max(200).optional(),
+        dueAt: Stamp.optional(),
+        urgency: ReminderUrgencySchema.optional(),
+      })
+      .refine(
+        (p) =>
+          p.title !== undefined ||
+          p.dueAt !== undefined ||
+          p.urgency !== undefined,
+        "empty_reminder_patch",
+      ),
+  }),
   z.object({ type: z.literal("reminder.cancel"), id: z.string().uuid() }),
+  z.object({
+    type: z.literal("durationFeedback.markAsked"),
+    taskId: z.string().uuid(),
+  }),
   z.object({
     type: z.literal("planning.set"),
     constraint: PlanningConstraintSchema,
@@ -924,7 +996,10 @@ export const ActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("member.remove"), id: z.string().uuid() }),
   z.object({
     type: z.literal("suggestion.record"),
-    taskId: z.string().uuid(),
+    id: z.string().uuid().optional(),
+    suggestionKey: z.string().max(200),
+    source: z.enum(["catalog", "calendar"]).default("catalog"),
+    taskId: z.string().uuid().nullable().optional(),
     outcome: z.enum(["suggested", "selected", "declined"]),
   }),
   z.object({

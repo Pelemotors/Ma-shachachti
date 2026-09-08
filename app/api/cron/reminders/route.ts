@@ -167,15 +167,27 @@ export async function GET(req: Request) {
                   JSON.stringify({
                     title: "מה שכחתי?",
                     body:
-                      urgency === "urgent"
-                        ? "יש תזכורת חשובה שמחכה לך."
-                        : (digestBody ??
-                          "יש תזכורת שמחכה לך. אפשר לפתוח כשמתאים."),
+                      reminder?.title?.trim() ||
+                      digestBody ||
+                      "יש תזכורת שמחכה לך.",
                     tag: job.id,
                     url: "/app?view=reminders",
                     urgency,
+                    silent: false,
+                    renotify: true,
+                    vibrate: urgency === "urgent" ? [200, 100, 200] : [100],
+                    icon: "/icon-192.png",
+                    badge: "/icon-192.png",
+                    data: { url: "/app?view=reminders", reminderId: job.id },
                   }),
-                  { ...pushOptions[urgency], timeout: 8000 },
+                  {
+                    ...pushOptions[urgency],
+                    TTL: urgency === "urgent" ? 120 : 3600,
+                    headers: {
+                      Urgency: urgency === "urgent" ? "high" : "normal",
+                    },
+                    timeout: 8000,
+                  },
                 );
                 delivered = true;
               } catch (e) {

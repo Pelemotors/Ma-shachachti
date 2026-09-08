@@ -50,7 +50,8 @@ begin
  case when r->>'status'='cancelled' then 'cancelled' else 'pending' end
  from jsonb_array_elements(p_data->'reminders') r
  on conflict(id) do update set due_at=excluded.due_at,
- status=case when excluded.status='cancelled' then 'cancelled' when reminder_queue.status in ('sent','failed') then reminder_queue.status else excluded.status end
+ status=case when excluded.status='cancelled' then 'cancelled' when reminder_queue.status in ('sent','failed') then reminder_queue.status else excluded.status end,
+ lease_until=case when reminder_queue.due_at is distinct from excluded.due_at then null else reminder_queue.lease_until end
  where reminder_queue.owner_id=v_owner;
  update reminder_queue set status='cancelled' where owner_id=v_owner and status='pending'
  and id not in(select (r->>'id')::uuid from jsonb_array_elements(p_data->'reminders') r);

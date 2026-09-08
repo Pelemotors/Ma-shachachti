@@ -140,6 +140,7 @@ export function applyActions(
           notes: input.notes ?? "",
           completedAt: null,
           actualWorkMinutes: null,
+          durationFeedbackAskedAt: null,
           relatedMemberIds: input.relatedMemberIds ?? [],
           homeAreaIds: input.homeAreaIds ?? [],
         });
@@ -242,6 +243,7 @@ export function applyActions(
             updatedAt: stamp,
             completedAt: null,
             actualWorkMinutes: null,
+            durationFeedbackAskedAt: t.durationFeedbackAskedAt ?? null,
             startedAt: null,
             occurrenceOf: t.id,
             dueAt: next,
@@ -352,12 +354,65 @@ export function applyActions(
             taskId: action.taskId,
             status: "pending",
             urgency: action.urgency ?? "medium",
+            createdAt: stamp,
           });
+        break;
+      }
+      case "reminder.update": {
+        const r = s.reminders.find((x) => x.id === action.id);
+        if (!r) throw new Error("התזכורת לא נמצאה.");
+        if (r.status !== "pending")
+          throw new Error("אפשר לעדכן רק תזכורת ממתינה.");
+        if (action.patch.dueAt !== undefined) {
+          if (new Date(action.patch.dueAt) <= now)
+            throw new Error("מועד התזכורת צריך להיות בעתיד.");
+        }
+        const nextTitle = action.patch.title ?? r.title;
+        const nextDue = action.patch.dueAt ?? r.dueAt;
+        if (
+          isDuplicatePendingReminder(
+            s.reminders.filter((x) => x.id !== r.id),
+            {
+              title: nextTitle,
+              dueAt: nextDue,
+              taskId: r.taskId,
+            },
+          )
+        )
+          throw new Error("כבר יש תזכורת דומה באותו מועד.");
+        if (action.patch.title !== undefined) r.title = action.patch.title;
+        if (action.patch.dueAt !== undefined) r.dueAt = action.patch.dueAt;
+        if (action.patch.urgency !== undefined)
+          r.urgency = action.patch.urgency;
         break;
       }
       case "reminder.cancel": {
         const r = s.reminders.find((x) => x.id === action.id);
         if (r) r.status = "cancelled";
+        break;
+      }
+      case "durationFeedback.markAsked": {
+        const mark = (t: Task) => {
+          if (!t.durationFeedbackAskedAt) t.durationFeedbackAskedAt = stamp;
+          t.updatedAt = stamp;
+        };
+        const target = task(action.taskId);
+        mark(target);
+        if (target.templateId) {
+          for (const x of s.tasks) {
+            if (x.templateId === target.templateId) mark(x);
+          }
+        }
+        if (target.occurrenceOf) {
+          const parent = s.tasks.find((x) => x.id === target.occurrenceOf);
+          if (parent) mark(parent);
+          for (const x of s.tasks) {
+            if (x.occurrenceOf === target.occurrenceOf) mark(x);
+          }
+        }
+        for (const x of s.tasks) {
+          if (x.occurrenceOf === target.id) mark(x);
+        }
         break;
       }
       case "planning.set":
@@ -434,35 +489,26 @@ export function applyActions(
         s.members = s.members.filter((m) => m.id !== action.id);
         break;
       case "suggestion.record": {
-        const row = s.suggestionHistory.find((x) => x.taskId === action.taskId);
-        if (action.outcome === "suggested") {
-          if (!row)
-            s.suggestionHistory.push({
-              taskId: action.taskId,
-              suggestedAt: stamp,
-              selectedAt: null,
-              declinedAt: null,
-            });
-          else row.suggestedAt = stamp;
-        } else if (action.outcome === "selected") {
-          if (row) row.selectedAt = stamp;
-          else
-            s.suggestionHistory.push({
-              taskId: action.taskId,
-              suggestedAt: stamp,
-              selectedAt: stamp,
-              declinedAt: null,
-            });
-        } else {
-          if (row) row.declinedAt = stamp;
-          else
-            s.suggestionHistory.push({
-              taskId: action.taskId,
-              suggestedAt: stamp,
-              selectedAt: null,
-              declinedAt: stamp,
-            });
+        const key = action.suggestionKey;
+        let row = s.suggestionHistory.find(
+          (x) => x.id === action.id || x.suggestionKey === key,
+        );
+        if (!row) {
+          row = {
+            id: action.id ?? crypto.randomUUID(),
+            suggestionKey: key,
+            source: action.source ?? "catalog",
+            taskId: action.taskId ?? null,
+            suggestedAt: stamp,
+            selectedAt: null,
+            declinedAt: null,
+          };
+          s.suggestionHistory.push(row);
         }
+        if (action.taskId) row.taskId = action.taskId;
+        if (action.outcome === "suggested") row.suggestedAt = stamp;
+        else if (action.outcome === "selected") row.selectedAt = stamp;
+        else row.declinedAt = stamp;
         s.suggestionHistory = s.suggestionHistory.slice(-500);
         break;
       }
@@ -582,6 +628,28 @@ export function estimatedMinutes(t: Task, s: AppState) {
 }
 
 export function shouldAskWorkTime(t: Task, s: AppState) {
+  if (t.durationFeedbackAskedAt) return false;
+  if (
+    t.templateId &&
+    s.tasks.some(
+      (x) => x.templateId === t.templateId && x.durationFeedbackAskedAt,
+    )
+  )
+    return false;
+  if (t.occurrenceOf) {
+    const parent = s.tasks.find((x) => x.id === t.occurrenceOf);
+    if (parent?.durationFeedbackAskedAt) return false;
+    if (
+      s.tasks.some(
+        (x) =>
+          x.occurrenceOf === t.occurrenceOf && x.durationFeedbackAskedAt,
+      )
+    )
+      return false;
+  }
+  if (s.tasks.some((x) => x.occurrenceOf === t.id && x.durationFeedbackAskedAt))
+    return false;
+
   const samples = paceSamples(t, s).length;
   if (samples < 3) return true;
   const matchingCompletions = s.tasks.filter(
@@ -1005,8 +1073,11 @@ export function freeTimeV2(
   const plannedIds = new Set(plan?.items.map((i) => i.taskId) ?? []);
   const declineCounts = new Map<string, number>();
   for (const row of s.suggestionHistory) {
-    if (row.declinedAt)
-      declineCounts.set(row.taskId, (declineCounts.get(row.taskId) ?? 0) + 1);
+    if (row.declinedAt && row.taskId)
+      declineCounts.set(
+        row.taskId,
+        (declineCounts.get(row.taskId) ?? 0) + 1,
+      );
   }
 
   const fits = (t: Task) =>

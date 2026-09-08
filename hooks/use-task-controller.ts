@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback } from "react";
 import { Action, Task } from "@/lib/model";
-import { requiresConfirmation } from "@/lib/engine";
+import { requiresConfirmation, shouldAskWorkTime } from "@/lib/engine";
 import { useHousehold } from "@/lib/use-household";
 import {
   isLifeAdminTask,
@@ -43,10 +43,21 @@ export function useTaskController(h: Household) {
     [run],
   );
 
-  const openCompletion = useCallback((t: Task) => {
-    setCompletion(t);
-    setWorkActual("");
-  }, []);
+  const openCompletion = useCallback(
+    async (t: Task) => {
+      setCompletion(t);
+      setWorkActual("");
+      // Stamp once when we are about to present duration feedback — even if dismissed.
+      if (shouldAskWorkTime(t, state)) {
+        try {
+          await run([{ type: "durationFeedback.markAsked", taskId: t.id }]);
+        } catch {
+          /* non-blocking */
+        }
+      }
+    },
+    [run, state],
+  );
 
   const submitCompletion = useCallback(async () => {
     if (!completion) return;

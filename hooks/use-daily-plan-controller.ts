@@ -1,6 +1,6 @@
 "use client";
 import { useState, useCallback, useEffect } from "react";
-import { Action, AppState } from "@/lib/model";
+import { Action } from "@/lib/model";
 import { buildDailyPlanSession, activeDailyPlan, planDay } from "@/lib/engine";
 import { durationToMinutes } from "@/components/duration-wheel";
 import { authFetch } from "@/lib/supabase-browser";
@@ -68,25 +68,53 @@ export function useDailyPlanController(
     setPlanBusy(true);
     try {
       const turnId = crypto.randomUUID();
-      let nextState: AppState = state;
-      if (mode === "cloud") {
+      const note = changedDay.trim();
+      const mins = durationToMinutes(planHours, planMinsPart) || 120;
+      const dateKey = new Intl.DateTimeFormat("en-CA", {
+        timeZone: state.profile.timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(opts.clock);
+
+      // Functional contract: changedDay always reaches planning constraint + plan build.
+      let nextState = await h.commit([
+        {
+          type: "planning.set",
+          constraint: {
+            date: dateKey,
+            availableFrom: null,
+            availableUntil: null,
+            unavailable: [],
+            effort: planEffort as 1 | 2 | 3,
+            note: note.slice(0, 500),
+          },
+        },
+      ]);
+
+      if (mode === "cloud" && note) {
         const response = await authFetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            message: changedDay,
+            message: note,
             idempotencyKey: turnId,
             turnId,
           }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
-        const actions = (data.explicitActions ??
-          data.actions ??
-          []) as Action[];
-        if (actions.length) nextState = await h.commit(actions);
+        if (data.state && typeof data.revision === "number") {
+          h.adoptRemote(data.state, data.revision);
+          nextState = data.state;
+        } else {
+          const actions = (data.explicitActions ??
+            data.actions ??
+            []) as Action[];
+          if (actions.length) nextState = await h.commit(actions);
+        }
       }
-      const mins = durationToMinutes(planHours, planMinsPart) || 120;
+
       const session = buildDailyPlanSession(
         nextState,
         mins,
