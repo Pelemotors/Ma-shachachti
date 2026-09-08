@@ -198,7 +198,7 @@ test("T15 reminder semantic duplicate", () => {
   );
 });
 
-test("T17 AgentContext includes members and pending intent", () => {
+test("T17 AgentContext includes members and working memory", () => {
   let s = emptyState();
   s = {
     ...s,
@@ -212,19 +212,21 @@ test("T17 AgentContext includes members and pending intent", () => {
         updatedAt: NOW.toISOString(),
       },
     ],
-    pendingAgentIntent: {
-      id: crypto.randomUUID(),
-      type: "reminder_create",
-      draftActions: [],
-      missingFields: ["dueAt"],
-      clarificationQuestion: "מתי?",
-      createdAt: NOW.toISOString(),
-      expiresAt: new Date(NOW.getTime() + 3600000).toISOString(),
+    agentWorkingMemory: {
+      objective: "להשלים תזכורת",
+      contextSummary: "שאלה על מועד",
+      openLoops: [{ summary: "ממתינים לשעה", relevantEntityIds: [] }],
+      lastAgentQuestion: "מתי?",
+      relevantEntityIds: [],
+      assumptions: [],
+      updatedAt: NOW.toISOString(),
     },
   };
   const ctx = buildAgentContext(s, { now: NOW });
   assert.equal(ctx.members[0]?.aliases[0], "ניקולאס");
-  assert.equal(ctx.pendingAgentIntent?.type, "reminder_create");
+  assert.equal(ctx.workingMemory?.lastAgentQuestion, "מתי?");
+  assert.ok(ctx.personalAgentPolicy || ctx.agentPolicy);
+  assert.ok(ctx.userKnowledge);
   assert.ok(ctx.nowLocal);
   assert.equal(ctx.timezone, s.profile.timezone);
 });
@@ -277,6 +279,6 @@ test("TaskCreateInputSchema does not inject migration defaults", () => {
 test("instructions include urgency and single-agent rules", () => {
   assert.match(AGENT_INSTRUCTIONS, /priority/);
   assert.match(AGENT_INSTRUCTIONS, /urgent/);
-  assert.match(AGENT_INSTRUCTIONS, /pendingAgentIntent|pending/);
+  assert.match(AGENT_INSTRUCTIONS, /workingMemory|Working Memory/);
   assert.match(AGENT_INSTRUCTIONS, /classification\.source/);
 });

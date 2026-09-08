@@ -49,6 +49,10 @@ export const ClassificationSchema = z.object({
   userOverride: z.boolean(),
 });
 
+/**
+ * @deprecated Legacy FSM slot — dual-read only. Live chat uses AgentWorkingMemory.
+ * Do not extend this enum; new writes must use agentWorkingMemory.
+ */
 export const PendingAgentIntentValueSchema = z.object({
   id: z.string().uuid(),
   type: z.enum([
@@ -70,6 +74,42 @@ export const PendingAgentIntentValueSchema = z.object({
 export const PendingAgentIntentSchema =
   PendingAgentIntentValueSchema.nullable();
 export type PendingAgentIntent = z.infer<typeof PendingAgentIntentSchema>;
+
+/** Open personal-agent working memory — what is open now, not which workflow. */
+export const AgentWorkingMemoryOpenLoopSchema = z.object({
+  summary: z.string().min(1).max(400),
+  relevantEntityIds: z.array(z.string().uuid()).max(40).default([]),
+});
+export const AgentWorkingMemoryAssumptionSchema = z.object({
+  text: z.string().min(1).max(400),
+  confidence: z.number().min(0).max(1),
+});
+export const AgentWorkingMemorySchema = z.object({
+  objective: z.string().max(500).nullable(),
+  contextSummary: z.string().max(2000).nullable(),
+  openLoops: z.array(AgentWorkingMemoryOpenLoopSchema).max(8),
+  lastAgentQuestion: z.string().max(500).nullable(),
+  relevantEntityIds: z.array(z.string().uuid()).max(40),
+  assumptions: z.array(AgentWorkingMemoryAssumptionSchema).max(12),
+  updatedAt: Stamp,
+});
+export type AgentWorkingMemory = z.infer<typeof AgentWorkingMemorySchema>;
+
+/**
+ * Patch semantics: omitted property = keep; explicit null = clear that field;
+ * array present = replace that array. Null/absent workingMemoryUpdate = no change.
+ */
+export const AgentWorkingMemoryPatchSchema = z.object({
+  objective: z.string().max(500).nullable().optional(),
+  contextSummary: z.string().max(2000).nullable().optional(),
+  openLoops: z.array(AgentWorkingMemoryOpenLoopSchema).max(8).optional(),
+  lastAgentQuestion: z.string().max(500).nullable().optional(),
+  relevantEntityIds: z.array(z.string().uuid()).max(40).optional(),
+  assumptions: z.array(AgentWorkingMemoryAssumptionSchema).max(12).optional(),
+});
+export type AgentWorkingMemoryPatch = z.infer<
+  typeof AgentWorkingMemoryPatchSchema
+>;
 
 export const TaskSchema = z.object({
   id: z.string().uuid(),
@@ -167,6 +207,11 @@ export const ProfileSchema = z.object({
   }, "Invalid timezone"),
   quietStart: z.number().int().min(0).max(23),
   quietEnd: z.number().int().min(0).max(23),
+  /** UI seasonal theme: auto by calendar month, or fixed choice. */
+  themeMode: z.enum(["auto", "fixed"]).default("auto"),
+  fixedTheme: z
+    .enum(["spring", "summer", "autumn", "winter"])
+    .default("spring"),
   /** Weekdays 0=Sun … 6=Sat when household typically cleans. */
   householdRoutines: z
     .object({
@@ -414,7 +459,9 @@ export const StateV2Schema = z.object({
       session: FirstScanSessionSchema.nullable().optional(),
     })
     .default({ status: "not_started", completedAt: null, session: null }),
+  /** @deprecated Dual-read only — prefer agentWorkingMemory. */
   pendingAgentIntent: PendingAgentIntentSchema.default(null),
+  agentWorkingMemory: AgentWorkingMemorySchema.nullable().default(null),
 });
 
 export type AppState = z.infer<typeof StateV2Schema>;
@@ -559,7 +606,50 @@ export function migrateV1ToV2(v1: StateV1): AppState {
     homeAreas: [],
     firstScan: { status: "not_started", completedAt: null, session: null },
     pendingAgentIntent: null,
+    agentWorkingMemory: null,
   };
+}
+
+function hydrateWorkingMemoryFromLegacy(
+  obj: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...obj };
+  if (next.agentWorkingMemory == null && next.pendingAgentIntent != null) {
+    const pending = PendingAgentIntentValueSchema.safeParse(
+      next.pendingAgentIntent,
+    );
+    if (pending.success) {
+      // Lazy import avoided — inline human migration (not workflow type).
+      const p = pending.data;
+      const ids: string[] = [];
+      if (p.contextTaskId) ids.push(p.contextTaskId);
+      const uuidRe =
+        /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi;
+      const draft = JSON.stringify(p.draftActions ?? []);
+      for (const m of draft.match(uuidRe) ?? []) ids.push(m.toLowerCase());
+      const relevantEntityIds = [...new Set(ids)].slice(0, 40);
+      const question = p.clarificationQuestion?.trim() || null;
+      next.agentWorkingMemory = {
+        objective: "להשלים את הבקשה שעליה נשאלה שאלת ההמשך",
+        contextSummary: question
+          ? `שאלה פתוחה מהסוכן: ${question}`
+          : "יש המשך שיחה פתוח מהתור הקודם",
+        openLoops: [
+          {
+            summary: question
+              ? "ממתינים לתשובת המשתמש לשאלה האחרונה כדי להמשיך"
+              : "יש נושא פתוח מהשיחה הקודמת",
+            relevantEntityIds,
+          },
+        ],
+        lastAgentQuestion: question,
+        relevantEntityIds,
+        assumptions: [],
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  }
+  return next;
 }
 
 export function migrateState(raw: unknown): AppState {
@@ -576,7 +666,9 @@ export function migrateState(raw: unknown): AppState {
             : Number.NaN;
 
     if (version === 2) {
-      return StateV2Schema.parse({ ...obj, schemaVersion: 2 });
+      return StateV2Schema.parse(
+        hydrateWorkingMemoryFromLegacy({ ...obj, schemaVersion: 2 }),
+      );
     }
 
     if (version !== null && version !== 1 && !Number.isNaN(version)) {
@@ -627,6 +719,8 @@ export function emptyState(): AppState {
       timezone: "Asia/Jerusalem",
       quietStart: 22,
       quietEnd: 7,
+      themeMode: "auto",
+      fixedTheme: "spring",
       householdRoutines: { cleaningDays: [] },
       cleaner: { enabled: false, visitsPerWeek: 0, days: [] },
     },
@@ -657,6 +751,7 @@ export function emptyState(): AppState {
     homeAreas: [],
     firstScan: { status: "not_started", completedAt: null, session: null },
     pendingAgentIntent: null,
+    agentWorkingMemory: null,
   };
 }
 
@@ -813,6 +908,11 @@ export const ActionSchema = z.discriminatedUnion("type", [
     intent: PendingAgentIntentValueSchema,
   }),
   z.object({ type: z.literal("pendingIntent.clear") }),
+  z.object({
+    type: z.literal("workingMemory.patch"),
+    patch: AgentWorkingMemoryPatchSchema,
+  }),
+  z.object({ type: z.literal("workingMemory.clear") }),
   z.object({
     type: z.literal("member.upsert"),
     member: HouseholdMemberSchema.partial({

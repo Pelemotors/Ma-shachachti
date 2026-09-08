@@ -256,38 +256,15 @@ export async function POST(req: Request) {
         ? `${result.reply}\n\n${result.clarification.question}`
         : result.reply;
 
-    const nowIso = new Date().toISOString();
-    const pendingActions: Action[] = [];
-    if (result.clarification?.question) {
-      const unresolved = result.clarification.unresolvedPart?.trim();
-      pendingActions.push({
-        type: "pendingIntent.set",
-        intent: {
-          id: crypto.randomUUID(),
-          type: result.proposal?.proposedActions.some(
-            (a) => a.type === "task.create",
-          )
-            ? "task_create"
-            : result.explicitActions.some((a) => a.type === "reminder.add") ||
-                result.proposal?.proposedActions.some(
-                  (a) => a.type === "reminder.add",
-                )
-              ? "reminder_create"
-              : "other",
-          draftActions: [
-            ...(result.proposal?.proposedActions ?? []),
-            ...(result.explicitActions ?? []),
-          ].slice(0, 20),
-          missingFields: unresolved ? [unresolved.slice(0, 40)] : [],
-          clarificationQuestion: result.clarification.question,
-          sourceTurnId: turnId,
-          contextTaskId: body.contextTaskId ?? null,
-          createdAt: nowIso,
-          expiresAt: new Date(Date.now() + 2 * 3600_000).toISOString(),
-        },
+    const memoryActions: Action[] = [];
+    if (
+      result.workingMemoryUpdate != null &&
+      typeof result.workingMemoryUpdate === "object"
+    ) {
+      memoryActions.push({
+        type: "workingMemory.patch",
+        patch: result.workingMemoryUpdate,
       });
-    } else if (state.pendingAgentIntent) {
-      pendingActions.push({ type: "pendingIntent.clear" });
     }
 
     const turnActions: Action[] = [
@@ -304,7 +281,7 @@ export async function POST(req: Request) {
         turnId,
       },
       ...(result.explicitActions ?? []),
-      ...pendingActions,
+      ...memoryActions,
       {
         type: "operation.record",
         turnId,

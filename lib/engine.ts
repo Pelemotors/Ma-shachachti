@@ -22,6 +22,7 @@ import {
   isLifeAdminTask,
   recordLifeAdminCompletion,
 } from "./domain/notifications/life-admin";
+import { applyWorkingMemoryPatch } from "./domain/working-memory";
 
 /** Structured marker from semantic forecast_event — not NLP. */
 const FORECAST_FACT_RE =
@@ -479,6 +480,16 @@ export function applyActions(
         break;
       case "pendingIntent.clear":
         s.pendingAgentIntent = null;
+        break;
+      case "workingMemory.patch":
+        s.agentWorkingMemory = applyWorkingMemoryPatch(
+          s.agentWorkingMemory,
+          action.patch,
+          now,
+        );
+        break;
+      case "workingMemory.clear":
+        s.agentWorkingMemory = null;
         break;
       case "homeArea.upsert": {
         const incoming = action.area;

@@ -2,6 +2,7 @@ import type { AppState, Task, HouseholdMember } from "@/lib/model";
 import { dayKey, formatTime } from "@/lib/time";
 import { activeFacts, whatMatters } from "@/lib/engine";
 import { resolvePersonalAgentPolicy } from "@/lib/domain/agent-policy";
+import { sanitizeWorkingMemory } from "@/lib/domain/working-memory";
 
 function stampLocal(iso: string | null | undefined, timezone: string) {
   if (!iso) return null;
@@ -137,7 +138,51 @@ export function buildAgentContext(
     }).format(now),
     localDateKey: dayKey(now, tz),
     timezone: tz,
+    /** Short-term open conversation state — primary continuity signal. */
+    workingMemory: sanitizeWorkingMemory(state.agentWorkingMemory, now),
+    /** HOW to work with this user — not household facts. */
+    personalAgentPolicy: resolvePersonalAgentPolicy(state),
+    /** @deprecated alias — prefer personalAgentPolicy */
     agentPolicy: resolvePersonalAgentPolicy(state),
+    /** WHAT we know about the user's life (bounded). */
+    userKnowledge: {
+      profile: {
+        name: state.profile.name,
+        addressAs: state.profile.addressAs,
+        timezone: tz,
+        quietStart: state.profile.quietStart,
+        quietEnd: state.profile.quietEnd,
+        aiConsent: state.profile.aiConsent,
+        autoApply: state.profile.autoApply,
+        cleaner: state.profile.cleaner,
+        householdRoutines: state.profile.householdRoutines,
+        rooms: state.profile.rooms,
+        children: state.profile.children,
+        pets: state.profile.pets,
+      },
+      members,
+      homeAreas: state.homeAreas.slice(0, 40).map((a) => ({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        parentAreaId: a.parentAreaId,
+      })),
+      facts,
+      compactedMemory: {
+        facts: state.compactedMemory.facts.slice(-20),
+        preferences: state.compactedMemory.preferences.slice(-20),
+        patterns: state.compactedMemory.patterns.slice(-20),
+        lifeAdminWindow: state.compactedMemory.lifeAdminWindow,
+      },
+      learning: state.learning.slice(-20).map((l) => ({
+        id: l.id,
+        kind: l.kind,
+        key: l.key,
+        confidence: l.confidence,
+        samples: l.samples,
+      })),
+      firstScan: firstScanSummary(state),
+    },
     profile: {
       name: state.profile.name,
       addressAs: state.profile.addressAs,
@@ -189,7 +234,6 @@ export function buildAgentContext(
     firstScan: firstScanSummary(state),
     important: whatMatters(state).map((t) => t.id),
     contextTaskId: opts.contextTaskId ?? null,
-    pendingAgentIntent: state.pendingAgentIntent ?? null,
     history: state.messages.slice(-(opts.messageLimit ?? 16)),
     turnId: opts.turnId,
     dailyPlan: plan
