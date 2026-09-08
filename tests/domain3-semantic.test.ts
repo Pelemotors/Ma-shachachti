@@ -178,6 +178,7 @@ test("domain3: referential integrity drops invented ids", () => {
     clarification: null,
     proposal: null,
     affectsToday: false,
+    policySignals: [],
   });
   assert.equal(decision.explicitActions.length, 0);
   assert.ok(decision.clarification);

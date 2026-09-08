@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Action, ActionSchema } from "../model";
+import { AGENT_POLICY_TRAITS } from "../domain/agent-policy";
 
 export const AgentActionSchema = ActionSchema.options.filter(
   (x) =>
@@ -31,6 +32,13 @@ export const ClarificationSchema = z.object({
   unresolvedPart: z.string().max(500).nullable(),
 });
 
+export const AgentPolicySignalSchema = z.object({
+  trait: z.enum(AGENT_POLICY_TRAITS),
+  direction: z.enum(["increase", "decrease"]),
+  strength: z.enum(["weak", "medium", "strong"]),
+  evidence: z.enum(["explicit", "behavioral"]),
+});
+
 export const AgentProposalSchema = z.object({
   summary: z.string().min(1).max(800),
   reason: z.enum([
@@ -51,6 +59,8 @@ export const AgentDecisionSchema = z.object({
   clarification: ClarificationSchema.nullable(),
   proposal: AgentProposalSchema.nullable(),
   affectsToday: z.boolean(),
+  /** Signals about HOW this user prefers the single personal agent to behave. */
+  policySignals: z.array(AgentPolicySignalSchema).max(8).default([]),
   /** Optional indexes into proposal.proposedActions task.create list (0-based). */
   requestedTodayCreateIndexes: z
     .array(z.number().int().min(0).max(19))
@@ -240,6 +250,15 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
     if (idxs.length) requestedTodayCreateIndexes = idxs;
   }
 
+  const policySignals: AgentDecision["policySignals"] = [];
+  if (Array.isArray(obj.policySignals)) {
+    for (const item of obj.policySignals.slice(0, 8)) {
+      const parsed = AgentPolicySignalSchema.safeParse(item);
+      if (parsed.success) policySignals.push(parsed.data);
+      else warnings.push("policy_signal_invalid");
+    }
+  }
+
   let clarification: AgentDecision["clarification"] = null;
   if (obj.clarification != null) {
     const c = ClarificationSchema.safeParse(obj.clarification);
@@ -313,6 +332,7 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
     clarification,
     proposal,
     affectsToday,
+    policySignals,
     requestedTodayCreateIndexes,
   };
 
@@ -392,6 +412,21 @@ export function agentDecisionJsonSchema() {
         ],
       },
       affectsToday: { type: "boolean" },
+      policySignals: {
+        type: "array",
+        maxItems: 8,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            trait: { type: "string", enum: [...AGENT_POLICY_TRAITS] },
+            direction: { type: "string", enum: ["increase", "decrease"] },
+            strength: { type: "string", enum: ["weak", "medium", "strong"] },
+            evidence: { type: "string", enum: ["explicit", "behavioral"] },
+          },
+          required: ["trait", "direction", "strength", "evidence"],
+        },
+      },
       requestedTodayCreateIndexes: {
         type: "array",
         items: { type: "integer", minimum: 0, maximum: 19 },

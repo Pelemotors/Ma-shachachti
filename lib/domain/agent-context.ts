@@ -1,6 +1,7 @@
 import type { AppState, Task, HouseholdMember } from "@/lib/model";
 import { dayKey, formatTime } from "@/lib/time";
 import { activeFacts, whatMatters } from "@/lib/engine";
+import { resolvePersonalAgentPolicy } from "@/lib/domain/agent-policy";
 
 function stampLocal(iso: string | null | undefined, timezone: string) {
   if (!iso) return null;
@@ -136,6 +137,7 @@ export function buildAgentContext(
     }).format(now),
     localDateKey: dayKey(now, tz),
     timezone: tz,
+    agentPolicy: resolvePersonalAgentPolicy(state),
     profile: {
       name: state.profile.name,
       addressAs: state.profile.addressAs,
