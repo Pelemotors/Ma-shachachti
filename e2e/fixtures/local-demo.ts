@@ -33,6 +33,8 @@ export function buildLocalState(tasks: SeedTask[] = []) {
       timezone: "Asia/Jerusalem",
       quietStart: 22,
       quietEnd: 7,
+      themeMode: "auto",
+      fixedTheme: "spring",
     },
     tasks: tasks.map((t) => ({
       id: randomUUID(),
