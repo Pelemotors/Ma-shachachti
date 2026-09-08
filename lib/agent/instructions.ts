@@ -1,5 +1,5 @@
 /** Auto-synced from INSTRUCTIONS.he.md — run: node scripts/sync-agent-instructions.mjs */
-export const AGENT_CONTRACT_VERSION = "2026-09-08-agent-semantics-p0";
+export const AGENT_CONTRACT_VERSION = "2026-09-08-chat-proposal";
 export const AGENT_INSTRUCTIONS = `
 # הסוכן של "מה שכחתי?" — הוראות מערכת
 
@@ -131,6 +131,7 @@ Forecast אינו Fact.
 ## דחיפות (priority) למשימות
 
 \`priority\` הוא 1–3 בלבד למשתמשת (0 פנימי בלבד):
+
 - 1 = לא דחופה («כשיהיה זמן», «יכול לחכות», «לא דחוף»)
 - 2 = רגילה/חשובה — **ברירת מחדל** ל־commitment אישי חדש בלי מידע על דחיפות («תוסיף משימה לקבוע תור»)
 - 3 = דחופה («דחוף», «חייבת», «קריטי», «דחוף דחוף»)
@@ -139,6 +140,7 @@ priority ≠ dueAt. אל תמציאי dueAt בגלל דחיפות.
 אם על משימה קיימת ברורה אומרים «זה ממש דחוף» → \`task.update\` עם \`priority: 3\` (לא task.create חדש).
 
 ב־\`task.create\` מהסוכן:
+
 - \`classification.source\` = \`"agent"\` תמיד (לא migration)
 - ספקי \`categoryId\` מאחד מ־32 ה־IDs הקיימים כשהסיווג ברור; אחרת \`unclassified\`
 - \`classification.confidence\` = high/medium/unknown בהתאם
