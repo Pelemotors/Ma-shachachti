@@ -26,6 +26,10 @@ import {
   stampTaskCreateIds,
 } from "@/lib/domain/planning/plan-intent";
 import { buildGroundedProposalSummary } from "@/lib/domain/agent-context";
+import {
+  applyAgentPolicySignals,
+  type AgentPolicySignal,
+} from "@/lib/domain/agent-policy";
 import { AGENT_CONTRACT_VERSION } from "@/lib/agent/instructions";
 import { CHAT_API_SUPPORTED, CHAT_API_VERSION } from "@/lib/version";
 
@@ -50,11 +54,17 @@ async function saveTurnState(
     actions: Action[];
     affectsToday: boolean;
     requestedTodayTaskIds?: string[];
+    policySignals?: AgentPolicySignal[];
     idempotencyKey: string;
     requestHash: string;
   },
 ) {
-  let working = applyActions(input.state, input.actions, new Date(), false);
+  const learnedState = applyAgentPolicySignals(
+    input.state,
+    input.policySignals ?? [],
+    new Date(),
+  );
+  let working = applyActions(learnedState, input.actions, new Date(), false);
   const synced = syncDailyPlanAfterActions({
     state: working,
     actions: input.actions,
@@ -76,19 +86,25 @@ async function saveTurnState(
   );
   if (saveError) {
     if (saveError.message.includes("revision_conflict")) {
-      // R07: re-read latest, revalidate, keep reply path viable
+      // R07: re-read latest, revalidate, keep reply path viable.
+      // Re-apply policy learning to the latest state exactly once for this turn.
       const latest = await readState(db, input.userId);
+      const latestLearned = applyAgentPolicySignals(
+        latest.state,
+        input.policySignals ?? [],
+        new Date(),
+      );
       const retryActions: Action[] = [];
       for (const action of input.actions) {
         try {
-          applyActions(latest.state, [action], new Date(), false);
+          applyActions(latestLearned, [action], new Date(), false);
           retryActions.push(action);
         } catch {
           /* drop invalid against latest */
         }
       }
       let retryState = applyActions(
-        latest.state,
+        latestLearned,
         retryActions,
         new Date(),
         false,
@@ -243,6 +259,7 @@ export async function POST(req: Request) {
     const nowIso = new Date().toISOString();
     const pendingActions: Action[] = [];
     if (result.clarification?.question) {
+      const unresolved = result.clarification.unresolvedPart?.trim();
       pendingActions.push({
         type: "pendingIntent.set",
         intent: {
@@ -261,7 +278,7 @@ export async function POST(req: Request) {
             ...(result.proposal?.proposedActions ?? []),
             ...(result.explicitActions ?? []),
           ].slice(0, 20),
-          missingFields: [],
+          missingFields: unresolved ? [unresolved.slice(0, 40)] : [],
           clarificationQuestion: result.clarification.question,
           sourceTurnId: turnId,
           contextTaskId: body.contextTaskId ?? null,
@@ -306,6 +323,7 @@ export async function POST(req: Request) {
       revision,
       actions: turnActions,
       affectsToday: Boolean(result.affectsToday),
+      policySignals: result.policySignals,
       idempotencyKey: body.idempotencyKey,
       requestHash,
     });
@@ -361,7 +379,11 @@ export async function POST(req: Request) {
       }
     }
 
-    const { selectedModel: _model, ...orch } = result;
+    const {
+      selectedModel: _model,
+      policySignals: _policySignals,
+      ...orch
+    } = result;
     const payload = {
       ...orch,
       reply: assistantText,
@@ -408,6 +430,7 @@ export async function POST(req: Request) {
       actionCount: result.explicitActions.length,
       hasClarification: Boolean(result.clarification),
       hasProposal: Boolean(proposalId),
+      policySignalCount: result.policySignals.length,
       rejectedActionCount: result.rejectedActionCount,
     });
     return Response.json(payload, {
