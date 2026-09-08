@@ -7,7 +7,7 @@ import {
   partitionActionsByPolicy,
 } from "@/lib/agent/schema";
 import { filterRunnableActions } from "@/lib/agent/action-validation";
-import { enforceReferentialIntegrity } from "@/lib/agent/semantic";
+import { enforceReferentialIntegrity } from "@/lib/agent/referential-integrity";
 import { outputText, type OpenAIResponse } from "@/lib/agent/client";
 import type { AppState } from "@/lib/model";
 import {
@@ -132,6 +132,7 @@ async function callAgent(
       "הסוכן לא החזיר תשובה. לא בוצעו שינויים.",
       "ai_empty",
     );
+
   try {
     const isolated = parseAgentDecisionText(text);
     const decision = AgentDecisionSchema.parse(isolated.decision);
@@ -160,6 +161,7 @@ export type ChatOrchestrationInput = {
   contextTaskId: string | null;
   turnId: string;
   requestId: string;
+  surface?: "chat" | "memory" | "planning";
 };
 
 export type ChatOrchestrationResult = {
@@ -196,8 +198,8 @@ export async function orchestrateChatTurn(
       "ai_not_configured",
     );
 
-  // One personal agent, one model call per attempt. Personal behavior is
-  // supplied as context/policy, not delegated to sub-agents.
+  // One personal agent. Fallback is the same contract on an alternate model,
+  // never a second semantic brain.
   const instructions = `${AGENT_INSTRUCTIONS}${PERSONAL_AGENT_POLICY_INSTRUCTIONS}`;
   const now = new Date();
   const state = input.state;
@@ -207,8 +209,9 @@ export async function orchestrateChatTurn(
       now,
       contextTaskId: input.contextTaskId,
       turnId: input.turnId,
+      surface: input.surface ?? "chat",
     }),
-    deferrableCandidates: deferral.candidates.slice(0, 40),
+    deferrableCandidates: deferral.candidates.slice(0, 60),
     protectedFromDefer: deferral.protected.slice(0, 40),
   };
   const models = Array.from(
@@ -249,7 +252,12 @@ export async function orchestrateChatTurn(
       lastError ?? new ApiError(502, "הסוכן לא הצליח לענות כרגע.", "ai_failed")
     );
 
+  // Domain integrity may reject bad references, but never replaces the LLM's
+  // semantic judgment with "the user probably did not mean that" heuristics.
   decision = enforceReferentialIntegrity(state, decision);
+
+  // Validate ordered actions against an evolving temporary state, so composed
+  // capabilities in one turn remain composable.
   const explicitFiltered = filterRunnableActions(
     state,
     decision.explicitActions,
@@ -270,6 +278,7 @@ export async function orchestrateChatTurn(
     ...deferGate.rejected,
     ...proposalFiltered.rejected,
   ];
+
   decision = {
     ...decision,
     explicitActions: deferGate.accepted as typeof decision.explicitActions,
