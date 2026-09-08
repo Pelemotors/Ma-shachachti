@@ -23,16 +23,25 @@ import {
   recordLifeAdminCompletion,
 } from "./domain/notifications/life-admin";
 import { applyWorkingMemoryPatch } from "./domain/working-memory";
+import { materializeDueRoutinesInPlace } from "./domain/routines";
 
-/** Structured marker from semantic forecast_event — not NLP. */
+/** Structured internal marker; the personal agent uses typed inventory.event. */
 const FORECAST_FACT_RE =
   /^forecast:(replenishment|depletion|correction):(.+)$/i;
+
 export function requiresConfirmation(actions: Action[]) {
   return (
     actions.filter((a) => a.type !== "message.add").length > 5 ||
     actions.some(
       (a) =>
-        ["history.clear", "fact.remove", "shopping.remove"].includes(a.type) ||
+        [
+          "history.clear",
+          "fact.remove",
+          "shopping.remove",
+          "member.remove",
+          "homeArea.remove",
+          "routine.remove",
+        ].includes(a.type) ||
         (a.type === "task.status" && a.status === "cancelled") ||
         (a.type === "profile.update" &&
           (a.patch.aiConsent !== undefined || a.patch.autoApply !== undefined)),
@@ -56,6 +65,11 @@ export function applyActions(
     if (!t) throw new Error("המשימה לא נמצאה.");
     return t;
   };
+  const routine = (id: string) => {
+    const r = s.routines.find((x) => x.id === id);
+    if (!r) throw new Error("השגרה לא נמצאה.");
+    return r;
+  };
 
   for (const action of actions) {
     switch (action.type) {
@@ -72,6 +86,8 @@ export function applyActions(
           relatedMemberIds: input.relatedMemberIds,
         });
         if (isHardDuplicate(match)) break;
+        if (input.routineId && !s.routines.some((r) => r.id === input.routineId))
+          throw new Error("השגרה המקושרת לא נמצאה.");
         const enriched = enrichTaskLocal({
           title: input.title.trim(),
           categoryId: input.categoryId,
@@ -84,8 +100,7 @@ export function applyActions(
           templateId: input.templateId,
         });
         const catalogish =
-          Boolean(input.templateId) ||
-          input.classification?.source === "catalog";
+          Boolean(input.templateId) || input.classification?.source === "catalog";
         let classification = input.classification ?? {
           source: (catalogish
             ? "catalog"
@@ -130,17 +145,22 @@ export function applyActions(
           workMinutes: enriched.workMinutes ?? input.workMinutes ?? 15,
           waitMinutes: enriched.waitMinutes ?? input.waitMinutes ?? 0,
           effort: enriched.effort ?? input.effort ?? 2,
-          priority:
-            input.priority ?? (catalogish ? (enriched.priority ?? 1) : 2),
+          priority: input.priority ?? (catalogish ? (enriched.priority ?? 1) : 2),
           dependsOn: input.dependsOn ?? [],
           steps: input.steps ?? [],
           templateId: input.templateId ?? null,
           recurrenceDays: input.recurrenceDays ?? null,
           occurrenceOf: null,
+          routineId: input.routineId ?? null,
           notes: input.notes ?? "",
           completedAt: null,
           actualWorkMinutes: null,
-          durationFeedbackAskedAt: null,
+          durationFeedbackAskedAt:
+            input.routineId
+              ? (s.tasks.find(
+                  (x) => x.routineId === input.routineId && x.durationFeedbackAskedAt,
+                )?.durationFeedbackAskedAt ?? null)
+              : null,
           relatedMemberIds: input.relatedMemberIds ?? [],
           homeAreaIds: input.homeAreaIds ?? [],
         });
@@ -192,10 +212,7 @@ export function applyActions(
         t.status = action.status;
         t.updatedAt = stamp;
         t.completedAt = action.status === "done" ? stamp : null;
-        if (action.status === "in_progress" && !t.startedAt)
-          t.startedAt = stamp;
-        if (action.status !== "in_progress" && action.status !== "open")
-          t.startedAt = t.startedAt;
+        if (action.status === "in_progress" && !t.startedAt) t.startedAt = stamp;
         if (action.status === "open") t.startedAt = null;
         t.actualWorkMinutes =
           action.status === "done" ? (action.actualWorkMinutes ?? null) : null;
@@ -225,9 +242,11 @@ export function applyActions(
             updatedAt: stamp,
           };
         }
+        // Legacy interval recurrence remains supported for old/manual tasks.
         if (
           action.status === "done" &&
           t.recurrenceDays &&
+          !t.routineId &&
           !s.tasks.some((x) => x.occurrenceOf === t.id)
         ) {
           const next = addCalendarDays(
@@ -246,6 +265,7 @@ export function applyActions(
             durationFeedbackAskedAt: t.durationFeedbackAskedAt ?? null,
             startedAt: null,
             occurrenceOf: t.id,
+            routineId: null,
             dueAt: next,
             hiddenUntil: next,
             steps: t.steps.map((x) => ({ ...x, done: false })),
@@ -258,14 +278,76 @@ export function applyActions(
           );
         break;
       }
+      case "routine.create": {
+        const input = action.routine;
+        if (input.sourceFactId && !s.facts.some((f) => f.id === input.sourceFactId))
+          throw new Error("מקור הזיכרון של השגרה לא נמצא.");
+        const duplicate = s.routines.some(
+          (r) =>
+            r.status === "active" &&
+            normalize(r.title) === normalize(input.title) &&
+            JSON.stringify(r.schedule) === JSON.stringify(input.schedule),
+        );
+        if (duplicate) break;
+        s.routines.push({
+          id: input.id ?? crypto.randomUUID(),
+          title: input.title.trim(),
+          status: "active",
+          categoryId: input.categoryId ?? "unclassified",
+          detailTypeId: input.detailTypeId ?? null,
+          schedule: input.schedule,
+          timeOfDay: input.timeOfDay ?? "any",
+          atTime: input.atTime ?? null,
+          workMinutes: input.workMinutes ?? 20,
+          effort: input.effort ?? 2,
+          priority: input.priority ?? 2,
+          notes: input.notes ?? "",
+          sourceFactId: input.sourceFactId ?? null,
+          relatedMemberIds: input.relatedMemberIds ?? [],
+          homeAreaIds: input.homeAreaIds ?? [],
+          createdAt: stamp,
+          updatedAt: stamp,
+          lastMaterializedDate: null,
+        });
+        break;
+      }
+      case "routine.update": {
+        const r = routine(action.id);
+        if (
+          action.patch.sourceFactId &&
+          !s.facts.some((f) => f.id === action.patch.sourceFactId)
+        )
+          throw new Error("מקור הזיכרון של השגרה לא נמצא.");
+        Object.assign(r, action.patch, { updatedAt: stamp });
+        break;
+      }
+      case "routine.pause": {
+        const r = routine(action.id);
+        r.status = action.paused ? "paused" : "active";
+        r.updatedAt = stamp;
+        break;
+      }
+      case "routine.remove": {
+        routine(action.id);
+        s.routines = s.routines.filter((r) => r.id !== action.id);
+        for (const t of s.tasks) {
+          if (
+            t.routineId === action.id &&
+            (t.status === "open" || t.status === "unknown")
+          ) {
+            t.status = "cancelled";
+            t.updatedAt = stamp;
+          }
+        }
+        break;
+      }
       case "shopping.add": {
         const existing = s.shopping.find(
-          (i) =>
-            !i.purchasedAt && normalize(i.title) === normalize(action.title),
+          (i) => !i.purchasedAt && normalize(i.title) === normalize(action.title),
         );
         if (existing) {
           if (action.quantity) existing.quantity = action.quantity;
-        } else
+        } else {
           s.shopping.push({
             id: crypto.randomUUID(),
             title: action.title.trim(),
@@ -273,6 +355,7 @@ export function applyActions(
             purchasedAt: null,
             createdAt: stamp,
           });
+        }
         break;
       }
       case "shopping.check": {
@@ -306,7 +389,6 @@ export function applyActions(
           });
         const forecastMatch = FORECAST_FACT_RE.exec(action.text.trim());
         if (forecastMatch) {
-          // Structured semantic marker — still apply even if fact text was deduped.
           const next = applyForecastEvent(s, {
             type: forecastMatch[1]!.toLowerCase() as
               "replenishment" | "depletion" | "correction",
@@ -335,6 +417,12 @@ export function applyActions(
       }
       case "fact.remove":
         s.facts = s.facts.filter((x) => x.id !== action.id);
+        for (const r of s.routines) {
+          if (r.sourceFactId === action.id && r.status === "active") {
+            r.status = "paused";
+            r.updatedAt = stamp;
+          }
+        }
         break;
       case "reminder.add": {
         if (new Date(action.dueAt) <= now)
@@ -363,27 +451,23 @@ export function applyActions(
         if (!r) throw new Error("התזכורת לא נמצאה.");
         if (r.status !== "pending")
           throw new Error("אפשר לעדכן רק תזכורת ממתינה.");
-        if (action.patch.dueAt !== undefined) {
-          if (new Date(action.patch.dueAt) <= now)
-            throw new Error("מועד התזכורת צריך להיות בעתיד.");
-        }
+        if (
+          action.patch.dueAt !== undefined &&
+          new Date(action.patch.dueAt) <= now
+        )
+          throw new Error("מועד התזכורת צריך להיות בעתיד.");
         const nextTitle = action.patch.title ?? r.title;
         const nextDue = action.patch.dueAt ?? r.dueAt;
         if (
           isDuplicatePendingReminder(
             s.reminders.filter((x) => x.id !== r.id),
-            {
-              title: nextTitle,
-              dueAt: nextDue,
-              taskId: r.taskId,
-            },
+            { title: nextTitle, dueAt: nextDue, taskId: r.taskId },
           )
         )
           throw new Error("כבר יש תזכורת דומה באותו מועד.");
         if (action.patch.title !== undefined) r.title = action.patch.title;
         if (action.patch.dueAt !== undefined) r.dueAt = action.patch.dueAt;
-        if (action.patch.urgency !== undefined)
-          r.urgency = action.patch.urgency;
+        if (action.patch.urgency !== undefined) r.urgency = action.patch.urgency;
         break;
       }
       case "reminder.cancel": {
@@ -399,20 +483,18 @@ export function applyActions(
         const target = task(action.taskId);
         mark(target);
         if (target.templateId) {
-          for (const x of s.tasks) {
-            if (x.templateId === target.templateId) mark(x);
-          }
+          for (const x of s.tasks) if (x.templateId === target.templateId) mark(x);
+        }
+        if (target.routineId) {
+          for (const x of s.tasks) if (x.routineId === target.routineId) mark(x);
         }
         if (target.occurrenceOf) {
           const parent = s.tasks.find((x) => x.id === target.occurrenceOf);
           if (parent) mark(parent);
-          for (const x of s.tasks) {
+          for (const x of s.tasks)
             if (x.occurrenceOf === target.occurrenceOf) mark(x);
-          }
         }
-        for (const x of s.tasks) {
-          if (x.occurrenceOf === target.id) mark(x);
-        }
+        for (const x of s.tasks) if (x.occurrenceOf === target.id) mark(x);
         break;
       }
       case "planning.set":
@@ -429,9 +511,7 @@ export function applyActions(
         break;
       case "plan.itemUpdate": {
         if (!s.planning.plan) throw new Error("אין תוכנית יום פעילה.");
-        const item = s.planning.plan.items.find(
-          (i) => i.taskId === action.taskId,
-        );
+        const item = s.planning.plan.items.find((i) => i.taskId === action.taskId);
         if (!item) throw new Error("הפריט לא נמצא בתוכנית.");
         Object.assign(item, action.patch);
         s.planning.plan.updatedAt = stamp;
@@ -441,13 +521,10 @@ export function applyActions(
         Object.assign(s.profile, action.patch);
         break;
       case "template.exclude":
-        if (!s.excludedTemplates.includes(action.id))
-          s.excludedTemplates.push(action.id);
+        if (!s.excludedTemplates.includes(action.id)) s.excludedTemplates.push(action.id);
         break;
       case "template.restore":
-        s.excludedTemplates = s.excludedTemplates.filter(
-          (x) => x !== action.id,
-        );
+        s.excludedTemplates = s.excludedTemplates.filter((x) => x !== action.id);
         break;
       case "message.add":
         s.messages.push({
@@ -587,6 +664,9 @@ export function applyActions(
       });
   }
 
+  // Recurring execution is deterministic once the LLM has created a Routine.
+  materializeDueRoutinesInPlace(s, now);
+
   const visited = new Set<string>();
   const visit = (id: string, path: Set<string>) => {
     if (visited.has(id)) return;
@@ -611,9 +691,11 @@ function paceSamples(t: Task, s: AppState) {
       (x) =>
         x.status === "done" &&
         x.actualWorkMinutes &&
-        (t.templateId
-          ? x.templateId === t.templateId
-          : normalize(x.title) === normalize(t.title)),
+        (t.routineId
+          ? x.routineId === t.routineId
+          : t.templateId
+            ? x.templateId === t.templateId
+            : normalize(x.title) === normalize(t.title)),
     )
     .map((x) => x.actualWorkMinutes!)
     .slice(-10)
@@ -630,10 +712,13 @@ export function estimatedMinutes(t: Task, s: AppState) {
 export function shouldAskWorkTime(t: Task, s: AppState) {
   if (t.durationFeedbackAskedAt) return false;
   if (
+    t.routineId &&
+    s.tasks.some((x) => x.routineId === t.routineId && x.durationFeedbackAskedAt)
+  )
+    return false;
+  if (
     t.templateId &&
-    s.tasks.some(
-      (x) => x.templateId === t.templateId && x.durationFeedbackAskedAt,
-    )
+    s.tasks.some((x) => x.templateId === t.templateId && x.durationFeedbackAskedAt)
   )
     return false;
   if (t.occurrenceOf) {
@@ -641,8 +726,7 @@ export function shouldAskWorkTime(t: Task, s: AppState) {
     if (parent?.durationFeedbackAskedAt) return false;
     if (
       s.tasks.some(
-        (x) =>
-          x.occurrenceOf === t.occurrenceOf && x.durationFeedbackAskedAt,
+        (x) => x.occurrenceOf === t.occurrenceOf && x.durationFeedbackAskedAt,
       )
     )
       return false;
@@ -655,15 +739,16 @@ export function shouldAskWorkTime(t: Task, s: AppState) {
   const matchingCompletions = s.tasks.filter(
     (x) =>
       x.status === "done" &&
-      (t.templateId
-        ? x.templateId === t.templateId
-        : normalize(x.title) === normalize(t.title)),
+      (t.routineId
+        ? x.routineId === t.routineId
+        : t.templateId
+          ? x.templateId === t.templateId
+          : normalize(x.title) === normalize(t.title)),
   ).length;
   return matchingCompletions % 4 === 0;
 }
 
 export function visible(t: Task, now = new Date()) {
-  // Keep status + hiddenUntil gate aligned with domain/tasks/visibility (P01).
   return (
     (t.status === "open" ||
       t.status === "unknown" ||
@@ -692,51 +777,7 @@ export function score(
   n +=
     s.tasks.filter((x) => x.status === "open" && x.dependsOn.includes(t.id))
       .length * 15;
-
   if (opts?.requestedTodayTaskIds?.has(t.id)) n += 80;
-
-  // Soft routine bonus (deadline urgency above still dominates).
-  const dayOfWeek = (() => {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: s.profile.timezone,
-      weekday: "short",
-    }).format(now);
-    const map: Record<string, number> = {
-      Sun: 0,
-      Mon: 1,
-      Tue: 2,
-      Wed: 3,
-      Thu: 4,
-      Fri: 5,
-      Sat: 6,
-    };
-    return map[parts] ?? now.getDay();
-  })();
-  const cleaningDays = s.profile.householdRoutines?.cleaningDays ?? [];
-  const cleaner = s.profile.cleaner;
-  const heavyCleanerEligible =
-    t.categoryId === "cleaning_reset" ||
-    t.categoryId === "floors" ||
-    t.categoryId === "bathroom_toilets" ||
-    t.categoryId === "living_spaces" ||
-    t.categoryId === "bedrooms_bedding";
-  const dailyMaintenance =
-    t.categoryId === "laundry" ||
-    t.categoryId === "kitchen_dishes" ||
-    t.categoryId === "organization_storage";
-  if (
-    cleaningDays.includes(dayOfWeek) &&
-    (heavyCleanerEligible || dailyMaintenance)
-  )
-    n += 12;
-  // Cleaner day: de-prioritize heavy jobs the cleaner can cover; keep daily maintenance.
-  if (
-    cleaner?.enabled &&
-    cleaner.days.includes(dayOfWeek) &&
-    heavyCleanerEligible
-  )
-    n -= 18;
-
   return n;
 }
 
@@ -801,8 +842,7 @@ export function opportunities(
 type BusyWindow = { start: number; end: number };
 function planConstraint(s: AppState, now: Date) {
   const constraint = s.planning.today;
-  if (!constraint || constraint.date !== dayKey(now, s.profile.timezone))
-    return null;
+  if (!constraint || constraint.date !== dayKey(now, s.profile.timezone)) return null;
   return constraint;
 }
 function minuteOffset(iso: string, now: Date) {
@@ -827,16 +867,13 @@ function nextWorkStart(start: number, work: number, busy: BusyWindow[]) {
 function preferredWindowAllows(t: Task, start: number, end: number, now: Date) {
   const win = t.preferredWindow;
   if (!win?.start && !win?.end) return true;
-  // Explicit preferred window is a hard scheduling constraint for planDay.
   if (win.start) {
     const winStart = minuteOffset(win.start, now);
-    if (end <= winStart) return false;
-    if (start < winStart) return false;
+    if (end <= winStart || start < winStart) return false;
   }
   if (win.end) {
     const winEnd = minuteOffset(win.end, now);
-    if (start >= winEnd) return false;
-    if (end > winEnd) return false;
+    if (start >= winEnd || end > winEnd) return false;
   }
   return true;
 }
@@ -891,12 +928,8 @@ export function planDay(
       );
       const work = estimatedMinutes(t, s);
       let rawStart = Math.max(workCursor, dependencyReady);
-      if (t.preferredWindow?.start) {
-        rawStart = Math.max(
-          rawStart,
-          minuteOffset(t.preferredWindow.start, now),
-        );
-      }
+      if (t.preferredWindow?.start)
+        rawStart = Math.max(rawStart, minuteOffset(t.preferredWindow.start, now));
       const start = nextWorkStart(rawStart, work, busy);
       const end = start + work + t.waitMinutes;
       const bufferedWorkEnd = start + work + Math.ceil(work * 0.15);
@@ -957,9 +990,7 @@ export function activeDailyPlan(s: AppState, now = new Date()) {
   return plan;
 }
 
-/**
- * Stable replan: keep past/done/in_progress/locked; rebuild only future unlocked.
- */
+/** Stable replan: keep past/done/in_progress/locked; rebuild future unlocked. */
 export function replanDailyPlan(
   s: AppState,
   now = new Date(),
@@ -983,8 +1014,7 @@ export function replanDailyPlan(
     )
       return true;
     if (task.status === "done" || task.status === "in_progress") return true;
-    if (item.plannedEnd && Date.parse(item.plannedEnd) <= now.getTime())
-      return true;
+    if (item.plannedEnd && Date.parse(item.plannedEnd) <= now.getTime()) return true;
     return false;
   });
 
@@ -1074,10 +1104,7 @@ export function freeTimeV2(
   const declineCounts = new Map<string, number>();
   for (const row of s.suggestionHistory) {
     if (row.declinedAt && row.taskId)
-      declineCounts.set(
-        row.taskId,
-        (declineCounts.get(row.taskId) ?? 0) + 1,
-      );
+      declineCounts.set(row.taskId, (declineCounts.get(row.taskId) ?? 0) + 1);
   }
 
   const fits = (t: Task) =>
@@ -1126,7 +1153,6 @@ export function findSemanticDuplicate(
     detailTypeId?: string | null;
     dueAt?: string | null;
     memberIds?: string[];
-    /** Location-aware: non-overlapping areas do not merge (P36). */
     homeAreaIds?: string[];
   } = {},
 ) {
@@ -1134,12 +1160,9 @@ export function findSemanticDuplicate(
   return s.tasks.find((t) => {
     if (t.status !== "open" && t.status !== "in_progress") return false;
     if (opts.categoryId && t.categoryId !== opts.categoryId) return false;
-    // detailTypeId is a hint only — starter sink_clean may merge with scan dishes_handwash (P35).
     if ((opts.dueAt ?? null) !== t.dueAt) return false;
     if (opts.memberIds?.length) {
-      const sameMember = opts.memberIds.some((id) =>
-        t.relatedMemberIds.includes(id),
-      );
+      const sameMember = opts.memberIds.some((id) => t.relatedMemberIds.includes(id));
       if (!sameMember) return false;
     }
     const incomingAreas = opts.homeAreaIds ?? [];
@@ -1150,8 +1173,7 @@ export function findSemanticDuplicate(
     const hay = normalize(t.title);
     if (hay === needle) return true;
     if (hay.includes(needle) || needle.includes(hay)) return true;
-    // Hebrew stem-ish overlap for dishwasher empty / fold laundry style paraphrases
-    const tokens = (s: string) => s.split(" ").filter((w) => w.length > 2);
+    const tokens = (value: string) => value.split(" ").filter((w) => w.length > 2);
     const a = new Set(tokens(hay));
     const b = tokens(needle);
     const overlap = b.filter((w) =>
@@ -1166,7 +1188,7 @@ export function learning(s: AppState) {
   s.tasks
     .filter((t) => t.status === "done" && t.completedAt)
     .forEach((t) => {
-      const key = t.templateId ?? normalize(t.title);
+      const key = t.routineId ?? t.templateId ?? normalize(t.title);
       groups.set(key, [...(groups.get(key) ?? []), t]);
     });
   return [...groups.values()]
@@ -1187,8 +1209,7 @@ export function learning(s: AppState) {
       ];
       const consistent =
         median >= 1 &&
-        intervals.filter((x) => Math.abs(x - median) <= median * 0.3).length >=
-          3;
+        intervals.filter((x) => Math.abs(x - median) <= median * 0.3).length >= 3;
       return {
         title: g[0].title,
         templateId: g[0].templateId,
