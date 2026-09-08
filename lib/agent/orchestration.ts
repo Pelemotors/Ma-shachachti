@@ -18,6 +18,7 @@ import {
   buildAgentContext,
   buildGroundedProposalSummary,
 } from "@/lib/domain/agent-context";
+import { PERSONAL_AGENT_POLICY_INSTRUCTIONS } from "@/lib/domain/agent-policy";
 import { filterSafeDeferActions } from "@/lib/domain/tasks/deferrable";
 
 function upstreamError(status: number, raw: string) {
@@ -168,6 +169,7 @@ export type ChatOrchestrationResult = {
   clarification: AgentDecision["clarification"];
   proposal: AgentDecision["proposal"];
   affectsToday: boolean;
+  policySignals: AgentDecision["policySignals"];
   requestedTodayCreateIndexes?: number[];
   rejectedActionCount: number;
   basedOnRevision: number;
@@ -193,7 +195,9 @@ export async function orchestrateChatTurn(
       "ai_not_configured",
     );
 
-  const instructions = AGENT_INSTRUCTIONS;
+  // One personal agent, one model call per attempt. Personal behavior is
+  // supplied as context/policy, not delegated to sub-agents.
+  const instructions = `${AGENT_INSTRUCTIONS}${PERSONAL_AGENT_POLICY_INSTRUCTIONS}`;
   const now = new Date();
   const state = input.state;
   const deferral = filterSafeDeferActions(state, [], now);
@@ -288,7 +292,7 @@ export async function orchestrateChatTurn(
       arr.findIndex((x) => JSON.stringify(x) === JSON.stringify(a)) === i,
   );
 
-  let proposal =
+  const proposal =
     allProposal.length === 0
       ? null
       : {
@@ -314,6 +318,7 @@ export async function orchestrateChatTurn(
     clarification: decision.clarification,
     proposal: decision.proposal,
     affectsToday: decision.affectsToday,
+    policySignals: decision.policySignals,
     requestedTodayCreateIndexes: decision.requestedTodayCreateIndexes,
     rejectedActionCount: rejectedFromParse.length + rejectedApply.length,
     basedOnRevision: input.revision,
