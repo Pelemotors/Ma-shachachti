@@ -223,8 +223,9 @@ test("T11: success notice claims plan only when exact taskId in plan.items", () 
   assert.equal(countPlannedCreates(["a"], [{ taskId: "a" }]), 1);
 });
 
-test("CREATE TASK INTENT section is bundled in agent instructions", () => {
-  assert.match(AGENT_INSTRUCTIONS, /CREATE TASK INTENT/);
+test("task-create Proposal policy section is bundled in agent instructions", () => {
+  assert.match(AGENT_INSTRUCTIONS, /מדיניות יצירת משימה \(Proposal\)/);
+  assert.match(AGENT_INSTRUCTIONS, /Agent פתוח|workingMemoryUpdate/);
   assert.match(AGENT_INSTRUCTIONS, /requestedTodayCreateIndexes/);
   assert.equal(AGENT_INSTRUCTIONS.includes("שמרתי"), false);
 });
