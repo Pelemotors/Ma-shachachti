@@ -1,8 +1,10 @@
 "use client";
 import { Action, AppState } from "@/lib/model";
 import { categoryLabel, TASK_CATEGORIES } from "@/lib/taxonomy";
-import { suggestions, catalog, templateAction } from "@/lib/catalog";
-import { calendarSuggestions } from "@/lib/insights";
+import { catalog, templateAction } from "@/lib/catalog";
+import {
+  listOpenSuggestions,
+} from "@/lib/domain/suggestions";
 import { ViewHeader } from "@/components/view-header";
 import { FirstScanPanel } from "@/components/views/first-scan-panel";
 
@@ -117,20 +119,47 @@ export function KitView(props: {
           </button>
         </section>
       )}
-      {calendarSuggestions(props.state, props.clock).map((title) => (
-        <article className="suggestion" key={title}>
+      {listOpenSuggestions(props.state, props.clock, 20)
+        .filter((s) => s.source === "calendar")
+        .map((s) => (
+        <article className="suggestion" key={s.suggestionKey}>
           <span className="tag">רעיון לפי התקופה בשנה</span>
-          <h3>{title}</h3>
+          <h3>{s.title}</h3>
+          <button
+            className="text-button"
+            onClick={() => {
+              void (async () => {
+                await props.act({
+                  type: "task.create",
+                  task: {
+                    title: s.title,
+                    kind: "idea",
+                    categoryId: "children_daily",
+                  },
+                });
+                await props.act({
+                  type: "suggestion.record",
+                  suggestionKey: s.suggestionKey,
+                  source: "calendar",
+                  outcome: "selected",
+                });
+              })();
+            }}
+          >
+            לשמור כאפשרות
+          </button>
           <button
             className="text-button"
             onClick={() =>
               void props.act({
-                type: "task.create",
-                task: { title, kind: "idea", categoryId: "children_daily" },
+                type: "suggestion.record",
+                suggestionKey: s.suggestionKey,
+                source: "calendar",
+                outcome: "declined",
               })
             }
           >
-            לשמור כאפשרות
+            לא רלוונטי
           </button>
         </article>
       ))}
@@ -148,17 +177,20 @@ export function KitView(props: {
         ))}
       </select>
       <div className="task-list">
-        {suggestions(props.state)
+        {listOpenSuggestions(props.state, props.clock, 40)
+          .filter((s) => s.source === "catalog")
           .filter(
             (t) => props.category === "הכול" || t.categoryId === props.category,
           )
           .slice(0, 12)
           .map((t) => (
-            <article className="suggestion" key={t.id}>
-              <span className="tag">הצעה · {categoryLabel(t.categoryId)}</span>
+            <article className="suggestion" key={t.suggestionKey}>
+              <span className="tag">
+                הצעה · {categoryLabel(t.categoryId ?? "unclassified")}
+              </span>
               <h3>{t.title}</h3>
               <p>
-                כ־{t.workMinutes} דקות עבודה
+                כ־{t.workMinutes ?? 15} דקות עבודה
                 {t.waitMinutes ? ` ועוד ${t.waitMinutes} דקות המתנה` : ""} ·
                 אומדן התחלתי
               </p>
@@ -166,16 +198,37 @@ export function KitView(props: {
                 <button
                   className="secondary"
                   disabled={props.busy}
-                  onClick={() => void props.act(templateAction(t.id))}
+                  onClick={() => {
+                    void (async () => {
+                      await props.act(templateAction(t.suggestionKey));
+                      await props.act({
+                        type: "suggestion.record",
+                        suggestionKey: t.suggestionKey,
+                        source: "catalog",
+                        outcome: "selected",
+                      });
+                    })();
+                  }}
                 >
                   כן, עושים אצלנו
                 </button>
                 <button
                   className="text-button"
                   disabled={props.busy}
-                  onClick={() =>
-                    void props.act({ type: "template.exclude", id: t.id })
-                  }
+                  onClick={() => {
+                    void (async () => {
+                      await props.act({
+                        type: "template.exclude",
+                        id: t.suggestionKey,
+                      });
+                      await props.act({
+                        type: "suggestion.record",
+                        suggestionKey: t.suggestionKey,
+                        source: "catalog",
+                        outcome: "declined",
+                      });
+                    })();
+                  }}
                 >
                   לא רלוונטי לבית
                 </button>

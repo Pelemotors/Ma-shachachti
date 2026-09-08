@@ -263,6 +263,50 @@ export function FirstScanPanel(props: {
     setCorrection("");
   }
 
+  async function returnToCapture() {
+    if (!session) return;
+    const stamp = new Date().toISOString();
+    await props.act({
+      type: "scan.set",
+      firstScan: {
+        status: "in_progress",
+        session: {
+          ...session,
+          status: "in_progress",
+          updatedAt: stamp,
+        },
+      },
+    });
+    setPhase("capture");
+    setLocalError("");
+  }
+
+  /** After approval: new UUID session for additional capture; existing tasks stay. */
+  async function startAddMissingSession() {
+    const stamp = new Date().toISOString();
+    const sessionId = crypto.randomUUID();
+    proposalIdRef.current = null;
+    setAnalysis(null);
+    setCorrection("");
+    await props.act({
+      type: "scan.set",
+      firstScan: {
+        status: "in_progress",
+        completedAt: props.state.firstScan.completedAt ?? null,
+        session: {
+          id: sessionId,
+          status: "in_progress",
+          chunks: [],
+          draftAnalysis: null,
+          proposalId: null,
+          createdAt: stamp,
+          updatedAt: stamp,
+        },
+      },
+    });
+    setPhase("capture");
+  }
+
   async function approve() {
     if (!analysis || !session || approveLock.current) return;
     approveLock.current = true;
@@ -490,6 +534,13 @@ export function FirstScanPanel(props: {
             />
           </label>
           <div className="button-row">
+            <button
+              className="secondary"
+              type="button"
+              onClick={() => void returnToCapture()}
+            >
+              חזרה להוספת מידע
+            </button>
             <button className="secondary" type="button" onClick={applyFix}>
               עדכון טיוטה
             </button>
@@ -569,6 +620,14 @@ export function FirstScanPanel(props: {
               onClick={() => void saveTasksOnly()}
             >
               שמור לי את המשימות בלבד
+            </button>
+            <button
+              className="secondary"
+              type="button"
+              disabled={props.busy}
+              onClick={() => void startAddMissingSession()}
+            >
+              להוסיף מידע שחסר
             </button>
           </div>
         </>

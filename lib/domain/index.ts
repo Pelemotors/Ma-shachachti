@@ -14,4 +14,5 @@ export * from "./first-scan";
 export * from "./decision-context";
 export * from "./forecast";
 export * from "./learning/pace";
+export * from "./suggestions";
 export { applyActions, requiresConfirmation } from "./apply-actions";

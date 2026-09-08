@@ -20,6 +20,7 @@ export const AgentActionSchema = ActionSchema.options.filter(
       "pendingIntent.clear",
       "workingMemory.patch",
       "workingMemory.clear",
+      "durationFeedback.markAsked",
     ].includes(x.shape.type.value),
 );
 

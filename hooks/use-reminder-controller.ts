@@ -5,6 +5,7 @@ import { authFetch } from "@/lib/supabase-browser";
 import { useHousehold } from "@/lib/use-household";
 import { requestNotificationPermission } from "@/hooks/use-device-permissions";
 import { messageForCode } from "@/lib/errors";
+import { remindersNewestFirst } from "@/lib/domain/suggestions";
 
 type Household = ReturnType<typeof useHousehold>;
 
@@ -149,6 +150,22 @@ export function useReminderController(
     } catch {}
   }, [opts, reminderTitle, reminderDue, reminderUrgency]);
 
+  const updateReminder = useCallback(
+    async (
+      id: string,
+      patch: {
+        title?: string;
+        dueAt?: string;
+        urgency?: "urgent" | "medium" | "low";
+      },
+    ) => {
+      await opts.run([{ type: "reminder.update", id, patch }]);
+    },
+    [opts],
+  );
+
+  const remindersSorted = remindersNewestFirst(h.state);
+
   return {
     reminderTitle,
     setReminderTitle,
@@ -162,6 +179,8 @@ export function useReminderController(
     enablePush,
     disablePush,
     addReminder,
+    updateReminder,
+    remindersSorted,
   };
 }
 

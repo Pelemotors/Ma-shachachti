@@ -23,8 +23,15 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(data.title || "מה שכחתי?", {
       body: data.body || "יש עדכון חדש",
       tag: data.tag || "home",
-      icon: "/icon-192.png",
-      data: { url },
+      icon: data.icon || "/icon-192.png",
+      badge: data.badge || "/icon-192.png",
+      silent: data.silent === true,
+      renotify: data.renotify !== false,
+      vibrate: Array.isArray(data.vibrate) ? data.vibrate : [100],
+      data: {
+        url,
+        reminderId: data.data?.reminderId ?? data.reminderId ?? null,
+      },
     }),
   );
 });
