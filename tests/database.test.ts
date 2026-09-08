@@ -107,6 +107,7 @@ test("clean install can apply every audit migration and enforce approved access"
       "20260907_zzzzz_remove_legacy_action_rpc.sql",
       "20260908_pending_proposals_table.sql",
       "20260907_state_v2_pending_proposals.sql",
+      "20260908_chat_receipt_claim.sql",
     ];
     for (const name of migrations)
       await db.exec(

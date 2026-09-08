@@ -193,12 +193,15 @@ export function AppViewRouter(props: {
         context={chat.context}
         thinking={chat.isThinking}
         proposal={chat.proposal}
+        proposalSummary={chat.proposalMeta?.summary}
+        similarHints={chat.proposalMeta?.similarHints}
         chatBottomRef={chatBottomRef}
         onClearContext={() => chat.setContext(null)}
         onNewTask={() => tasks.setEditor("new")}
         onSetDraft={chat.setDraft}
         onApprove={() => void chat.approveProposal()}
-        onReject={chat.rejectProposal}
+        onReject={() => void chat.rejectProposal()}
+        onRemoveProposalItem={chat.removeProposalAction}
       />
     );
   if (view === "kit")

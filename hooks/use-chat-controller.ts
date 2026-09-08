@@ -1,7 +1,10 @@
 "use client";
 import { useRef, useState, useCallback } from "react";
 import { Action } from "@/lib/model";
-import { requiresConfirmation } from "@/lib/engine";
+import {
+  chatActionsNeedProposal,
+  partitionActionsByPolicy,
+} from "@/lib/agent/schema";
 import { authFetch } from "@/lib/supabase-browser";
 import { useHousehold } from "@/lib/use-household";
 import { demoReply } from "@/components/demo-reply";
@@ -26,12 +29,12 @@ export function useChatController(
 
   const {
     proposal,
-    proposalRevision,
     persistProposal,
     clearProposal,
-    setProposal,
     approveProposal,
     rejectProposal,
+    removeProposalAction,
+    proposalMeta,
   } = proposalCtrl;
 
   const sendMessage = useCallback(
@@ -42,7 +45,6 @@ export function useChatController(
       setThinking(true);
       const message = text.trim();
       try {
-        let next = state;
         let idempotencyKey = crypto.randomUUID();
         if (mode === "cloud") {
           try {
@@ -56,25 +58,10 @@ export function useChatController(
               : null;
             if (
               pending?.message === message &&
-              pending.contextTaskId === context &&
-              state.messages.at(-1)?.role === "user" &&
-              state.messages.at(-1)?.text === message
+              pending.contextTaskId === context
             ) {
               idempotencyKey = pending.key;
             } else {
-              next = await h.commit(
-                [
-                  {
-                    type: "message.add",
-                    role: "user",
-                    text: message,
-                    turnId: idempotencyKey,
-                  },
-                ],
-                false,
-                true,
-                { turnId: idempotencyKey },
-              );
               sessionStorage.setItem(
                 CHAT_PENDING_KEY,
                 JSON.stringify({
@@ -85,53 +72,17 @@ export function useChatController(
               );
             }
           } catch {
-            next = await h.commit(
-              [
-                {
-                  type: "message.add",
-                  role: "user",
-                  text: message,
-                  turnId: idempotencyKey,
-                },
-              ],
-              false,
-              true,
-              { turnId: idempotencyKey },
+            sessionStorage.setItem(
+              CHAT_PENDING_KEY,
+              JSON.stringify({
+                key: idempotencyKey,
+                message,
+                contextTaskId: context,
+              }),
             );
           }
-        } else {
-          next = await h.commit(
-            [
-              {
-                type: "message.add",
-                role: "user",
-                text: message,
-                turnId: idempotencyKey,
-              },
-            ],
-            false,
-            true,
-            { turnId: idempotencyKey },
-          );
-        }
-        setDraft("");
-        let answer: {
-          reply: string;
-          actions: Action[];
-          explicitActions?: Action[];
-          clarification?: {
-            question: string;
-            unresolvedPart?: string | null;
-          } | null;
-          proposal?: {
-            summary: string;
-            proposedActions: Action[];
-          } | null;
-          basedOnRevision?: number;
-          turnId?: string;
-        };
-        if (mode === "local") answer = demoReply(message, next, context);
-        else {
+
+          setDraft("");
           const response = await authFetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -144,125 +95,111 @@ export function useChatController(
           });
           const data = await response.json();
           if (!response.ok) throw new Error(data.error);
-          // R07: never drop the whole AI turn on revision drift — show reply
-          // and still try to apply actions against the latest local revision.
-          if (
-            typeof data.basedOnRevision === "number" &&
-            data.basedOnRevision !== h.currentRevision()
-          ) {
-            data.reply = `${data.reply}\n\nבזמן שעניתי משהו השתנה אצלך — שמרתי את התשובה, וביצעתי רק שינויים שעדיין תקפים.`;
+
+          if (data.state && typeof data.revision === "number") {
+            h.adoptRemote(data.state, data.revision);
           }
-          answer = data;
-        }
-        const assistantText =
-          answer.clarification?.question &&
-          !answer.reply.includes(answer.clarification.question)
-            ? `${answer.reply}\n\n${answer.clarification.question}`
-            : answer.reply;
-        await h.commit(
-          [
-            {
-              type: "message.add",
-              role: "assistant",
-              text: assistantText,
-              turnId: idempotencyKey,
-            },
-          ],
-          false,
-          true,
-          { turnId: idempotencyKey },
-        );
-        sessionStorage.removeItem(CHAT_PENDING_KEY);
-        sessionStorage.removeItem(CHAT_UI_KEY);
-        const actions = answer.explicitActions ?? answer.actions ?? [];
-        const proposed = answer.proposal?.proposedActions?.length
-          ? answer.proposal.proposedActions
-          : [];
-        if (actions.length) {
-          try {
-            if (state.profile.autoApply && !requiresConfirmation(actions))
-              await h.commit(actions, false, true, {
+
+          // Terminal only after successful response (including receipt on server).
+          sessionStorage.removeItem(CHAT_PENDING_KEY);
+          sessionStorage.removeItem(CHAT_UI_KEY);
+
+          const proposed =
+            data.proposal?.proposedActions ??
+            data.explicitActions?.filter?.(
+              (a: Action) => a.type === "task.create",
+            ) ??
+            [];
+          const { auto, proposal: needConfirm } = partitionActionsByPolicy([
+            ...(data.explicitActions ?? []),
+            ...proposed,
+          ]);
+          // Safety: never auto-apply task.create even if server mis-buckets.
+          void auto;
+          if (needConfirm.length || proposed.length) {
+            const actions = (needConfirm.length ? needConfirm : proposed) as Action[];
+            persistProposal(actions, {
+              proposalId: data.proposalId ?? null,
+              summary: data.proposal?.summary,
+              similarHints: data.similarHints,
+              sourceRevision: data.revision ?? h.currentRevision(),
+            });
+          }
+        } else {
+          // Local demo: keep client turn, but never auto-apply task.create.
+          const next = await h.commit(
+            [
+              {
+                type: "message.add",
+                role: "user",
+                text: message,
                 turnId: idempotencyKey,
-                sealTurn: true,
-              });
-            else {
-              proposalRevision.current = h.currentRevision();
-              setProposal(actions);
-              sessionStorage.setItem(
-                CHAT_UI_KEY,
-                JSON.stringify({
-                  proposal: actions,
-                  revision: proposalRevision.current,
-                  at: Date.now(),
-                }),
-              );
-              await h.commit(
-                [
-                  {
-                    type: "operation.record",
-                    turnId: idempotencyKey,
-                    summary: "proposal_pending",
-                    actionTypes: actions.map((a) => a.type),
-                  },
-                ],
-                false,
-                true,
-                { turnId: idempotencyKey, sealTurn: true },
-              );
-            }
-          } catch (actionError) {
-            // Reply already persisted; surface action failure without losing the turn.
-            const detail =
-              actionError instanceof Error
-                ? actionError.message
-                : "חלק מהשינויים לא נשמרו.";
-            h.setError(detail);
+              },
+            ],
+            false,
+            true,
+            { turnId: idempotencyKey },
+          );
+          setDraft("");
+          const answer = demoReply(message, next, context);
+          const assistantText = answer.reply;
+          await h.commit(
+            [
+              {
+                type: "message.add",
+                role: "assistant",
+                text: assistantText,
+                turnId: idempotencyKey,
+              },
+            ],
+            false,
+            true,
+            { turnId: idempotencyKey },
+          );
+          const { auto, proposal: needConfirm } = partitionActionsByPolicy(
+            answer.actions,
+          );
+          if (needConfirm.length || chatActionsNeedProposal(answer.actions)) {
+            persistProposal(needConfirm.length ? needConfirm : answer.actions, {
+              summary:
+                needConfirm.filter((a) => a.type === "task.create").length > 1
+                  ? `זיהיתי ${needConfirm.filter((a) => a.type === "task.create").length} משימות. להוסיף אותן לרשימת המשימות?`
+                  : "זיהיתי משימה אחת. להוסיף אותה לרשימת המשימות?",
+              sourceRevision: h.currentRevision(),
+            });
             await h.commit(
               [
                 {
                   type: "operation.record",
                   turnId: idempotencyKey,
-                  summary: "chat_actions_failed",
-                  actionTypes: actions.map((a) => a.type),
+                  summary: "proposal_pending",
+                  actionTypes: needConfirm.map((a) => a.type),
                 },
               ],
               false,
               true,
               { turnId: idempotencyKey, sealTurn: true },
-            ).catch(() => undefined);
-          }
-        } else {
-          await h.commit(
-            [
-              {
-                type: "operation.record",
-                turnId: idempotencyKey,
-                summary: "chat_turn",
-                actionTypes: [],
-              },
-            ],
-            false,
-            true,
-            { turnId: idempotencyKey, sealTurn: true },
-          );
-        }
-        if (proposed.length) {
-          proposalRevision.current = h.currentRevision();
-          setProposal((prev) => [...(prev ?? []), ...proposed]);
-          sessionStorage.setItem(
-            CHAT_UI_KEY,
-            JSON.stringify({
-              proposal: [
-                ...(actions.length &&
-                !(state.profile.autoApply && !requiresConfirmation(actions))
-                  ? actions
-                  : []),
-                ...proposed,
+            );
+          } else if (auto.length) {
+            await h.commit(auto, false, true, {
+              turnId: idempotencyKey,
+              sealTurn: true,
+            });
+          } else {
+            await h.commit(
+              [
+                {
+                  type: "operation.record",
+                  turnId: idempotencyKey,
+                  summary: "chat_turn",
+                  actionTypes: [],
+                },
               ],
-              revision: proposalRevision.current,
-              at: Date.now(),
-            }),
-          );
+              false,
+              true,
+              { turnId: idempotencyKey, sealTurn: true },
+            );
+          }
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "השיחה התעכבה.";
@@ -272,6 +209,7 @@ export function useChatController(
           CHAT_UI_KEY,
           JSON.stringify({ error: msg, at: Date.now() }),
         );
+        // Keep CHAT_PENDING_KEY for cloud retry of the same turn.
       } finally {
         sendLock.current = false;
         setThinking(false);
@@ -286,8 +224,7 @@ export function useChatController(
       mode,
       context,
       h,
-      proposalRevision,
-      setProposal,
+      persistProposal,
     ],
   );
 
@@ -295,10 +232,12 @@ export function useChatController(
     sendMessage,
     approveProposal,
     rejectProposal,
+    removeProposalAction,
     isThinking: thinking,
     draft,
     setDraft,
     proposal,
+    proposalMeta,
     context,
     setContext,
     clearProposal,

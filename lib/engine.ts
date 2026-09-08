@@ -16,6 +16,10 @@ import {
 import { enrichTaskLocal } from "./enrichment";
 import { applyLifeAdminConfirm } from "./domain/notifications/life-admin";
 import { applyForecastEvent } from "./domain/forecast";
+import {
+  classifyTaskDuplicate,
+  isHardDuplicate,
+} from "./domain/tasks/dedupe";
 
 /** Structured marker from semantic forecast_event — not NLP. */
 const FORECAST_FACT_RE =
@@ -54,14 +58,17 @@ export function applyActions(
     switch (action.type) {
       case "task.create": {
         const input = action.task;
-        const duplicate = s.tasks.find(
-          (t) =>
-            t.status === "open" &&
-            normalize(t.title) === normalize(input.title) &&
-            t.kind === (input.kind ?? "task") &&
-            t.dueAt === (input.dueAt ?? null),
-        );
-        if (duplicate) break;
+        const match = classifyTaskDuplicate(s, {
+          title: input.title,
+          kind: input.kind,
+          categoryId: input.categoryId,
+          detailTypeId: input.detailTypeId,
+          templateId: input.templateId,
+          dueAt: input.dueAt,
+          homeAreaIds: input.homeAreaIds,
+          relatedMemberIds: input.relatedMemberIds,
+        });
+        if (isHardDuplicate(match)) break;
         const enriched = enrichTaskLocal({
           title: input.title.trim(),
           categoryId: input.categoryId,

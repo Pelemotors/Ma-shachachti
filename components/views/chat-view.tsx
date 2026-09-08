@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { Action, AppState } from "@/lib/model";
 import { ViewHeader } from "@/components/view-header";
 import { describe } from "@/components/action-describe";
@@ -10,13 +10,29 @@ export function ChatView(props: {
   context: string | null;
   thinking: boolean;
   proposal: Action[] | null;
+  proposalSummary?: string;
+  similarHints?: { title: string; existingTitle: string }[];
   chatBottomRef: RefObject<HTMLDivElement | null>;
   onClearContext: () => void;
   onNewTask: () => void;
   onSetDraft: (t: string) => void;
   onApprove: () => void;
   onReject: () => void;
+  onRemoveProposalItem?: (index: number) => void;
 }) {
+  const taskCreates =
+    props.proposal?.filter((a) => a.type === "task.create") ?? [];
+  const otherActions =
+    props.proposal?.filter((a) => a.type !== "task.create") ?? [];
+  const isTaskProposal = taskCreates.length > 0;
+  const heading =
+    props.proposalSummary ||
+    (isTaskProposal
+      ? taskCreates.length === 1
+        ? "זיהיתי משימה אחת. להוסיף אותה לרשימת המשימות?"
+        : `זיהיתי ${taskCreates.length} משימות. להוסיף אותן לרשימת המשימות?`
+      : "אלה השינויים המוצעים");
+
   return (
     <>
       <ViewHeader view="chat">
@@ -71,18 +87,43 @@ export function ChatView(props: {
           </div>
         )}
         {props.proposal && (
-          <div className="proposal">
-            <strong>אלה השינויים המוצעים</strong>
+          <div className="proposal" role="region" aria-label="הצעת משימות">
+            <strong>{heading}</strong>
             <ul>
               {props.proposal.map((a, i) => (
                 <li key={i}>
-                  {describe(a)}
-                  {"id" in a && props.state.tasks.find((t) => t.id === a.id)
-                    ? ` — ${props.state.tasks.find((t) => t.id === a.id)?.title}`
-                    : ""}
+                  <span>
+                    {describe(a)}
+                    {"id" in a && props.state.tasks.find((t) => t.id === a.id)
+                      ? ` — ${props.state.tasks.find((t) => t.id === a.id)?.title}`
+                      : ""}
+                    {a.type === "task.create" &&
+                    props.similarHints?.some(
+                      (h) => h.title === a.task.title,
+                    )
+                      ? ` (דומה ל־«${
+                          props.similarHints.find(
+                            (h) => h.title === a.task.title,
+                          )?.existingTitle
+                        }»)`
+                      : ""}
+                  </span>
+                  {props.onRemoveProposalItem && (
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label="הסרה מההצעה"
+                      onClick={() => props.onRemoveProposalItem?.(i)}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
+            {otherActions.length > 0 && taskCreates.length > 0 && (
+              <p className="muted">כולל גם פעולות נוספות שדורשות אישור.</p>
+            )}
             <div className="button-row">
               <button
                 className="primary"
@@ -91,7 +132,7 @@ export function ChatView(props: {
               >
                 לאשר ולשמור
               </button>
-              <button className="secondary" onClick={props.onReject}>
+              <button className="secondary" onClick={() => void props.onReject()}>
                 לוותר
               </button>
             </div>

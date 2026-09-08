@@ -197,6 +197,12 @@ function clarificationFor(
  * Convert grounded semantic interpretations into validated Actions.
  * Guessing is forbidden: ambiguity → clarification, not an action.
  */
+/**
+ * Semantic grounding for structured interpretations (tests + future structured output).
+ * Live chat currently receives Actions from the LLM and grounds them via
+ * `enforceReferentialIntegrity` + `filterRunnableActions` in orchestration —
+ * one pipeline, not a parallel brain.
+ */
 export function groundInterpretations(
   state: AppState,
   interpretations: Array<

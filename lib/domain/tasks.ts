@@ -24,6 +24,13 @@ export {
   isActiveTaskStatus,
 };
 
+export {
+  classifyTaskDuplicate,
+  isHardDuplicate,
+  type TaskCreateLike,
+  type TaskDedupeMatch,
+} from "./tasks/dedupe";
+
 /** Prefer domain visibility; keep engine `visible` semantics via re-export after align. */
 export { visible } from "../engine";
 

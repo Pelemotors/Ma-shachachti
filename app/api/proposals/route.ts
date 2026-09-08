@@ -1,5 +1,10 @@
 import { authorize, fail, ApiError, jsonBody } from "@/lib/server";
 import { z } from "zod";
+import {
+  PROPOSAL_TYPES,
+  ProposalPayloadSchema,
+  declinePendingProposal,
+} from "@/lib/server/proposals";
 
 export const runtime = "nodejs";
 
@@ -30,8 +35,8 @@ export async function POST(req: Request) {
     const { db, userId } = await authorize(req);
     const body = z
       .object({
-        type: z.enum(["plan", "shopping", "complex", "replan", "other"]),
-        payload: z.record(z.string(), z.unknown()),
+        type: z.enum(PROPOSAL_TYPES),
+        payload: ProposalPayloadSchema,
         turnId: z.string().uuid().nullable().optional(),
         sourceRevision: z.number().int().min(0),
         expiresAt: z.string().datetime({ offset: true }).optional(),
@@ -68,9 +73,15 @@ export async function PATCH(req: Request) {
       .object({
         id: z.string().uuid(),
         status: z.enum(["accepted", "partial", "declined", "expired"]),
-        payload: z.record(z.string(), z.unknown()).optional(),
+        payload: ProposalPayloadSchema.optional(),
       })
       .parse(await jsonBody(req, 50_000));
+
+    if (body.status === "declined") {
+      const data = await declinePendingProposal(db, userId, body.id);
+      return Response.json({ proposal: data });
+    }
+
     const { data, error } = await db
       .from("pending_proposals")
       .update({
