@@ -546,5 +546,46 @@ export function enforceReferentialIntegrity(
     };
   }
 
+  // Completing every open task at once is almost always guessing.
+  const openTaskCount = state.tasks.filter(
+    (t) =>
+      t.status === "open" ||
+      t.status === "unknown" ||
+      t.status === "in_progress",
+  ).length;
+  const completes = kept.filter(
+    (a) => a.type === "task.status" && a.status === "done",
+  );
+  if (completes.length > 1 && completes.length >= openTaskCount) {
+    clarification = clarification ?? {
+      question: "לאיזו משימה התכוונת שסיימת?",
+      unresolvedPart: null,
+    };
+    return {
+      ...decision,
+      explicitActions: kept.filter(
+        (a) => !(a.type === "task.status" && a.status === "done"),
+      ),
+      clarification,
+    };
+  }
+
+  const defers = kept.filter(
+    (a) => a.type === "task.defer" || a.type === "task.deferUntil",
+  );
+  if (defers.length > 1 && defers.length >= openTaskCount) {
+    clarification = clarification ?? {
+      question: "לאיזו משימה התכוונת להסתיר מהיום?",
+      unresolvedPart: null,
+    };
+    return {
+      ...decision,
+      explicitActions: kept.filter(
+        (a) => a.type !== "task.defer" && a.type !== "task.deferUntil",
+      ),
+      clarification,
+    };
+  }
+
   return { ...decision, explicitActions: kept, clarification };
 }

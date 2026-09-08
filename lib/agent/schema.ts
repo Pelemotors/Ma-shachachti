@@ -60,6 +60,92 @@ export type AgentProposal = z.infer<typeof AgentProposalSchema>;
 
 export type ActionPolicyBucket = "auto" | "proposal" | "drop";
 
+/**
+ * Normalize common LLM field aliases before Action Zod parse.
+ * This is schema compatibility — not natural-language understanding.
+ */
+export function normalizeLooseAgentAction(raw: unknown): unknown {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const a = { ...(raw as Record<string, unknown>) };
+
+  // Model sometimes emits { "task.status": "<uuid>", status: "done" }
+  // instead of { type: "task.status", id: "<uuid>", status: "done" }.
+  if (a.type == null) {
+    for (const key of Object.keys(a)) {
+      if (!key.includes(".")) continue;
+      const value = a[key];
+      if (typeof value === "string") {
+        a.type = key;
+        if (a.id == null) a.id = value;
+        delete a[key];
+        break;
+      }
+    }
+  }
+
+  if (typeof a.taskId === "string" && a.id == null) a.id = a.taskId;
+  if (typeof a.shoppingId === "string" && a.id == null) a.id = a.shoppingId;
+  if (typeof a.reminderId === "string" && a.id == null) a.id = a.reminderId;
+  if (typeof a.factId === "string" && a.id == null) a.id = a.factId;
+  if (typeof a.memberId === "string" && a.id == null) a.id = a.memberId;
+  if (
+    a.status === "completed" ||
+    a.status === "complete" ||
+    a.status === "finished"
+  )
+    a.status = "done";
+  if (a.status === "canceled") a.status = "cancelled";
+  if (a.type === "task.complete" || a.type === "task.completed") {
+    a.type = "task.status";
+    if (a.status == null) a.status = "done";
+  }
+  if (a.type === "task.defer_until") a.type = "task.deferUntil";
+  if (a.type === "reminder.create" || a.type === "reminder.set")
+    a.type = "reminder.add";
+  if (
+    (a.type === "reminder.add" || a.type === "shopping.add") &&
+    typeof a.text === "string" &&
+    a.title == null
+  )
+    a.title = a.text;
+  if (a.type === "reminder.add" && a.taskId === undefined) a.taskId = null;
+  if (
+    a.type === "task.deferUntil" &&
+    typeof a.dueAt === "string" &&
+    a.hiddenUntil == null
+  ) {
+    a.hiddenUntil = a.dueAt;
+    delete a.dueAt;
+  }
+  if (
+    a.type === "shopping.add" &&
+    typeof a.id === "string" &&
+    !/^[0-9a-f-]{36}$/i.test(a.id)
+  ) {
+    delete a.id;
+  }
+  if (
+    a.type === "shopping.add" &&
+    typeof a.item === "string" &&
+    a.title == null
+  )
+    a.title = a.item;
+  if (a.type === "reminder.add" && typeof a.at === "string" && a.dueAt == null)
+    a.dueAt = a.at;
+  if (a.type === "fact.add") {
+    if (typeof a.id === "string" && a.id.startsWith("forecast:")) {
+      if (typeof a.text !== "string" || !a.text.startsWith("forecast:"))
+        a.text = a.id;
+      delete a.id;
+    } else if (typeof a.id === "string" && !/^[0-9a-f-]{36}$/i.test(a.id)) {
+      delete a.id;
+    }
+    if (a.kind == null) a.kind = "inference";
+    if (a.expiresAt === undefined) a.expiresAt = null;
+  }
+  return a;
+}
+
 export function classifyActionPolicy(
   action: Action,
   opts: { userExplicitBulk?: boolean } = {},
@@ -134,7 +220,9 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       : [];
     const proposedActions: Action[] = [];
     for (const item of proposedRaw) {
-      const parsed = AgentActionUnion.safeParse(item);
+      const parsed = AgentActionUnion.safeParse(
+        normalizeLooseAgentAction(item),
+      );
       if (parsed.success) proposedActions.push(parsed.data);
       else rejected.push(item);
     }
@@ -167,14 +255,9 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       : [];
   const explicitActions: Action[] = [];
   for (const item of explicitRaw) {
-    const parsed = AgentActionUnion.safeParse(item);
+    const parsed = AgentActionUnion.safeParse(normalizeLooseAgentAction(item));
     if (parsed.success) {
-      try {
-        // Dry structural acceptance already done; keep action
-        explicitActions.push(parsed.data);
-      } catch {
-        rejected.push(item);
-      }
+      explicitActions.push(parsed.data);
     } else {
       rejected.push(item);
       warnings.push("action_rejected");
@@ -215,7 +298,23 @@ export function agentDecisionJsonSchema() {
     additionalProperties: true,
     properties: {
       reply: { type: "string" },
-      explicitActions: { type: "array", items: { type: "object" } },
+      explicitActions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: true,
+          properties: {
+            type: { type: "string" },
+            id: { type: "string" },
+            status: { type: "string" },
+            title: { type: "string" },
+            text: { type: "string" },
+            dueAt: { type: "string" },
+            task: { type: "object", additionalProperties: true },
+          },
+          required: ["type"],
+        },
+      },
       clarification: {
         anyOf: [
           { type: "null" },
@@ -238,7 +337,10 @@ export function agentDecisionJsonSchema() {
             properties: {
               summary: { type: "string" },
               reason: { type: "string" },
-              proposedActions: { type: "array", items: { type: "object" } },
+              proposedActions: {
+                type: "array",
+                items: { type: "object", additionalProperties: true },
+              },
             },
             required: ["summary", "reason", "proposedActions"],
             additionalProperties: true,

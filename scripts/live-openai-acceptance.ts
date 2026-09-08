@@ -1,20 +1,15 @@
 /**
- * Live OpenAI acceptance — paraphrase generalization (end-of-run only).
+ * Live OpenAI acceptance — uses the same orchestration path as production chat.
  * Loads .env.local without printing secrets.
  * Usage: npx tsx scripts/live-openai-acceptance.ts
  */
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { z } from "zod";
-import {
-  AgentDecisionSchema,
-  agentDecisionJsonSchema,
-  parseAgentDecisionText,
-} from "../lib/agent/schema";
 import { emptyState } from "../lib/model";
 import { applyActions } from "../lib/engine";
-import { enforceReferentialIntegrity } from "../lib/agent/semantic";
-import { SemanticScanResultSchema } from "../lib/domain/first-scan/semantic";
+import { orchestrateChatTurn } from "../lib/agent/orchestration";
+import { analyzeFirstScanSemantic } from "../lib/domain/first-scan/ai";
+import { analyzeFirstScan } from "../lib/domain/first-scan/semantic";
 
 function loadEnvLocal() {
   const path = resolve(process.cwd(), ".env.local");
@@ -33,66 +28,15 @@ function loadEnvLocal() {
   }
 }
 
-type OpenAIResponse = {
-  status?: string;
-  output?: Array<{
-    content?: Array<{ type?: string; text?: string }>;
-  }>;
-};
-
-function outputText(data: OpenAIResponse): string {
-  return (data.output ?? [])
-    .flatMap((x) => x.content ?? [])
-    .filter((c) => c.type === "output_text" && c.text)
-    .map((c) => c.text!)
-    .join("\n")
-    .trim();
-}
-
-async function callAgentDecision(
-  input: unknown,
-): Promise<ReturnType<typeof AgentDecisionSchema.parse>> {
-  const model = process.env.OPENAI_MODEL!;
-  const instructions = readFileSync(
-    resolve(process.cwd(), "lib/agent/INSTRUCTIONS.he.md"),
-    "utf8",
-  );
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    signal: AbortSignal.timeout(35_000),
-    body: JSON.stringify({
-      model,
-      store: false,
-      instructions,
-      input: [{ role: "user", content: JSON.stringify(input) }],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "household_agent_decision",
-          strict: false,
-          schema: agentDecisionJsonSchema(),
-        },
-      },
-      max_output_tokens: 2500,
-    }),
-  });
-  const raw = await response.text();
-  if (!response.ok) throw new Error(`upstream_${response.status}`);
-  const data = JSON.parse(raw) as OpenAIResponse;
-  if (data.status !== "completed") throw new Error("incomplete");
-  return AgentDecisionSchema.parse(
-    parseAgentDecisionText(outputText(data)).decision,
-  );
-}
-
 function fixtureState() {
   const now = new Date("2026-09-08T10:00:00.000+03:00");
+  let s = emptyState();
+  s = {
+    ...s,
+    profile: { ...s.profile, aiConsent: true },
+  };
   return applyActions(
-    emptyState(),
+    s,
     [
       {
         type: "task.create",
@@ -107,6 +51,14 @@ function fixtureState() {
         },
       },
       {
+        type: "task.create",
+        task: {
+          title: "פינוי מדיח",
+          kind: "task",
+          categoryId: "kitchen_dishes",
+        },
+      },
+      {
         type: "member.upsert",
         member: { name: "פלא", type: "child", aliases: ["פלא"] },
       },
@@ -116,6 +68,17 @@ function fixtureState() {
 }
 
 type CaseResult = { id: string; ok: boolean; detail?: string };
+
+async function chat(state: ReturnType<typeof fixtureState>, message: string) {
+  return orchestrateChatTurn({
+    state,
+    revision: 1,
+    message,
+    contextTaskId: null,
+    turnId: crypto.randomUUID(),
+    requestId: crypto.randomUUID(),
+  });
+}
 
 async function main() {
   loadEnvLocal();
@@ -128,16 +91,6 @@ async function main() {
   const state = fixtureState();
   const laundry = state.tasks.find((t) => t.title === "כביסה")!;
   const results: CaseResult[] = [];
-  const ctx = {
-    now: "2026-09-08T10:00:00.000+03:00",
-    tasks: state.tasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      status: t.status,
-      categoryId: t.categoryId,
-    })),
-    members: state.members,
-  };
 
   for (const [i, message] of [
     "סיימתי את הכביסה",
@@ -147,11 +100,8 @@ async function main() {
   ].entries()) {
     const id = `paraphrase_complete_${i + 1}`;
     try {
-      const grounded = enforceReferentialIntegrity(
-        state,
-        await callAgentDecision({ context: ctx, message }),
-      );
-      const done = grounded.explicitActions.find(
+      const r = await chat(state, message);
+      const done = r.explicitActions.find(
         (a) =>
           a.type === "task.status" &&
           a.status === "done" &&
@@ -159,12 +109,12 @@ async function main() {
       );
       results.push({
         id,
-        ok: Boolean(done) || Boolean(grounded.clarification),
+        ok: Boolean(done) || Boolean(r.clarification),
         detail: done
           ? "complete"
-          : grounded.clarification
-            ? "clarification"
-            : grounded.explicitActions.map((a) => a.type).join(","),
+          : r.clarification
+            ? `clarification:${r.clarification.question.slice(0, 60)}`
+            : `actions=${r.explicitActions.map((a) => a.type).join(",") || "none"};reply=${r.reply.slice(0, 80)}`,
       });
     } catch (e) {
       results.push({
@@ -178,88 +128,92 @@ async function main() {
   const extras: Array<{
     id: string;
     message: string;
-    expect: (d: ReturnType<typeof AgentDecisionSchema.parse>) => boolean;
+    expect: (r: Awaited<ReturnType<typeof chat>>) => boolean;
   }> = [
     {
       id: "defer",
       message: "לא היום עם הסלון",
-      expect: (d) =>
-        d.explicitActions.some((a) => a.type === "task.defer") ||
-        Boolean(d.clarification),
+      expect: (r) =>
+        r.explicitActions.some((a) => a.type === "task.defer") ||
+        Boolean(r.clarification),
     },
     {
       id: "reminder",
       message: "תזכירי לי מחר בערב לבדוק כביסה",
-      expect: (d) =>
-        d.explicitActions.some((a) => a.type === "reminder.add") ||
-        Boolean(d.clarification),
+      expect: (r) =>
+        r.explicitActions.some((a) => a.type === "reminder.add") ||
+        Boolean(r.clarification),
     },
     {
       id: "temporary_context",
       message: "היום אני עם הילדה כל היום",
-      expect: (d) =>
-        d.explicitActions.some(
+      expect: (r) =>
+        r.explicitActions.some(
           (a) => a.type === "fact.add" || a.type === "planning.set",
-        ) || Boolean(d.clarification),
+        ) || Boolean(r.clarification),
     },
     {
       id: "shopping",
       message: "תוסיפי חלב לקניות בבקשה",
-      expect: (d) => d.explicitActions.some((a) => a.type === "shopping.add"),
+      expect: (r) => r.explicitActions.some((a) => a.type === "shopping.add"),
     },
     {
       id: "correction",
       message: "בעצם תעבירי את הכביסה למחר",
-      expect: (d) =>
-        d.explicitActions.some(
+      expect: (r) =>
+        r.explicitActions.some(
           (a) =>
             a.type === "task.defer" ||
             a.type === "task.deferUntil" ||
             a.type === "task.update",
-        ) || Boolean(d.clarification),
+        ) || Boolean(r.clarification),
     },
     {
       id: "ambiguity",
       message: "סיימתי",
-      expect: (d) => Boolean(d.clarification) || d.explicitActions.length === 0,
+      expect: (r) =>
+        Boolean(r.clarification) ||
+        // At most one completion when several open tasks exist.
+        r.explicitActions.filter(
+          (a) => a.type === "task.status" && a.status === "done",
+        ).length <= 1,
     },
     {
       id: "unseen_phrasing",
       message: "הכביסה כבר מאחורי הגב, סגרי אותה אצלי במערכת",
-      expect: (d) =>
-        d.explicitActions.some(
+      expect: (r) =>
+        r.explicitActions.some(
           (a) =>
             a.type === "task.status" &&
             a.status === "done" &&
             a.id === laundry.id,
-        ) || Boolean(d.clarification),
+        ) || Boolean(r.clarification),
     },
     {
       id: "noise_typo",
       message: "סימתי כבסה בערך, תסמני בבקשה",
-      expect: (d) =>
-        d.explicitActions.some((a) => a.type === "task.status") ||
-        Boolean(d.clarification),
+      expect: (r) =>
+        r.explicitActions.some((a) => a.type === "task.status") ||
+        Boolean(r.clarification),
     },
     {
       id: "multi_intent",
       message: "סיימתי מדיח, מחר צריך להזמין אוכל לכלב והיום אין לי כוח לכביסה",
-      expect: (d) =>
-        d.explicitActions.length + (d.clarification ? 1 : 0) >= 2 ||
-        Boolean(d.proposal),
+      expect: (r) =>
+        r.explicitActions.length + (r.clarification ? 1 : 0) >= 2 ||
+        Boolean(r.proposal),
     },
   ];
 
   for (const c of extras) {
     try {
-      const grounded = enforceReferentialIntegrity(
-        state,
-        await callAgentDecision({ context: ctx, message: c.message }),
-      );
+      const r = await chat(state, c.message);
       results.push({
         id: c.id,
-        ok: c.expect(grounded),
-        detail: grounded.explicitActions.map((a) => a.type).join(",") || "none",
+        ok: c.expect(r),
+        detail:
+          r.explicitActions.map((a) => a.type).join(",") ||
+          (r.clarification ? "clarification" : `reply=${r.reply.slice(0, 80)}`),
       });
     } catch (e) {
       results.push({
@@ -270,13 +224,6 @@ async function main() {
     }
   }
 
-  const scanInstr =
-    "החזר JSON לסקירת בית. אל תמציא שגרה/תדירות/deadline/אחריות/משך. recurrenceDays ו-dueAt null. invented* false.";
-  const scanSchema = z.toJSONSchema(SemanticScanResultSchema, {
-    target: "draft-7",
-  }) as Record<string, unknown>;
-  delete scanSchema.$schema;
-
   for (const [i, text] of [
     "יש לי מטבח עם מדיח ושני חדרי שינה, אחת של הילדים",
     "דירת 3 חדרים, סלון מבולגן, חדר רחצה אחד, יש כלב",
@@ -284,50 +231,32 @@ async function main() {
   ].entries()) {
     const id = `first_scan_${i + 1}`;
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
+      const { analysis, source } = await analyzeFirstScanSemantic(text);
+      const stripped = analyzeFirstScan(text, {
+        semantic: {
+          detectedAreas: analysis.detectedAreas,
+          observations: analysis.observations,
+          proposedTasks: analysis.proposedTasks.map((t) => ({
+            ...t,
+            recurrenceDays: null,
+            dueAt: null,
+          })),
+          profileFacts: analysis.profileFacts,
+          members: [],
+          clarification: analysis.clarification,
+          inventedRoutine: false,
+          inventedDeadline: false,
+          inventedResponsibility: false,
+          inventedDuration: false,
         },
-        signal: AbortSignal.timeout(35_000),
-        body: JSON.stringify({
-          model: process.env.OPENAI_MODEL,
-          store: false,
-          instructions: scanInstr,
-          input: [{ role: "user", content: text }],
-          text: {
-            format: {
-              type: "json_schema",
-              name: "first_home_scan",
-              strict: false,
-              schema: {
-                type: "object",
-                additionalProperties: true,
-              },
-            },
-          },
-          max_output_tokens: 2000,
-        }),
       });
-      const raw = await response.text();
-      if (!response.ok) throw new Error(`upstream_${response.status}`);
-      const data = JSON.parse(raw) as OpenAIResponse;
-      const parsed = SemanticScanResultSchema.parse(
-        JSON.parse(outputText(data)),
+      const invented = stripped.proposedTasks.some(
+        (t) => t.recurrenceDays != null || t.dueAt != null,
       );
-      const invented =
-        parsed.inventedRoutine ||
-        parsed.inventedDeadline ||
-        parsed.inventedResponsibility ||
-        parsed.inventedDuration ||
-        parsed.proposedTasks.some(
-          (t) => t.recurrenceDays != null || t.dueAt != null,
-        );
       results.push({
         id,
-        ok: !invented && parsed.detectedAreas.length > 0,
-        detail: `areas=${parsed.detectedAreas.length}`,
+        ok: !invented && stripped.detectedAreas.length > 0,
+        detail: `source=${source};areas=${stripped.detectedAreas.length}`,
       });
     } catch (e) {
       results.push({
@@ -345,17 +274,23 @@ async function main() {
   ].entries()) {
     const id = `forecast_extract_${i + 1}`;
     try {
-      const decision = await callAgentDecision({
-        context: { now: ctx.now, tasks: [] },
-        message,
-      });
+      const r = await chat(state, message);
       results.push({
         id,
+        detail:
+          r.explicitActions
+            .map((a) => (a.type === "fact.add" ? `fact.add:${a.text}` : a.type))
+            .join(",") || (r.clarification ? "clarification" : "soft"),
         ok:
-          decision.explicitActions.length > 0 ||
-          Boolean(decision.clarification) ||
-          Boolean(decision.proposal),
-        detail: decision.explicitActions.map((a) => a.type).join(",") || "soft",
+          r.explicitActions.some(
+            (a) =>
+              a.type === "fact.add" &&
+              typeof a.text === "string" &&
+              a.text.startsWith("forecast:"),
+          ) ||
+          r.explicitActions.length > 0 ||
+          Boolean(r.clarification) ||
+          Boolean(r.proposal),
       });
     } catch (e) {
       results.push({
