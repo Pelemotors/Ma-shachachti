@@ -17,6 +17,11 @@ import { enrichTaskLocal } from "./enrichment";
 import { applyLifeAdminConfirm } from "./domain/notifications/life-admin";
 import { applyForecastEvent } from "./domain/forecast";
 import { classifyTaskDuplicate, isHardDuplicate } from "./domain/tasks/dedupe";
+import { isDuplicatePendingReminder } from "./domain/reminders/dedupe";
+import {
+  isLifeAdminTask,
+  recordLifeAdminCompletion,
+} from "./domain/notifications/life-admin";
 
 /** Structured marker from semantic forecast_event — not NLP. */
 const FORECAST_FACT_RE =
@@ -77,13 +82,31 @@ export function applyActions(
           kind: input.kind,
           templateId: input.templateId,
         });
-        const classification = input.classification ?? {
-          source: (input.categoryId ? "user" : "agent") as
+        const catalogish =
+          Boolean(input.templateId) ||
+          input.classification?.source === "catalog";
+        let classification = input.classification ?? {
+          source: (catalogish
+            ? "catalog"
+            : input.categoryId
+              ? "user"
+              : "agent") as
             "user" | "agent" | "catalog" | "migration" | "learned",
-          confidence: (input.categoryId ? "high" : "medium") as
-            "high" | "medium" | "unknown",
+          confidence: (input.categoryId && input.categoryId !== "unclassified"
+            ? "high"
+            : "medium") as "high" | "medium" | "unknown",
           userOverride: false,
         };
+        if (classification.source === "migration") {
+          classification = {
+            ...classification,
+            source: catalogish ? "catalog" : "agent",
+            confidence:
+              classification.confidence === "unknown"
+                ? "medium"
+                : classification.confidence,
+          };
+        }
         s.tasks.push({
           id: input.id ?? crypto.randomUUID(),
           title: input.title.trim(),
@@ -106,7 +129,8 @@ export function applyActions(
           workMinutes: enriched.workMinutes ?? input.workMinutes ?? 15,
           waitMinutes: enriched.waitMinutes ?? input.waitMinutes ?? 0,
           effort: enriched.effort ?? input.effort ?? 2,
-          priority: enriched.priority ?? input.priority ?? 1,
+          priority:
+            input.priority ?? (catalogish ? (enriched.priority ?? 1) : 2),
           dependsOn: input.dependsOn ?? [],
           steps: input.steps ?? [],
           templateId: input.templateId ?? null,
@@ -188,6 +212,17 @@ export function applyActions(
           s.reminders
             .filter((r) => r.taskId === t.id && r.status === "pending")
             .forEach((r) => (r.status = "cancelled"));
+        if (action.status === "done" && isLifeAdminTask(t)) {
+          const minutes = now.getHours() * 60 + now.getMinutes();
+          s.compactedMemory = {
+            ...s.compactedMemory,
+            lifeAdminWindow: recordLifeAdminCompletion(
+              s.compactedMemory.lifeAdminWindow,
+              minutes,
+            ),
+            updatedAt: stamp,
+          };
+        }
         if (
           action.status === "done" &&
           t.recurrenceDays &&
@@ -303,12 +338,11 @@ export function applyActions(
           throw new Error("מועד התזכורת צריך להיות בעתיד.");
         if (action.taskId) task(action.taskId);
         if (
-          !s.reminders.some(
-            (r) =>
-              r.status === "pending" &&
-              r.title === action.title &&
-              r.dueAt === action.dueAt,
-          )
+          !isDuplicatePendingReminder(s.reminders, {
+            title: action.title,
+            dueAt: action.dueAt,
+            taskId: action.taskId,
+          })
         )
           s.reminders.push({
             id: crypto.randomUUID(),
@@ -439,6 +473,12 @@ export function applyActions(
           actionTypes: action.actionTypes,
         });
         s.operations = s.operations.slice(-100);
+        break;
+      case "pendingIntent.set":
+        s.pendingAgentIntent = action.intent;
+        break;
+      case "pendingIntent.clear":
+        s.pendingAgentIntent = null;
         break;
       case "homeArea.upsert": {
         const incoming = action.area;

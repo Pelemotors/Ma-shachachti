@@ -10,11 +10,13 @@ export type TaskCreateLike = {
   dueAt?: string | null;
   homeAreaIds?: string[];
   relatedMemberIds?: string[];
+  /** Explicit "שוב / עוד פעם" — allow new occurrence even if similar active exists. */
+  forceNewOccurrence?: boolean;
 };
 
 export type TaskDedupeMatch =
   | { confidence: "canonical" | "exact"; task: Task }
-  | { confidence: "similar"; task: Task }
+  | { confidence: "similar"; task: Task; suggestDueAtUpdate?: boolean }
   | { confidence: "none" };
 
 function isActiveOpen(t: Task) {
@@ -23,15 +25,28 @@ function isActiveOpen(t: Task) {
   );
 }
 
+function sameMembers(a?: string[], b?: string[]) {
+  const left = [...(a ?? [])].sort().join(",");
+  const right = [...(b ?? [])].sort().join(",");
+  return left === right;
+}
+
+function sameAreas(a?: string[], b?: string[]) {
+  const left = [...(a ?? [])].sort().join(",");
+  const right = [...(b ?? [])].sort().join(",");
+  return left === right;
+}
+
 /**
- * Shared task dedupe for chat proposals and engine persistence.
- * High confidence (canonical/exact) may silent-skip create.
- * Similar is preview-only — never silent-drop without user awareness.
+ * Shared task dedupe. dueAt is metadata — not absolute identity.
+ * Same active task + new dueAt → similar (preview update), not silent create.
  */
 export function classifyTaskDuplicate(
   state: AppState,
   input: TaskCreateLike,
 ): TaskDedupeMatch {
+  if (input.forceNewOccurrence) return { confidence: "none" };
+
   const kind = input.kind ?? "task";
   const dueAt = input.dueAt ?? null;
   const title = normalize(input.title);
@@ -42,9 +57,18 @@ export function classifyTaskDuplicate(
       (t) =>
         t.templateId === input.templateId &&
         t.kind === kind &&
-        t.dueAt === dueAt,
+        sameMembers(t.relatedMemberIds, input.relatedMemberIds) &&
+        sameAreas(t.homeAreaIds, input.homeAreaIds),
     );
-    if (byTemplate) return { confidence: "canonical", task: byTemplate };
+    if (byTemplate) {
+      if (byTemplate.dueAt === dueAt)
+        return { confidence: "canonical", task: byTemplate };
+      return {
+        confidence: "similar",
+        task: byTemplate,
+        suggestDueAtUpdate: dueAt != null && byTemplate.dueAt !== dueAt,
+      };
+    }
   }
 
   if (input.detailTypeId && input.categoryId) {
@@ -53,27 +77,50 @@ export function classifyTaskDuplicate(
         t.detailTypeId === input.detailTypeId &&
         t.categoryId === input.categoryId &&
         t.kind === kind &&
-        t.dueAt === dueAt,
+        sameMembers(t.relatedMemberIds, input.relatedMemberIds) &&
+        sameAreas(t.homeAreaIds, input.homeAreaIds),
     );
-    if (byDetail) return { confidence: "canonical", task: byDetail };
+    if (byDetail) {
+      if (byDetail.dueAt === dueAt)
+        return { confidence: "canonical", task: byDetail };
+      return {
+        confidence: "similar",
+        task: byDetail,
+        suggestDueAtUpdate: dueAt != null && byDetail.dueAt !== dueAt,
+      };
+    }
   }
 
   const exact = active.find(
-    (t) => normalize(t.title) === title && t.kind === kind && t.dueAt === dueAt,
+    (t) =>
+      normalize(t.title) === title &&
+      t.kind === kind &&
+      sameMembers(t.relatedMemberIds, input.relatedMemberIds) &&
+      sameAreas(t.homeAreaIds, input.homeAreaIds),
   );
-  if (exact) return { confidence: "exact", task: exact };
+  if (exact) {
+    if (exact.dueAt === dueAt) return { confidence: "exact", task: exact };
+    return {
+      confidence: "similar",
+      task: exact,
+      suggestDueAtUpdate: dueAt != null && exact.dueAt !== dueAt,
+    };
+  }
 
-  // Soft signal for Preview only — not silent merge (no keyword dictionaries).
   const similar = active.find((t) => {
     if (input.categoryId && t.categoryId !== input.categoryId) return false;
-    if (dueAt !== t.dueAt) return false;
     if (kind !== t.kind) return false;
     const hay = normalize(t.title);
     if (hay === title) return true;
     if (hay.includes(title) || title.includes(hay)) return true;
     return false;
   });
-  if (similar) return { confidence: "similar", task: similar };
+  if (similar)
+    return {
+      confidence: "similar",
+      task: similar,
+      suggestDueAtUpdate: Boolean(dueAt && similar.dueAt !== dueAt),
+    };
 
   return { confidence: "none" };
 }

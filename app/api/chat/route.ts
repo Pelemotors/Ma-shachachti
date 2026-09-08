@@ -25,6 +25,7 @@ import {
   resolveRequestedTodayTaskIds,
   stampTaskCreateIds,
 } from "@/lib/domain/planning/plan-intent";
+import { buildGroundedProposalSummary } from "@/lib/domain/agent-context";
 import { AGENT_CONTRACT_VERSION } from "@/lib/agent/instructions";
 import { CHAT_API_SUPPORTED, CHAT_API_VERSION } from "@/lib/version";
 
@@ -239,6 +240,39 @@ export async function POST(req: Request) {
         ? `${result.reply}\n\n${result.clarification.question}`
         : result.reply;
 
+    const nowIso = new Date().toISOString();
+    const pendingActions: Action[] = [];
+    if (result.clarification?.question) {
+      pendingActions.push({
+        type: "pendingIntent.set",
+        intent: {
+          id: crypto.randomUUID(),
+          type: result.proposal?.proposedActions.some(
+            (a) => a.type === "task.create",
+          )
+            ? "task_create"
+            : result.explicitActions.some((a) => a.type === "reminder.add") ||
+                result.proposal?.proposedActions.some(
+                  (a) => a.type === "reminder.add",
+                )
+              ? "reminder_create"
+              : "other",
+          draftActions: [
+            ...(result.proposal?.proposedActions ?? []),
+            ...(result.explicitActions ?? []),
+          ].slice(0, 20),
+          missingFields: [],
+          clarificationQuestion: result.clarification.question,
+          sourceTurnId: turnId,
+          contextTaskId: body.contextTaskId ?? null,
+          createdAt: nowIso,
+          expiresAt: new Date(Date.now() + 2 * 3600_000).toISOString(),
+        },
+      });
+    } else if (state.pendingAgentIntent) {
+      pendingActions.push({ type: "pendingIntent.clear" });
+    }
+
     const turnActions: Action[] = [
       {
         type: "message.add",
@@ -253,6 +287,7 @@ export async function POST(req: Request) {
         turnId,
       },
       ...(result.explicitActions ?? []),
+      ...pendingActions,
       {
         type: "operation.record",
         turnId,
@@ -282,15 +317,30 @@ export async function POST(req: Request) {
     let proposalId: string | null = null;
     let proposedActions = result.proposal?.proposedActions ?? [];
     let similarHints: { title: string; existingTitle: string }[] = [];
+    let proposalSummary = result.proposal?.summary ?? "";
     if (proposedActions.length) {
-      const revalidated = revalidateProposalActions(nextState, proposedActions);
-      similarHints = revalidated.similarHints;
-      proposedActions = stampTaskCreateIds(revalidated.applicable);
-      const requestedTodayTaskIds = resolveRequestedTodayTaskIds({
-        actions: proposedActions,
+      // Stamp IDs early so today-intent indexes resolve before filtering drops creates.
+      const stampedEarly = stampTaskCreateIds(proposedActions);
+      let requestedTodayTaskIds = resolveRequestedTodayTaskIds({
+        actions: stampedEarly,
         affectsToday: Boolean(result.affectsToday),
         requestedTodayCreateIndexes: result.requestedTodayCreateIndexes,
       });
+      const revalidated = revalidateProposalActions(nextState, stampedEarly);
+      similarHints = revalidated.similarHints;
+      proposedActions = revalidated.applicable;
+      const remainingIds = new Set(
+        proposedActions
+          .filter(
+            (a): a is Extract<Action, { type: "task.create" }> =>
+              a.type === "task.create" && Boolean(a.task.id),
+          )
+          .map((a) => a.task.id!),
+      );
+      requestedTodayTaskIds = requestedTodayTaskIds.filter((id) =>
+        remainingIds.has(id),
+      );
+      proposalSummary = buildGroundedProposalSummary(proposedActions);
       if (proposedActions.length) {
         const created = await createPendingProposal(db, {
           userId,
@@ -300,8 +350,7 @@ export async function POST(req: Request) {
           turnId,
           sourceRevision: nextRevision,
           payload: {
-            summary:
-              result.proposal?.summary ?? "יש פעולות שדורשות אישור לפני ביצוע.",
+            summary: proposalSummary,
             proposedActions,
             similarHints,
             affectsToday: Boolean(result.affectsToday),
@@ -320,8 +369,7 @@ export async function POST(req: Request) {
       actions: result.explicitActions,
       proposal: proposedActions.length
         ? {
-            summary:
-              result.proposal?.summary ?? "יש פעולות שדורשות אישור לפני ביצוע.",
+            summary: proposalSummary,
             reason: result.proposal?.reason ?? "other",
             proposedActions,
           }
@@ -389,6 +437,7 @@ export async function POST(req: Request) {
         turnId: turnId || undefined,
         deploymentVersion: deploymentVersion(),
         stage,
+        code: e instanceof ApiError ? e.code : "internal_error",
         errorCode: e instanceof ApiError ? e.code : "internal_error",
         latencyMs: Date.now() - started,
         model: selectedModel || undefined,

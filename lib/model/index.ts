@@ -49,6 +49,28 @@ export const ClassificationSchema = z.object({
   userOverride: z.boolean(),
 });
 
+export const PendingAgentIntentValueSchema = z.object({
+  id: z.string().uuid(),
+  type: z.enum([
+    "task_create",
+    "task_update",
+    "reminder_create",
+    "planning",
+    "member_update",
+    "other",
+  ]),
+  draftActions: z.array(z.unknown()).max(20).default([]),
+  missingFields: z.array(z.string().max(40)).max(20).default([]),
+  clarificationQuestion: z.string().max(400).nullable().optional(),
+  sourceTurnId: z.string().uuid().nullable().optional(),
+  contextTaskId: z.string().uuid().nullable().optional(),
+  createdAt: Stamp,
+  expiresAt: Stamp,
+});
+export const PendingAgentIntentSchema =
+  PendingAgentIntentValueSchema.nullable();
+export type PendingAgentIntent = z.infer<typeof PendingAgentIntentSchema>;
+
 export const TaskSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1).max(200),
@@ -392,6 +414,7 @@ export const StateV2Schema = z.object({
       session: FirstScanSessionSchema.nullable().optional(),
     })
     .default({ status: "not_started", completedAt: null, session: null }),
+  pendingAgentIntent: PendingAgentIntentSchema.default(null),
 });
 
 export type AppState = z.infer<typeof StateV2Schema>;
@@ -535,6 +558,7 @@ export function migrateV1ToV2(v1: StateV1): AppState {
     operations: [],
     homeAreas: [],
     firstScan: { status: "not_started", completedAt: null, session: null },
+    pendingAgentIntent: null,
   };
 }
 
@@ -632,28 +656,52 @@ export function emptyState(): AppState {
     operations: [],
     homeAreas: [],
     firstScan: { status: "not_started", completedAt: null, session: null },
+    pendingAgentIntent: null,
   };
 }
 
-export const TaskInput = TaskSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  completedAt: true,
-  actualWorkMinutes: true,
-  occurrenceOf: true,
-  status: true,
-  startedAt: true,
-})
-  .partial()
-  .extend({
-    title: z.string().min(1).max(200),
-    /** Optional stable id for scan approve / dependency wiring. */
-    id: z.string().uuid().optional(),
-  });
+/**
+ * Create-input schema — no persisted migration defaults.
+ * Persisted TaskSchema keeps migration-safe defaults for load.
+ */
+export const TaskCreateInputSchema = z.object({
+  title: z.string().min(1).max(200),
+  id: z.string().uuid().optional(),
+  categoryId: CategorySchema.optional(),
+  detailTypeId: z.string().max(80).nullable().optional(),
+  classification: ClassificationSchema.optional(),
+  enrichmentStatus: z.enum(["none", "pending", "done", "failed"]).optional(),
+  kind: z.enum(["task", "idea"]).optional(),
+  dueAt: Stamp.nullable().optional(),
+  preferredWindow: PreferredWindowSchema.optional(),
+  hiddenUntil: Stamp.nullable().optional(),
+  workMinutes: z.number().int().min(1).max(1440).optional(),
+  waitMinutes: z.number().int().min(0).max(1440).optional(),
+  effort: z.number().int().min(1).max(3).optional(),
+  priority: z.number().int().min(0).max(3).optional(),
+  dependsOn: z.array(z.string().uuid()).max(20).optional(),
+  steps: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        title: z.string().min(1).max(160),
+        done: z.boolean(),
+      }),
+    )
+    .max(30)
+    .optional(),
+  templateId: z.string().nullable().optional(),
+  recurrenceDays: z.number().int().min(1).max(366).nullable().optional(),
+  notes: z.string().max(2000).optional(),
+  relatedMemberIds: z.array(z.string().uuid()).max(20).optional(),
+  homeAreaIds: z.array(z.string().uuid()).max(20).optional(),
+});
+
+/** @deprecated Prefer TaskCreateInputSchema — kept as alias during transition. */
+export const TaskInput = TaskCreateInputSchema;
 
 export const ActionSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("task.create"), task: TaskInput }),
+  z.object({ type: z.literal("task.create"), task: TaskCreateInputSchema }),
   z.object({
     type: z.literal("task.update"),
     id: z.string().uuid(),
@@ -760,6 +808,11 @@ export const ActionSchema = z.discriminatedUnion("type", [
     turnId: z.string().uuid().nullable().optional(),
   }),
   z.object({ type: z.literal("history.clear") }),
+  z.object({
+    type: z.literal("pendingIntent.set"),
+    intent: PendingAgentIntentValueSchema,
+  }),
+  z.object({ type: z.literal("pendingIntent.clear") }),
   z.object({
     type: z.literal("member.upsert"),
     member: HouseholdMemberSchema.partial({

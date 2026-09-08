@@ -38,9 +38,8 @@ export async function GET(req: Request) {
       .filter(Number.isFinite);
     const failureCodes: Record<string, number> = {};
     for (const row of failures) {
-      const code = String(
-        (row.metadata as { code?: string })?.code ?? "unknown",
-      );
+      const meta = row.metadata as { code?: string; errorCode?: string };
+      const code = String(meta?.code ?? meta?.errorCode ?? "unknown");
       failureCodes[code] = (failureCodes[code] ?? 0) + 1;
     }
     return Response.json({

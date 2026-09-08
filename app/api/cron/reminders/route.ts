@@ -2,7 +2,7 @@ import webpush from "web-push";
 import { timingSafeEqual } from "node:crypto";
 import { adminDb, ApiError, fail } from "@/lib/server";
 import { validPushEndpoint } from "@/lib/push";
-import { migrateState } from "@/lib/model";
+import { migrateState, type AppState } from "@/lib/model";
 import {
   evaluateNotificationPolicy,
   buildLifeAdminDigest,
@@ -55,6 +55,42 @@ export async function GET(req: Request) {
       throw new ApiError(503, "Queue unavailable", "queue_unavailable");
 
     const mediumSentToday = new Map<string, number>();
+    // Durable baseline: count already-sent medium reminders for local day from queue+state.
+    async function mediumUsed(
+      ownerId: string,
+      timezone: string,
+      st: AppState | null,
+    ) {
+      const day = dayKey(new Date(), timezone);
+      const key = `${ownerId}:${day}`;
+      if (mediumSentToday.has(key)) return mediumSentToday.get(key)!;
+      // Approximate: count sent reminders whose dueAt local day matches and urgency medium.
+      const used = (st?.reminders ?? []).filter((r) => {
+        if (r.status !== "sent") return false;
+        if ((r.urgency ?? "medium") !== "medium") return false;
+        return dayKey(new Date(r.dueAt), timezone) === day;
+      }).length;
+      // Also count queue deliveries today when available.
+      const { data: delivered } = await db!
+        .from("reminder_queue")
+        .select("id,delivered_at")
+        .eq("owner_id", ownerId)
+        .eq("status", "sent")
+        .gte(
+          "delivered_at",
+          new Date(Date.now() - 36 * 3600_000).toISOString(),
+        );
+      let fromQueue = 0;
+      for (const row of delivered ?? []) {
+        if (!row.delivered_at) continue;
+        if (dayKey(new Date(row.delivered_at), timezone) !== day) continue;
+        const rem = st?.reminders.find((r) => r.id === row.id);
+        if ((rem?.urgency ?? "medium") === "medium") fromQueue += 1;
+      }
+      const n = Math.max(used, fromQueue);
+      mediumSentToday.set(key, n);
+      return n;
+    }
     let sent = 0;
     await Promise.all(
       (jobs ?? []).map(
@@ -87,13 +123,10 @@ export async function GET(req: Request) {
             return;
           }
 
+          const tz = profile?.timezone ?? "Asia/Jerusalem";
           if (urgency === "medium") {
-            const day = dayKey(
-              new Date(),
-              profile?.timezone ?? "Asia/Jerusalem",
-            );
-            const key = `${job.owner_id}:${day}`;
-            const used = mediumSentToday.get(key) ?? 0;
+            const key = `${job.owner_id}:${dayKey(new Date(), tz)}`;
+            const used = await mediumUsed(job.owner_id, tz, state);
             if (used >= MEDIUM_CAP_PER_DAY) {
               await db!
                 .from("reminder_queue")
@@ -109,12 +142,14 @@ export async function GET(req: Request) {
             mediumSentToday.set(key, used + 1);
           }
 
+          let digestBody: string | null = null;
           if (state && decision.channel === "digest" && urgency === "medium") {
-            void buildLifeAdminDigest(
+            const digest = buildLifeAdminDigest(
               state.tasks,
               state.compactedMemory,
               new Date(),
             );
+            if (digest.summary) digestBody = digest.summary;
           }
 
           const { data: subs } = await db!
@@ -134,7 +169,8 @@ export async function GET(req: Request) {
                     body:
                       urgency === "urgent"
                         ? "יש תזכורת חשובה שמחכה לך."
-                        : "יש תזכורת שמחכה לך. אפשר לפתוח כשמתאים.",
+                        : (digestBody ??
+                          "יש תזכורת שמחכה לך. אפשר לפתוח כשמתאים."),
                     tag: job.id,
                     url: "/app?view=reminders",
                     urgency,

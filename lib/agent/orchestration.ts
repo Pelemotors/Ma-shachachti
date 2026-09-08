@@ -1,5 +1,4 @@
 import { ApiError } from "@/lib/server";
-import { activeFacts, whatMatters } from "@/lib/engine";
 import {
   AgentDecision,
   AgentDecisionSchema,
@@ -10,12 +9,16 @@ import {
 import { filterRunnableActions } from "@/lib/agent/action-validation";
 import { enforceReferentialIntegrity } from "@/lib/agent/semantic";
 import { outputText, type OpenAIResponse } from "@/lib/agent/client";
-import { nextDayStart } from "@/lib/time";
 import type { AppState } from "@/lib/model";
 import {
   AGENT_INSTRUCTIONS,
   AGENT_CONTRACT_VERSION,
 } from "@/lib/agent/instructions";
+import {
+  buildAgentContext,
+  buildGroundedProposalSummary,
+} from "@/lib/domain/agent-context";
+import { filterSafeDeferActions } from "@/lib/domain/tasks/deferrable";
 
 function upstreamError(status: number, raw: string) {
   let code = "";
@@ -193,58 +196,15 @@ export async function orchestrateChatTurn(
   const instructions = AGENT_INSTRUCTIONS;
   const now = new Date();
   const state = input.state;
-  const activeTasks = state.tasks.filter(
-    (t) =>
-      t.status === "open" ||
-      t.status === "unknown" ||
-      (t.status as string) === "in_progress",
-  );
-  const plan =
-    "plan" in state.planning
-      ? (
-          state.planning as {
-            plan?: {
-              date: string;
-              availableMinutes: number;
-              effort: number;
-              items: {
-                taskId: string;
-                locked: boolean;
-                planStatus: string;
-              }[];
-            } | null;
-          }
-        ).plan
-      : null;
+  const deferral = filterSafeDeferActions(state, [], now);
   const context = {
-    now: now.toISOString(),
-    endOfToday: nextDayStart(now, state.profile.timezone),
-    profile: state.profile,
-    facts: activeFacts(state),
-    tasks: activeTasks.slice(-100),
-    shopping: state.shopping.filter((x) => !x.purchasedAt).slice(-100),
-    reminders: state.reminders
-      .filter((r) => r.status === "pending")
-      .slice(-100),
-    important: whatMatters(state).map((t) => t.id),
-    contextTaskId: input.contextTaskId,
-    history: state.messages.slice(-12),
-    turnId: input.turnId,
-    dailyPlan: plan
-      ? {
-          date: plan.date,
-          availableMinutes: plan.availableMinutes,
-          effort: plan.effort,
-          plannedTaskIds: plan.items.map((i) => i.taskId),
-          lockedTaskIds: plan.items
-            .filter((i) => i.locked)
-            .map((i) => i.taskId),
-          completedPlanItems: plan.items
-            .filter((i) => i.planStatus === "done")
-            .map((i) => i.taskId),
-        }
-      : null,
-    planningConstraint: state.planning.today,
+    ...buildAgentContext(state, {
+      now,
+      contextTaskId: input.contextTaskId,
+      turnId: input.turnId,
+    }),
+    deferrableCandidates: deferral.candidates.slice(0, 40),
+    protectedFromDefer: deferral.protected.slice(0, 40),
   };
   const models = Array.from(
     new Set(
@@ -290,6 +250,11 @@ export async function orchestrateChatTurn(
     decision.explicitActions,
     now,
   );
+  const deferGate = filterSafeDeferActions(
+    state,
+    explicitFiltered.accepted,
+    now,
+  );
   const proposalFiltered = filterRunnableActions(
     state,
     decision.proposal?.proposedActions ?? [],
@@ -297,11 +262,12 @@ export async function orchestrateChatTurn(
   );
   const rejectedApply = [
     ...explicitFiltered.rejected,
+    ...deferGate.rejected,
     ...proposalFiltered.rejected,
   ];
   decision = {
     ...decision,
-    explicitActions: explicitFiltered.accepted,
+    explicitActions: deferGate.accepted as typeof decision.explicitActions,
     proposal: decision.proposal
       ? {
           ...decision.proposal,
@@ -326,19 +292,7 @@ export async function orchestrateChatTurn(
     allProposal.length === 0
       ? null
       : {
-          summary: (() => {
-            const taskCreates = allProposal.filter(
-              (a) => a.type === "task.create",
-            );
-            if (taskCreates.length === 1)
-              return "זיהיתי משימה אחת. להוסיף אותה לרשימת המשימות?";
-            if (taskCreates.length > 1)
-              return `זיהיתי ${taskCreates.length} משימות. להוסיף אותן לרשימת המשימות?`;
-            return (
-              decision.proposal?.summary ??
-              "יש פעולות שדורשות אישור לפני ביצוע."
-            );
-          })(),
+          summary: buildGroundedProposalSummary(allProposal),
           reason: (allProposal.some((a) => a.type === "task.create")
             ? "new_tasks"
             : (decision.proposal?.reason ?? "other")) as NonNullable<
