@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { supabase } from "@/lib/supabase-browser";
+import { SeasonalPublicShell } from "@/components/seasonal-public-shell";
 function returnTarget() {
   const raw = new URLSearchParams(location.search).get("returnTo") || "/app";
   return raw.startsWith("/app") && !raw.startsWith("//") ? raw : "/app";
@@ -59,7 +60,8 @@ export default function LoginPage() {
     }
   }
   return (
-    <main className="welcome">
+    <SeasonalPublicShell>
+      <main className="welcome">
       <div className="brand-mark">מ׳</div>
       <p className="eyebrow">מה שכחתי?</p>
       <h1>{signup ? "יצירת חשבון" : "כניסה לאזור האישי"}</h1>
@@ -117,5 +119,6 @@ export default function LoginPage() {
         </p>
       )}
     </main>
+    </SeasonalPublicShell>
   );
 }

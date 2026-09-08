@@ -32,6 +32,7 @@ export function ShoppingView(props: {
           required
         />
         <input
+          className="quantity"
           aria-label="כמות"
           placeholder="כמות"
           value={props.quantity}
@@ -41,28 +42,34 @@ export function ShoppingView(props: {
           הוספה
         </button>
       </form>
-      <div className="task-list">
-        {props.items.map((item) => (
-          <div className="shopping-item" key={item.id}>
-            <label>
-              <input
-                type="checkbox"
-                checked={Boolean(item.purchasedAt)}
-                onChange={(e) => props.onToggle(item.id, e.target.checked)}
-              />
-              <span>
-                {item.title}
-                {item.quantity ? ` · ${item.quantity}` : ""}
-              </span>
-            </label>
-            <button
-              className="text-button"
-              onClick={() => props.onRemove(item.id)}
+      <div className="shopping-list">
+        {props.items.map((item) => {
+          const done = Boolean(item.purchasedAt);
+          return (
+            <div
+              className={"shopping-item" + (done ? " is-done" : "")}
+              key={item.id}
             >
-              הסרה
-            </button>
-          </div>
-        ))}
+              <label className="check-line">
+                <input
+                  type="checkbox"
+                  checked={done}
+                  onChange={(e) => props.onToggle(item.id, e.target.checked)}
+                />
+                <span className="shopping-item-title">{item.title}</span>
+                {item.quantity ? (
+                  <small className="shopping-item-qty">{item.quantity}</small>
+                ) : null}
+              </label>
+              <button
+                className="text-button"
+                onClick={() => props.onRemove(item.id)}
+              >
+                הסרה
+              </button>
+            </div>
+          );
+        })}
       </div>
       {props.empty && <Empty text="הרשימה מחכה לדברים שחסרים בבית." />}
       <button className="secondary" onClick={() => window.print()}>

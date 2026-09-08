@@ -12,8 +12,8 @@
   --theme-on-primary: #ffffff;
   --theme-bg-image: url("/themes/spring.webp");
 
-  /* Compatibility bridge used across the app */
-  --bg: #faf7f4;
+  /* Compatibility bridge (also re-bound on .app-shell / .seasonal-public-shell) */
+  --bg: #faf9f7;
   --card: rgba(255, 255, 255, 0.93);
   --ink: var(--theme-text);
   --muted: var(--theme-muted);
@@ -21,8 +21,8 @@
   --accent-dark: var(--theme-icon-color);
   --rose: var(--theme-accent-soft);
   --line: var(--theme-border);
-  --plum: #302936;
-  --cream: #faf7f4;
+  --plum: var(--theme-text);
+  --cream: #faf9f7;
   --success: #376653;
   --success-bg: #e5efe8;
   --warning: #875600;
@@ -277,7 +277,7 @@ a {
 }
 .panel {
   background: var(--card);
-  border: 1px solid var(--line);
+  border: 1px solid var(--theme-border);
   border-radius: var(--radius);
   padding: 26px;
   margin-bottom: 22px;
@@ -337,7 +337,8 @@ details .stack {
   margin: 12px 0;
 }
 .consent {
-  background: #faf4f7;
+  background: var(--theme-accent-soft);
+  border: 1px solid var(--theme-border);
   padding: 16px;
   border-radius: 14px;
 }
@@ -427,12 +428,46 @@ details .stack {
   position: relative;
   color: var(--theme-text);
   background-color: #fff;
+  /* Dynamic aliases so legacy var(--accent/--rose/…) follow active season */
+  --accent: var(--theme-primary);
+  --accent-dark: var(--theme-icon-color);
+  --rose: var(--theme-accent-soft);
+  --line: var(--theme-border);
+  --muted: var(--theme-muted);
+  --ink: var(--theme-text);
+  --card: rgba(255, 255, 255, 0.93);
+  --bg: #faf9f7;
   background-image:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.88) 0%,
-      rgba(255, 255, 255, 0.94) 45%,
-      rgba(255, 255, 255, 0.9) 100%
+      rgba(255, 255, 255, 0.92) 0%,
+      rgba(255, 255, 255, 0.96) 42%,
+      rgba(255, 255, 255, 0.93) 100%
+    ),
+    var(--theme-bg-image);
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+.seasonal-public-shell {
+  min-height: 100dvh;
+  color: var(--theme-text);
+  --accent: var(--theme-primary);
+  --accent-dark: var(--theme-icon-color);
+  --rose: var(--theme-accent-soft);
+  --line: var(--theme-border);
+  --muted: var(--theme-muted);
+  --ink: var(--theme-text);
+  --card: rgba(255, 255, 255, 0.93);
+  --bg: #faf9f7;
+  background-color: #fff;
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.92) 0%,
+      rgba(255, 255, 255, 0.96) 45%,
+      rgba(255, 255, 255, 0.93) 100%
     ),
     var(--theme-bg-image);
   background-size: cover;
@@ -668,7 +703,7 @@ details .stack {
   gap: 12px;
 }
 .task-card {
-  border: 1px solid var(--line);
+  border: 1px solid var(--theme-border);
   border-radius: 18px;
   background: var(--card);
   padding: 17px 18px;
@@ -740,7 +775,7 @@ details .stack {
   width: 26px;
   height: 26px;
   min-height: 26px;
-  border: 1.5px solid #cbbec5;
+  border: 1.5px solid color-mix(in srgb, var(--theme-muted) 45%, transparent);
   border-radius: 9px;
   display: flex;
   align-items: center;
@@ -1134,16 +1169,21 @@ details .stack {
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  background: #fff;
-  border: 1px solid var(--line);
+  background: var(--card);
+  border: 1px solid var(--theme-border);
   border-radius: 13px;
   padding-right: 14px;
   flex: 1;
   min-width: 0;
+  color: var(--theme-text);
 }
 .search input {
   border: 0;
   background: transparent;
+  color: var(--theme-text);
+}
+.search input::placeholder {
+  color: var(--theme-muted);
 }
 .tabs {
   display: flex;
@@ -1158,8 +1198,8 @@ details .stack {
 }
 .tabs .active,
 .choice-row .selected {
-  background: var(--rose);
-  color: var(--accent-dark);
+  background: var(--theme-accent-soft);
+  color: var(--theme-primary);
 }
 .choice-row {
   display: flex;
@@ -1180,8 +1220,9 @@ details .stack {
   align-items: flex-start;
   padding: 18px;
   border-radius: 17px;
-  background: #f6ecd9;
-  color: #785315;
+  background: color-mix(in srgb, var(--theme-accent-soft) 55%, #fff);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border);
   margin: 20px 0;
 }
 .callout > svg {
@@ -1208,8 +1249,8 @@ details .stack {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--rose);
-  color: var(--accent);
+  background: var(--theme-accent-soft);
+  color: var(--theme-primary);
   font-size: 14px;
   margin-top: 30px;
 }
@@ -1230,9 +1271,9 @@ details .stack {
   max-width: 90px;
 }
 .shopping-list {
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--theme-border);
+  border-radius: 16px;
   overflow: hidden;
   margin-bottom: 20px;
 }
@@ -1240,24 +1281,55 @@ details .stack {
   display: none;
 }
 .shopping-item {
-  padding: 14px 18px;
+  min-height: 46px;
+  padding: 8px 10px;
   display: flex;
   gap: 10px;
   align-items: center;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--theme-border);
+  background: transparent;
 }
 .shopping-item:last-child {
-  border: 0;
+  border-bottom: 0;
 }
-.shopping-item label {
+.shopping-item label,
+.shopping-item .check-line {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  text-align: right;
 }
-.shopping-item label span {
+.shopping-item .check-line input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  accent-color: var(--theme-primary);
+}
+.shopping-item-title {
   flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--theme-text);
   overflow-wrap: anywhere;
 }
-.shopping-item small {
-  color: var(--muted);
+.shopping-item-qty {
+  font-size: 13px;
+  color: var(--theme-muted);
+  flex-shrink: 0;
+}
+.shopping-item .text-button {
+  font-size: 13px;
+  color: var(--theme-muted);
+  min-height: 32px;
+  padding: 0 4px;
+}
+.shopping-item.is-done .shopping-item-title {
+  text-decoration: line-through;
+  color: var(--theme-muted);
 }
 .chat-page {
   padding-top: 20px;
@@ -1283,11 +1355,12 @@ details .stack {
   gap: 8px;
 }
 .prompt-chips button {
-  background: #fff;
-  border: 1px solid var(--line);
+  background: var(--card);
+  border: 1px solid var(--theme-border);
   border-radius: 20px;
   padding: 8px 14px;
   font-size: 14px;
+  color: var(--theme-text);
 }
 .messages {
   display: flex;
@@ -1307,19 +1380,19 @@ details .stack {
 }
 .message.user {
   align-self: flex-start;
-  background: var(--rose);
+  background: var(--theme-accent-soft);
   border-top-right-radius: 6px;
 }
 .message.assistant {
   align-self: flex-end;
-  background: white;
-  border: 1px solid var(--line);
+  background: var(--card);
+  border: 1px solid var(--theme-border);
   border-top-left-radius: 6px;
 }
 .context-chip {
   font-size: 14px;
-  color: var(--accent);
-  background: var(--rose);
+  color: var(--theme-icon-color);
+  background: var(--theme-accent-soft);
   padding: 10px 14px;
   border-radius: 13px;
   display: flex;
@@ -1327,6 +1400,7 @@ details .stack {
   justify-content: space-between;
   margin-bottom: 20px;
   gap: 10px;
+  border: 1px solid var(--theme-border);
 }
 .context-chip button {
   font-size: 13px;
@@ -1334,8 +1408,8 @@ details .stack {
   white-space: nowrap;
 }
 .proposal {
-  background: white;
-  border: 1px solid #c993a8;
+  background: var(--card);
+  border: 1px solid var(--theme-border);
   border-radius: 18px;
   padding: 20px;
 }
@@ -1343,8 +1417,8 @@ details .stack {
   padding-right: 20px;
 }
 .suggestion {
-  background: #fff;
-  border: 1px solid var(--line);
+  background: var(--card);
+  border: 1px solid var(--theme-border);
   border-radius: 18px;
   padding: 22px;
 }
@@ -1355,9 +1429,9 @@ details .stack {
 }
 .tag {
   display: inline-block;
-  color: var(--accent);
+  color: var(--theme-icon-color);
   font-size: 12px;
-  background: #f7eef2;
+  background: var(--theme-accent-soft);
   padding: 2px 8px;
   border-radius: 7px;
 }
@@ -1381,8 +1455,8 @@ details .stack {
   justify-content: space-between;
   gap: 12px;
   padding: 20px;
-  background: white;
-  border: 1px solid var(--line);
+  background: var(--card);
+  border: 1px solid var(--theme-border);
   border-radius: 18px;
 }
 .memory-card p {
@@ -1398,8 +1472,8 @@ details .stack {
 .settings-links {
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border: 1px solid var(--line);
+  background: var(--card);
+  border: 1px solid var(--theme-border);
   border-radius: 20px;
   overflow: hidden;
   margin: 20px 0;
@@ -1410,7 +1484,7 @@ details .stack {
   gap: 14px;
   text-align: right;
   padding: 18px 20px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--theme-border);
 }
 .settings-links button:last-child {
   border: 0;
@@ -1419,7 +1493,7 @@ details .stack {
   margin-right: auto;
 }
 .settings-links button:hover {
-  background: #fcf8fa;
+  background: color-mix(in srgb, var(--theme-accent-soft) 55%, #fff);
 }
 .save-notice {
   position: fixed;
@@ -1434,7 +1508,7 @@ details .stack {
   display: flex;
   align-items: center;
   gap: 10px;
-  box-shadow: 0 7px 30px #30293620;
+  box-shadow: 0 7px 30px color-mix(in srgb, var(--theme-text) 18%, transparent);
   font-size: 14px;
 }
 .save-notice button {
@@ -1442,7 +1516,7 @@ details .stack {
   align-items: center;
   gap: 5px;
   font-size: 13px;
-  color: #f4cede;
+  color: color-mix(in srgb, #fff 82%, var(--theme-accent-soft));
   min-height: 34px;
 }
 .error-banner,
@@ -1856,7 +1930,7 @@ dialog::backdrop {
   max-height: 140px;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
-  border: 1px solid color-mix(in srgb, var(--plum) 18%, transparent);
+  border: 1px solid var(--theme-border);
   border-radius: 12px;
   padding: 6px;
 }
@@ -1869,7 +1943,8 @@ dialog::backdrop {
   padding: 8px;
 }
 .duration-wheel-col button.active {
-  background: color-mix(in srgb, var(--rose) 22%, transparent);
+  background: var(--theme-accent-soft);
+  color: var(--theme-primary);
   font-weight: 700;
 }
 .plan-overlay {
@@ -1877,7 +1952,7 @@ dialog::backdrop {
   inset: 0;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--cream) 70%, transparent);
+  background: color-mix(in srgb, #fff 72%, transparent);
   z-index: 40;
 }
 .text-start {
