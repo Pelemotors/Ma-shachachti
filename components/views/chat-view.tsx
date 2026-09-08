@@ -44,9 +44,7 @@ export function ChatView(props: {
   const showPending =
     !!pending &&
     !props.state.messages.some(
-      (m) =>
-        m.role === "user" &&
-        (m.turnId === pending.turnId || m.text === pending.text),
+      (m) => m.role === "user" && m.turnId && m.turnId === pending.turnId,
     );
   const failed = props.sendStatus === "failed" && !!pending;
 
