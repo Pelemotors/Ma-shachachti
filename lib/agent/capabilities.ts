@@ -13,6 +13,10 @@ export const AGENT_CAPABILITY_TYPES = [
   "task.defer",
   "task.deferUntil",
   "task.step",
+  "routine.create",
+  "routine.update",
+  "routine.pause",
+  "routine.remove",
   "shopping.add",
   "shopping.check",
   "shopping.remove",
@@ -66,6 +70,14 @@ export const AGENT_CAPABILITY_CONTRACT = [
     purpose: "Change an existing task referenced by a real task id from state.",
     policy: "auto_or_proposal",
     notes: "Cancellation and broad destructive changes require proposal.",
+  },
+  {
+    type: "routine.create/routine.update/routine.pause/routine.remove",
+    purpose:
+      "Represent a recurring responsibility after the personal LLM has semantically concluded that it is a routine.",
+    policy: "auto_or_proposal",
+    notes:
+      "Do not infer a routine from category or keyword alone. Create/update/pause are reversible; removal is destructive and requires proposal. Domain owns recurrence and dedupe.",
   },
   {
     type: "shopping.add/shopping.check/shopping.remove",
@@ -139,7 +151,7 @@ export function buildAgentCapabilityContext() {
       "Understand the user freely; choose only among executable application capabilities.",
     capabilities: AGENT_CAPABILITY_CONTRACT,
     categoryField: {
-      purpose: "optional task storage classification",
+      purpose: "optional task/routine storage classification",
       rule:
         "The executable action schema constrains valid categoryId values. Infer a category from meaning only when clear; otherwise omit it. Never ask only to classify and never use storage categories to decide what the user is allowed to mean.",
     },
