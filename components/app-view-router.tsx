@@ -6,8 +6,7 @@ import { HomeView } from "./views/home-view";
 import { ChatView } from "./views/chat-view";
 import { TasksView } from "./views/tasks-view";
 import { ShoppingView } from "./views/shopping-view";
-import { PlanSetupView } from "./views/plan-setup-view";
-import { PlanResultView } from "./views/plan-result-view";
+import { DailyScheduleView } from "./views/daily-schedule-view";
 import { FreeTimeView } from "./views/free-time-view";
 import { FocusView } from "./views/focus-view";
 import { RemindersView } from "./views/reminders-view";
@@ -140,40 +139,19 @@ export function AppViewRouter(props: {
             <div className="panel">מסדר את היום שלך…</div>
           </div>
         )}
-        {plan.planPhase === "setup" && !plan.persistedPlan && (
-          <PlanSetupView
-            planHours={plan.planHours}
-            planMinsPart={plan.planMinsPart}
-            effort={plan.planEffort}
-            changedDay={plan.changedDay}
-            planBusy={plan.planBusy}
-            mode={mode}
-            aiConsent={state.profile.aiConsent}
-            onDuration={plan.onDuration}
-            onEffort={plan.setPlanEffort}
-            onChangedDay={plan.setChangedDay}
-            onBuild={() => void plan.buildPlan()}
-            onChangedDaySubmit={() => void plan.submitChangedDay()}
-            onNeedConsent={() => navigate("settings")}
-            onError={(msg) =>
-              props.onError ? props.onError(msg) : props.onNotice(msg)
-            }
-          />
-        )}
-        {(plan.planPhase === "result" || plan.persistedPlan) && (
-          <PlanResultView
-            state={state}
-            busy={busy}
-            clock={clock}
-            detailed={tasks.detailed}
-            persistedPlan={plan.persistedPlan}
-            planReady={plan.planReady}
-            planPhase={plan.planPhase}
-            fallbackSelected={plan.plan.selected}
-            onRebuild={plan.rebuild}
-            {...taskCardHandlers}
-          />
-        )}
+        <DailyScheduleView
+          state={state}
+          busy={busy}
+          mode={mode}
+          plan={plan}
+          onEdit={taskCardHandlers.onEdit}
+          onComplete={taskCardHandlers.onComplete}
+          onAction={taskCardHandlers.onAction}
+          onNeedConsent={() => navigate("settings")}
+          onError={(msg) =>
+            props.onError ? props.onError(msg) : props.onNotice(msg)
+          }
+        />
       </>
     );
   if (view === "shopping")

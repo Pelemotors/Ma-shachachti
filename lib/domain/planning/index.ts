@@ -4,5 +4,6 @@ export * from "./constraints";
 export * from "./scoring";
 export * from "./sync-daily-plan";
 export * from "./home-today";
+export * from "./schedule-day";
 export * from "./defaults";
 export * from "./plan-intent";

@@ -1,10 +1,27 @@
 "use client";
-import { useState, useCallback, useEffect } from "react";
-import { Action } from "@/lib/model";
-import { buildDailyPlanSession, activeDailyPlan, planDay } from "@/lib/engine";
+import { useState, useCallback, useMemo } from "react";
+import { Action, DailyPlanItem } from "@/lib/model";
+import {
+  buildDailyPlanSession,
+  activeDailyPlan,
+  planDay,
+  estimatedMinutes,
+} from "@/lib/engine";
 import { durationToMinutes } from "@/components/duration-wheel";
 import { authFetch } from "@/lib/supabase-browser";
 import { useHousehold } from "@/lib/use-household";
+import {
+  clockForDateKey,
+  dayKey,
+  isoAtLocal,
+  shiftDateKey,
+  startOfDateKey,
+} from "@/lib/time";
+import {
+  DAY_PART_ANCHORS,
+  type DayPart,
+  planForDate,
+} from "@/lib/domain/planning/schedule-day";
 
 type Household = ReturnType<typeof useHousehold>;
 
@@ -19,25 +36,28 @@ export function useDailyPlanController(
   },
 ) {
   const { state, mode } = h;
+  const timezone = state.profile.timezone;
+  const todayKey = dayKey(opts.clock, timezone);
   const seed = opts.defaultEffort ?? state.planning.today?.effort ?? 2;
   const [planMinutes, setPlanMinutes] = useState(120);
   const [planHours, setPlanHours] = useState(2);
   const [planMinsPart, setPlanMinsPart] = useState(0);
   const [planEffort, setPlanEffort] = useState(seed);
-  const [planReady, setPlanReady] = useState(false);
-  const [planPhase, setPlanPhase] = useState<"setup" | "result">("setup");
+  const [planReady, setPlanReady] = useState(Boolean(state.planning.plan));
+  const [planPhase, setPlanPhase] = useState<"setup" | "result">(
+    state.planning.plan ? "result" : "setup",
+  );
   const [changedDay, setChangedDay] = useState("");
   const [planBusy, setPlanBusy] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(todayKey);
 
-  useEffect(() => {
-    if (state.planning.plan) {
-      setPlanPhase("result");
-      setPlanReady(true);
-    }
-  }, [state.planning.plan?.id]);
-
+  const selectedClock = useMemo(
+    () => clockForDateKey(selectedDate, timezone, opts.clock),
+    [selectedDate, timezone, opts.clock],
+  );
+  const selectedPlan = planForDate(state, selectedDate);
   const persistedPlan = activeDailyPlan(state, opts.clock);
-  const plan = planDay(state, planMinutes, planEffort, opts.clock);
+  const plan = planDay(state, planMinutes, planEffort, selectedClock);
 
   const onDuration = useCallback(
     ({ hours, minutes: m }: { hours: number; minutes: number }) => {
@@ -48,6 +68,11 @@ export function useDailyPlanController(
     [],
   );
 
+  const markReady = useCallback(() => {
+    setPlanReady(true);
+    setPlanPhase("result");
+  }, []);
+
   const buildPlan = useCallback(async () => {
     const mins = durationToMinutes(planHours, planMinsPart);
     if (!mins) return;
@@ -56,12 +81,20 @@ export function useDailyPlanController(
       mins,
       planEffort as 1 | 2 | 3,
       h.currentRevision(),
-      opts.clock,
+      selectedClock,
     );
     await opts.run([{ type: "plan.set", plan: session }]);
-    setPlanReady(true);
-    setPlanPhase("result");
-  }, [planHours, planMinsPart, planEffort, state, opts, h]);
+    markReady();
+  }, [
+    planHours,
+    planMinsPart,
+    planEffort,
+    state,
+    opts,
+    h,
+    selectedClock,
+    markReady,
+  ]);
 
   const submitChangedDay = useCallback(async () => {
     if (planBusy || opts.sendLock.current) return;
@@ -70,19 +103,13 @@ export function useDailyPlanController(
       const turnId = crypto.randomUUID();
       const note = changedDay.trim();
       const mins = durationToMinutes(planHours, planMinsPart) || 120;
-      const dateKey = new Intl.DateTimeFormat("en-CA", {
-        timeZone: state.profile.timezone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(opts.clock);
 
       // Functional contract: changedDay always reaches planning constraint + plan build.
       let nextState = await h.commit([
         {
           type: "planning.set",
           constraint: {
-            date: dateKey,
+            date: selectedDate,
             availableFrom: null,
             availableUntil: null,
             unavailable: [],
@@ -120,12 +147,11 @@ export function useDailyPlanController(
         mins,
         planEffort as 1 | 2 | 3,
         h.currentRevision(),
-        opts.clock,
+        selectedClock,
       );
       await h.commit([{ type: "plan.set", plan: session }]);
       setChangedDay("");
-      setPlanPhase("result");
-      setPlanReady(true);
+      markReady();
     } catch (e) {
       h.setError(
         e instanceof Error
@@ -138,23 +164,114 @@ export function useDailyPlanController(
   }, [
     planBusy,
     opts,
-    state,
     mode,
     changedDay,
     planHours,
     planMinsPart,
     planEffort,
     h,
+    selectedDate,
+    selectedClock,
+    markReady,
   ]);
 
+  const realignPlan = useCallback(async () => {
+    if (changedDay.trim()) {
+      await submitChangedDay();
+      return;
+    }
+    await buildPlan();
+  }, [changedDay, submitChangedDay, buildPlan]);
+
   const rebuild = useCallback(() => {
-    setPlanPhase("setup");
-    void opts.run([{ type: "plan.clear" }]);
-  }, [opts]);
+    void realignPlan();
+  }, [realignPlan]);
 
   const resetForNavigation = useCallback(() => {
-    setPlanReady(false);
+    setSelectedDate(dayKey(opts.clock, timezone));
+  }, [opts.clock, timezone]);
+
+  const goPrevDay = useCallback(() => {
+    setSelectedDate((current) => shiftDateKey(current, -1));
   }, []);
+
+  const goNextDay = useCallback(() => {
+    setSelectedDate((current) => shiftDateKey(current, 1));
+  }, []);
+
+  const patchPlanItem = useCallback(
+    async (taskId: string, patch: Partial<DailyPlanItem>) => {
+      await opts.run([{ type: "plan.itemUpdate", taskId, patch }]);
+    },
+    [opts],
+  );
+
+  const removeFromPlan = useCallback(
+    async (taskId: string) => {
+      await patchPlanItem(taskId, { planStatus: "skipped", locked: true });
+    },
+    [patchPlanItem],
+  );
+
+  const changeItemTime = useCallback(
+    async (taskId: string, hhmm: string) => {
+      const plan = planForDate(state, selectedDate);
+      const item = plan?.items.find((row) => row.taskId === taskId);
+      const task = state.tasks.find((row) => row.id === taskId);
+      if (!item || !task) return;
+      const [hour, minute] = hhmm.split(":").map(Number);
+      if (!Number.isFinite(hour) || !Number.isFinite(minute)) return;
+      const start = isoAtLocal(selectedDate, hour, minute, timezone);
+      const durationMs =
+        item.plannedStart && item.plannedEnd
+          ? Math.max(
+              5 * 60000,
+              Date.parse(item.plannedEnd) - Date.parse(item.plannedStart),
+            )
+          : Math.max(5 * 60000, estimatedMinutes(task, state) * 60000);
+      await patchPlanItem(taskId, {
+        plannedStart: start,
+        plannedEnd: new Date(Date.parse(start) + durationMs).toISOString(),
+      });
+    },
+    [state, selectedDate, timezone, patchPlanItem],
+  );
+
+  const moveItemDayPart = useCallback(
+    async (taskId: string, part: Exclude<DayPart, "unscheduled">) => {
+      const anchor = DAY_PART_ANCHORS[part];
+      const hhmm = `${String(anchor.hour).padStart(2, "0")}:${String(anchor.minute).padStart(2, "0")}`;
+      await changeItemTime(taskId, hhmm);
+    },
+    [changeItemTime],
+  );
+
+  const moveItemToDate = useCallback(
+    async (taskId: string, dateKey: string) => {
+      if (!dateKey || dateKey === selectedDate) return;
+      await opts.run([
+        {
+          type: "task.deferUntil",
+          id: taskId,
+          hiddenUntil: startOfDateKey(dateKey, timezone),
+        },
+      ]);
+    },
+    [opts, selectedDate, timezone],
+  );
+
+  const deferSelectedDay = useCallback(
+    async (taskId: string) => {
+      await opts.run([
+        {
+          type: "task.deferUntil",
+          id: taskId,
+          hiddenUntil: startOfDateKey(shiftDateKey(selectedDate, 1), timezone),
+        },
+      ]);
+    },
+    [opts, selectedDate, timezone],
+  );
 
   return {
     planMinutes,
@@ -168,14 +285,27 @@ export function useDailyPlanController(
     setChangedDay,
     planBusy,
     persistedPlan,
+    selectedPlan,
+    selectedDate,
+    selectedClock,
+    todayKey,
+    setSelectedDate,
+    goPrevDay,
+    goNextDay,
     plan,
     onDuration,
     buildPlan,
     submitChangedDay,
+    realignPlan,
     rebuild,
     resetForNavigation,
     setPlanPhase,
     setPlanReady,
+    removeFromPlan,
+    changeItemTime,
+    moveItemDayPart,
+    moveItemToDate,
+    deferSelectedDay,
   };
 }
 
