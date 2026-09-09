@@ -31,6 +31,7 @@ import {
 } from "@/lib/domain/planning/plan-intent";
 import { buildGroundedProposalSummary } from "@/lib/domain/agent-context";
 import { AGENT_CONTRACT_VERSION } from "@/lib/agent/instructions";
+import { composeAssistantText } from "@/lib/agent/execution-truth";
 import { CHAT_API_SUPPORTED, CHAT_API_VERSION } from "@/lib/version";
 
 export const runtime = "nodejs";
@@ -43,66 +44,6 @@ function deploymentVersion() {
     process.env.VERCEL_DEPLOYMENT_ID ||
     "dev"
   );
-}
-
-/**
- * Server-grounded execution acknowledgement. The model's reply is deliberately
- * pre-persistence; only this layer confirms a mutation after the same atomic
- * save path has accepted the actions.
- */
-function buildExecutionReceipt(actions: Action[]) {
-  if (!actions.length) return "";
-  if (actions.length > 1) return "ביצעתי את העדכונים.";
-  const action = actions[0]!;
-  switch (action.type) {
-    case "reminder.add":
-      return "התזכורת נוספה.";
-    case "reminder.update":
-      return "התזכורת עודכנה.";
-    case "reminder.cancel":
-      return "התזכורת בוטלה.";
-    case "shopping.add":
-    case "shopping.check":
-      return "רשימת הקניות עודכנה.";
-    case "checklist.create":
-      return "הצ׳קליסט נוצר.";
-    case "checklist.update":
-    case "checklist.item.add":
-    case "checklist.item.update":
-    case "checklist.item.remove":
-    case "checklist.item.reorder":
-    case "checklist.item.toggle":
-    case "checklist.reset":
-      return "הצ׳קליסט עודכן.";
-    case "fact.add":
-      return "המידע נשמר.";
-    case "fact.update":
-      return "המידע עודכן.";
-    case "profile.update":
-    case "member.upsert":
-    case "homeArea.upsert":
-      return "פרטי הבית עודכנו.";
-    case "routine.create":
-      return "השגרה נשמרה.";
-    case "routine.update":
-    case "routine.pause":
-      return "השגרה עודכנה.";
-    case "planning.set":
-    case "planning.clear":
-      return "השינוי להיום נשמר.";
-    case "template.exclude":
-    case "template.restore":
-      return "ההעדפה נשמרה.";
-    case "task.update":
-    case "task.status":
-    case "task.start":
-    case "task.defer":
-    case "task.deferUntil":
-    case "task.step":
-      return "המשימה עודכנה.";
-    default:
-      return "בוצע.";
-  }
 }
 
 async function saveTurnState(
@@ -326,15 +267,13 @@ export async function POST(req: Request) {
     selectedModel = result.selectedModel;
 
     stage = "grounding";
-    const conversationalText =
-      result.clarification?.question &&
-      !result.reply.includes(result.clarification.question)
-        ? `${result.reply}\n\n${result.clarification.question}`
-        : result.reply;
-    const receipt = buildExecutionReceipt(result.explicitActions ?? []);
-    const assistantText = receipt
-      ? `${conversationalText}\n\n${receipt}`
-      : conversationalText;
+    const composed = composeAssistantText({
+      modelReply: result.reply,
+      clarificationQuestion: result.clarification?.question ?? null,
+      proposalPending: Boolean(result.proposal?.proposedActions.length),
+      persistedActions: result.explicitActions ?? [],
+    });
+    const assistantText = composed.text;
 
     const memoryActions: Action[] = [];
     if (

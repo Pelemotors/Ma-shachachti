@@ -11,6 +11,19 @@ import {
   SAFE_AGENT_PROFILE_FIELDS,
 } from "./capabilities";
 import { FORECAST_USER_INTENT } from "./forecast-intent";
+import { DEEP_ACCESS_TOOLS } from "./deep-access";
+
+export const DeepAccessRequestSchema = z.object({
+  tool: z.enum(DEEP_ACCESS_TOOLS),
+  entityId: z.string().min(1).max(80).optional(),
+  query: z
+    .object({
+      status: z.array(z.string()).max(8).optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+      since: z.string().max(40).optional(),
+    })
+    .optional(),
+});
 
 const INTERNAL_AGENT_ACTION_TYPES = new Set([
   "history.clear",
@@ -100,6 +113,12 @@ export const AgentDecisionSchema = z.object({
    * Parser fail-closes to agent_inferred when omitted.
    */
   initiative: z.enum(["user_requested", "agent_inferred"]).optional(),
+  /**
+   * Read-only doors to open before a final decision. Intermediate rounds
+   * must not persist actions; the server executes requests and continues
+   * the same Turn.
+   */
+  deepAccessRequests: z.array(DeepAccessRequestSchema).max(3).optional().nullable(),
   /** Patch only when there is genuinely open conversational state. */
   workingMemoryUpdate: AgentWorkingMemoryPatchSchema.nullable().optional(),
   /** Optional indexes into proposal.proposedActions task.create list (0-based). */
@@ -465,6 +484,18 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
 
   const initiative = resolveAgentInitiative(obj.initiative);
 
+  let deepAccessRequests: AgentDecision["deepAccessRequests"] = [];
+  if (Array.isArray(obj.deepAccessRequests)) {
+    const parsedReqs = obj.deepAccessRequests
+      .map((item) => DeepAccessRequestSchema.safeParse(item))
+      .slice(0, 3);
+    deepAccessRequests = parsedReqs
+      .filter((p) => p.success)
+      .map((p) => p.data);
+    if (parsedReqs.some((p) => !p.success))
+      warnings.push("deep_access_requests_invalid");
+  }
+
   return {
     decision: {
       reply,
@@ -473,6 +504,7 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       proposal,
       affectsToday,
       initiative,
+      deepAccessRequests,
       workingMemoryUpdate,
       requestedTodayCreateIndexes,
     },
@@ -794,6 +826,33 @@ export function agentDecisionJsonSchema() {
         type: "array",
         maxItems: 20,
         items: { type: "integer", minimum: 0, maximum: 19 },
+      },
+      deepAccessRequests: {
+        anyOf: [
+          { type: "null" },
+          {
+            type: "array",
+            maxItems: 3,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                tool: { type: "string", enum: [...DEEP_ACCESS_TOOLS] },
+                entityId: { type: "string" },
+                query: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    status: { type: "array", items: { type: "string" } },
+                    limit: { type: "integer", minimum: 1, maximum: 100 },
+                    since: { type: "string" },
+                  },
+                },
+              },
+              required: ["tool"],
+            },
+          },
+        ],
       },
       workingMemoryUpdate: {
         anyOf: [

@@ -26,6 +26,13 @@ import {
   type PendingProposalContext,
 } from "@/lib/agent/runtime-context";
 import { logAgentContextTrace } from "@/lib/agent/context-instrumentation";
+import {
+  MAX_DEEP_ACCESS_CALLS_PER_TURN,
+  MAX_DEEP_ACCESS_ROUNDS,
+  executeDeepAccessRound,
+  parseDeepAccessRequests,
+  type DeepAccessTurnHit,
+} from "@/lib/agent/deep-access-turn";
 
 function upstreamError(status: number, raw: string) {
   let code = "";
@@ -160,6 +167,16 @@ async function callAgent(
   }
 }
 
+export type AgentModelCall = (
+  model: string,
+  instructions: string,
+  input: unknown,
+) => Promise<{
+  decision: AgentDecision;
+  model: string;
+  rejectedActions: unknown[];
+}>;
+
 export type ChatOrchestrationInput = {
   state: AppState;
   revision: number;
@@ -171,6 +188,8 @@ export type ChatOrchestrationInput = {
   householdId?: string;
   pendingProposal?: PendingProposalContext;
   dbFetches?: string[];
+  /** Test/injection hook — same Turn, same instructions, not a second agent. */
+  modelCall?: AgentModelCall;
 };
 
 export type ChatOrchestrationResult = {
@@ -200,7 +219,11 @@ export async function orchestrateChatTurn(
       "אפשר להפעיל עזרה אישית בהגדרות, לאחר הסכמה לשימוש במידע.",
       "ai_consent_required",
     );
-  if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL)
+  const invoke: AgentModelCall = input.modelCall ?? callAgent;
+  if (
+    !input.modelCall &&
+    (!process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL)
+  )
     throw new ApiError(
       503,
       "הסוכן עדיין לא מחובר. אפשר להוסיף ולנהל משימות ידנית.",
@@ -226,41 +249,101 @@ export async function orchestrateChatTurn(
     ...runtime.instrumentation,
     stage: "context_built",
   });
-  const modelInput = toAgentModelInput(runtime, input.message);
-  const models = Array.from(
-    new Set(
-      [process.env.OPENAI_MODEL, process.env.OPENAI_FALLBACK_MODEL].filter(
-        Boolean,
-      ),
-    ),
-  ) as string[];
+  const models = input.modelCall
+    ? (["injected"] as string[])
+    : (Array.from(
+        new Set(
+          [process.env.OPENAI_MODEL, process.env.OPENAI_FALLBACK_MODEL].filter(
+            Boolean,
+          ),
+        ),
+      ) as string[]);
 
-  let decision: AgentDecision | null = null;
-  let selectedModel = "";
-  let rejectedFromParse: unknown[] = [];
-  let lastError: unknown;
-  for (const model of models) {
-    try {
-      const result = await callAgent(model, instructions, modelInput);
-      decision = result.decision;
-      selectedModel = result.model;
-      rejectedFromParse = result.rejectedActions;
-      break;
-    } catch (error) {
-      lastError = error;
-      if (
-        error instanceof ApiError &&
-        (error.code === "ai_insufficient_quota" ||
-          error.code === "ai_rate_limited" ||
-          error.code === "ai_configuration")
-      )
-        throw error;
+  const coreEntityIds = new Set<string>();
+  for (const t of runtime.knowledge.tasks as { id: string }[])
+    coreEntityIds.add(t.id);
+  for (const r of runtime.knowledge.reminders as { id: string }[])
+    coreEntityIds.add(r.id);
+
+  async function invokeWithFallback(
+    payload: unknown,
+  ): Promise<{
+    decision: AgentDecision;
+    model: string;
+    rejectedActions: unknown[];
+  }> {
+    let lastError: unknown;
+    for (const model of models) {
+      try {
+        return await invoke(model, instructions, payload);
+      } catch (error) {
+        lastError = error;
+        if (
+          error instanceof ApiError &&
+          (error.code === "ai_insufficient_quota" ||
+            error.code === "ai_rate_limited" ||
+            error.code === "ai_configuration")
+        )
+          throw error;
+      }
     }
-  }
-  if (!decision)
     throw (
       lastError ?? new ApiError(502, "הסוכן לא הצליח לענות כרגע.", "ai_failed")
     );
+  }
+
+  let deepHits: DeepAccessTurnHit[] = [];
+  let deepLog = [...runtime.instrumentation.deepAccess];
+  let callsUsed = 0;
+  let first = await invokeWithFallback(
+    toAgentModelInput(runtime, input.message, {
+      remainingCalls: MAX_DEEP_ACCESS_CALLS_PER_TURN,
+      budgetExhausted: false,
+      deepAccessResults: [],
+    }),
+  );
+  let decision = first.decision;
+  let selectedModel = first.model;
+  let rejectedFromParse = first.rejectedActions;
+
+  for (let round = 1; round <= MAX_DEEP_ACCESS_ROUNDS; round += 1) {
+    const requests = parseDeepAccessRequests(decision.deepAccessRequests);
+    if (!requests.length) break;
+    if (callsUsed >= MAX_DEEP_ACCESS_CALLS_PER_TURN) break;
+    const executed = executeDeepAccessRound({
+      state,
+      requests,
+      round,
+      callsUsed,
+      coreEntityIds,
+    });
+    if (!executed.hits.length) break;
+    callsUsed = executed.callsUsed;
+    deepHits = [...deepHits, ...executed.hits];
+    deepLog = [...deepLog, ...executed.log];
+    const budgetExhausted =
+      round >= MAX_DEEP_ACCESS_ROUNDS ||
+      callsUsed >= MAX_DEEP_ACCESS_CALLS_PER_TURN;
+    const continued = await invokeWithFallback(
+      toAgentModelInput(runtime, input.message, {
+        remainingCalls: MAX_DEEP_ACCESS_CALLS_PER_TURN - callsUsed,
+        budgetExhausted,
+        deepAccessResults: deepHits,
+      }),
+    );
+    decision = continued.decision;
+    selectedModel = continued.model;
+    rejectedFromParse = [
+      ...rejectedFromParse,
+      ...continued.rejectedActions,
+    ];
+    if (budgetExhausted) break;
+  }
+
+  decision = {
+    ...decision,
+    deepAccessRequests: [],
+  };
 
   // Domain checks references; it does not reinterpret what the user meant.
   decision = enforceReferentialIntegrity(state, decision);
@@ -347,6 +430,7 @@ export async function orchestrateChatTurn(
 
   const instrumentation = {
     ...runtime.instrumentation,
+    deepAccess: deepLog,
   };
   logAgentContextTrace({
     ...instrumentation,

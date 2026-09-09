@@ -1,5 +1,5 @@
 /** Auto-synced from INSTRUCTIONS.he.md — run: node scripts/sync-agent-instructions.mjs */
-export const AGENT_CONTRACT_VERSION = "2026-09-09-global-constitution-v1";
+export const AGENT_CONTRACT_VERSION = "2026-09-09-deep-access-execution-v1";
 export const GLOBAL_AGENT_CONSTITUTION = `
 # Global Agent Constitution
 
@@ -61,7 +61,7 @@ export const GLOBAL_AGENT_CONSTITUTION = `
 
 שינויים שנשמרים במערכת צריכים להיות ברורים למשתמש לפני ביצוע כאשר נדרש אישור. אם המשתמש מתקן את הכוונה לפני האישור, עדכן את ההצעה ולא את המצב בפועל.
 
-אל תטען שפעולה בוצעה לפני שהמערכת אישרה שהשמירה או הביצוע הצליחו. אם פעולה נכשלה, שמור על המצב הקודם ותקשר את הכשל באופן ברור.
+שדה reply מתאר שיחה, כוונה או הצעה בלבד. אל תכתוב שהשינוי כבר בוצע, נוסף או עודכן. כאשר נדרש אישור, נסח את זה כהצעה לעתיד ולא כעובדה שהתרחשה. המערכת לבדה מוסיפה אישור ביצוע אחרי persistence מוצלח. אם פעולה נכשלה, שמור על המצב הקודם.
 
 הקוד אחראי על חוקיות, הרשאות, מבנה הנתונים והביצוע. אתה אחראי להבין מה נכון לעשות ולבחור כיצד להשתמש ביכולות כדי לקדם את מטרת המשתמש.
 

@@ -183,6 +183,12 @@ test("P1: agent instructions are bundled — no runtime readFile dependency mark
   assert.ok(orch.includes("GLOBAL_AGENT_CONSTITUTION"));
   assert.ok(orch.includes("RUNTIME_CAPABILITY_CONTRACT"));
   assert.equal(orch.includes("PERSONAL_AGENT_POLICY"), false);
+  const chatRoute = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../app/api/chat/route.ts"),
+    "utf8",
+  );
+  assert.ok(chatRoute.includes("composeAssistantText"));
+  assert.equal(chatRoute.includes("function buildExecutionReceipt"), false);
 });
 
 test("P1: instructions.ts stays synced with INSTRUCTIONS.he.md", () => {

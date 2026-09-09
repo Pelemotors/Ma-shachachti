@@ -45,6 +45,9 @@ export type DeepAccessLog = {
   tool: DeepAccessTool;
   ok: boolean;
   fromCoreHint: boolean;
+  round?: number;
+  error?: string;
+  source?: "hydrate" | "llm_request";
 };
 
 function findEntity(state: AppState, id: string) {
@@ -290,6 +293,7 @@ export function hydrateMissingReferences(
       tool: result.tool,
       ok: result.ok,
       fromCoreHint: result.fromCoreHint,
+      source: "hydrate",
     });
     if (result.ok && result.data) entities.push(result.data);
   }

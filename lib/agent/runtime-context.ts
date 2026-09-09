@@ -22,6 +22,12 @@ import {
   type DeepAccessLog,
 } from "@/lib/agent/deep-access";
 import {
+  toDeepAccessModelView,
+  type DeepAccessModelView,
+  type DeepAccessTurnHit,
+  MAX_DEEP_ACCESS_CALLS_PER_TURN,
+} from "@/lib/agent/deep-access-turn";
+import {
   buildEntityIndex,
   type AgentEntityIndex,
 } from "@/lib/agent/entity-index";
@@ -243,7 +249,19 @@ export function buildAgentRuntimeContext(input: {
 export function toAgentModelInput(
   runtime: AgentRuntimeContext,
   message: string,
+  extras?: {
+    deepAccessResults?: DeepAccessTurnHit[];
+    remainingCalls?: number;
+    budgetExhausted?: boolean;
+  },
 ) {
+  const remaining =
+    extras?.remainingCalls ?? MAX_DEEP_ACCESS_CALLS_PER_TURN;
+  const deepAccess: DeepAccessModelView = toDeepAccessModelView({
+    remainingCalls: remaining,
+    budgetExhausted: Boolean(extras?.budgetExhausted),
+    results: extras?.deepAccessResults ?? [],
+  });
   return {
     message,
     runtime: {
@@ -257,6 +275,7 @@ export function toAgentModelInput(
       entityIndex: runtime.entityIndex,
       references: runtime.references,
       deepAccessAvailable: runtime.deepAccessAvailable,
+      deepAccess,
       knowledge: runtime.knowledge,
       deferrableCandidates: runtime.deferrableCandidates,
       protectedFromDefer: runtime.protectedFromDefer,
