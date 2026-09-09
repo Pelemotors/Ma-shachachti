@@ -26,23 +26,21 @@ jobs:
 
           p = Path('lib/agent/schema.ts')
           s = p.read_text()
-          old = '''  if (a.type === "profile.update") {\n    a.patch = safeProfilePatch(a.patch);\n  }'''
-          new = '''  if (a.type === "profile.update") {\n    const safePatch = safeProfilePatch(a.patch);\n    // A protected-only profile mutation must be rejected, not normalized into\n    // an executable empty profile update.\n    if (Object.keys(safePatch).length === 0) a.patch = null;\n    else a.patch = safePatch;\n  }'''
+          old = '  if (a.type === "profile.update") a.patch = safeProfilePatch(a.patch);'
+          new = '''  if (a.type === "profile.update") {\n    const safePatch = safeProfilePatch(a.patch);\n    // Protected settings are not agent capabilities.\n    if (Object.keys(safePatch).length === 0) a.patch = null;\n    else a.patch = safePatch;\n  }'''
           if old not in s:
               raise SystemExit('profile normalize anchor not found')
           p.write_text(s.replace(old, new))
 
           p = Path('lib/agent/INSTRUCTIONS.he.md')
           s = p.read_text()
-          s = s.replace(
-            'משימה חדשה שהוסקה מדברי המשתמשת נכנסת כ־`task.create` ל־`proposal.proposedActions`, ולא נחשבת שמורה לפני אישור. `priority` הוא שדה ביצוע של המשימה; קבע אותו רק כשיש בסיס סמנטי ברור, ואל תמציא deadline או זמן מדויק כדי לבטא דחיפות.',
-            'משימה חדשה שהוסקה מדברי המשתמשת נכנסת כ־`task.create` ל־`proposal.proposedActions`, ולא נחשבת שמורה לפני אישור. `priority` הוא שדה ביצוע של המשימה; קבע אותו רק כשיש בסיס סמנטי ברור, ואל תמציא deadline או זמן מדויק כדי לבטא דחיפות. לתזכורת מותר `urgency: urgent` כאשר הדחיפות נאמרה בבירור. כאשר רק חלק ממשימות ה־Proposal מיועדות להיום, השתמש ב־`requestedTodayCreateIndexes` כדי לזהות אותן.'
-          )
+          base = 'משימה חדשה שהוסקה מדברי המשתמשת נכנסת כ־`task.create` ל־`proposal.proposedActions`, ולא נחשבת שמורה לפני אישור. `priority` הוא שדה ביצוע של המשימה; קבע אותו רק כשיש בסיס סמנטי ברור, ואל תמציא deadline או זמן מדויק כדי לבטא דחיפות.'
+          expanded = base + ' לתזכורת מותר `urgency: urgent` כאשר הדחיפות נאמרה בבירור. כאשר רק חלק ממשימות ה־Proposal מיועדות להיום, השתמש ב־`requestedTodayCreateIndexes` כדי לזהות אותן.'
+          if expanded not in s:
+              s = s.replace(base, expanded)
           s = s.replace('## פלט\n', '## חוזה הפלט\n')
           p.write_text(s)
 
-          # The production parser normalizes and isolates model actions. Tests should
-          # exercise that path rather than raw Zod parsing of internal AppState actions.
           for file in ['tests/audit-final.test.ts', 'tests/audit-regression.test.ts']:
               p = Path(file)
               s = p.read_text()
@@ -53,17 +51,14 @@ jobs:
                   )
               old = '''  assert.throws(() =>\n    AgentOutput.parse({\n      reply: "לא.",\n      explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],\n      clarification: null,\n      proposal: null,\n      affectsToday: false,\n    }),\n  );'''
               if old in s:
-                  new = '''  const protectedOnly = parseAgentDecisionIsolated({\n    reply: "לא.",\n    explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],\n    clarification: null,\n    proposal: null,\n    affectsToday: false,\n  });\n  assert.equal(protectedOnly.decision.explicitActions.length, 0);\n  assert.ok(protectedOnly.rejectedActions.length >= 1);'''
-                  s = s.replace(old, new)
-              old2 = '''  assert.throws(() =>\n    AgentOutput.parse({\n      reply: "אין שינוי.",\n      explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],\n      clarification: null,\n      proposal: null,\n      affectsToday: false,\n    }),\n  );'''
-              if old2 in s:
-                  new2 = '''  const protectedOnly = parseAgentDecisionIsolated({\n    reply: "אין שינוי.",\n    explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],\n    clarification: null,\n    proposal: null,\n    affectsToday: false,\n  });\n  assert.equal(protectedOnly.decision.explicitActions.length, 0);\n  assert.ok(protectedOnly.rejectedActions.length >= 1);'''
-                  s = s.replace(old2, new2)
+                  s = s.replace(old, '''  const protectedOnly = parseAgentDecisionIsolated({\n    reply: "לא.",\n    explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],\n    clarification: null,\n    proposal: null,\n    affectsToday: false,\n  });\n  assert.equal(protectedOnly.decision.explicitActions.length, 0);\n  assert.ok(protectedOnly.rejectedActions.length >= 1);''')
+              old = '''  assert.throws(() =>\n    AgentOutput.parse({\n      reply: "אין שינוי.",\n      explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],\n      clarification: null,\n      proposal: null,\n      affectsToday: false,\n    }),\n  );'''
+              if old in s:
+                  s = s.replace(old, '''  const protectedOnly = parseAgentDecisionIsolated({\n    reply: "אין שינוי.",\n    explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],\n    clarification: null,\n    proposal: null,\n    affectsToday: false,\n  });\n  assert.equal(protectedOnly.decision.explicitActions.length, 0);\n  assert.ok(protectedOnly.rejectedActions.length >= 1);''')
               p.write_text(s)
 
           p = Path('tests/agent-task-proposal-flow.test.ts')
-          s = p.read_text()
-          s = s.replace(
+          s = p.read_text().replace(
             'test("T9: today intent with capacity → DailyPlan + Home include task", () => {',
             'test.skip("T9: today intent with capacity → DailyPlan + Home include task", () => {'
           )
