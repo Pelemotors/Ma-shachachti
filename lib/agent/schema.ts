@@ -24,10 +24,7 @@ const INTERNAL_AGENT_ACTION_TYPES = new Set([
   "scan.set",
 ]);
 
-/**
- * Application actions the personal agent may choose after understanding the
- * user. This is a capability allow-list, not a list of user intents.
- */
+/** Closed application hands. This is not a taxonomy of user meanings. */
 export const AgentActionSchema = ActionSchema.options.filter(
   (x) => !INTERNAL_AGENT_ACTION_TYPES.has(x.shape.type.value),
 );
@@ -73,12 +70,8 @@ export const AgentDecisionSchema = z.object({
   clarification: ClarificationSchema.nullable(),
   proposal: AgentProposalSchema.nullable(),
   affectsToday: z.boolean(),
-  /** Signals about HOW this user prefers the single personal agent to behave. */
   policySignals: z.array(AgentPolicySignalSchema).max(8).default([]),
-  /**
-   * Patch to open working memory. null/omitted = no change.
-   * Never a full silent wipe of unrelated open loops.
-   */
+  /** Patch only when there is genuinely open conversational state. */
   workingMemoryUpdate: AgentWorkingMemoryPatchSchema.nullable().optional(),
   /** Optional indexes into proposal.proposedActions task.create list (0-based). */
   requestedTodayCreateIndexes: z
@@ -87,12 +80,11 @@ export const AgentDecisionSchema = z.object({
     .optional(),
 });
 
-/** @deprecated Prefer AgentDecisionSchema — kept for gradual test migration helpers */
+/** @deprecated Prefer AgentDecisionSchema. */
 export const AgentOutput = AgentDecisionSchema;
 
 export type AgentDecision = z.infer<typeof AgentDecisionSchema>;
 export type AgentProposal = z.infer<typeof AgentProposalSchema>;
-
 export type ActionPolicyBucket = "auto" | "proposal" | "drop";
 
 function safeProfilePatch(raw: unknown) {
@@ -104,15 +96,11 @@ function safeProfilePatch(raw: unknown) {
   );
 }
 
-/**
- * Normalize schema/field aliases emitted by the model. This is executable
- * capability compatibility only; it never interprets natural-language text.
- */
+/** Schema/field compatibility only; never natural-language interpretation. */
 export function normalizeLooseAgentAction(raw: unknown): unknown {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return raw;
   const a = { ...(raw as Record<string, unknown>) };
 
-  // Typed agent-facing inventory event; internal marker never appears in prompt/context.
   if (a.type === "inventory.event") {
     const eventType = a.eventType;
     const subject = typeof a.subject === "string" ? a.subject.trim() : "";
@@ -132,7 +120,6 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
     return a;
   }
 
-  // Model may emit { "task.status": "<uuid>", status: "done" }.
   if (a.type == null) {
     for (const key of Object.keys(a)) {
       if (!key.includes(".")) continue;
@@ -147,6 +134,7 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
   }
 
   if (typeof a.taskId === "string" && a.id == null) a.id = a.taskId;
+  if (typeof a.routineId === "string" && a.id == null) a.id = a.routineId;
   if (typeof a.shoppingId === "string" && a.id == null) a.id = a.shoppingId;
   if (typeof a.reminderId === "string" && a.id == null) a.id = a.reminderId;
   if (typeof a.factId === "string" && a.id == null) a.id = a.factId;
@@ -191,9 +179,7 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
   if (a.type === "reminder.add" && typeof a.at === "string" && a.dueAt == null)
     a.dueAt = a.at;
 
-  if (a.type === "profile.update") {
-    a.patch = safeProfilePatch(a.patch);
-  }
+  if (a.type === "profile.update") a.patch = safeProfilePatch(a.patch);
 
   if (a.type === "task.create") {
     const task =
@@ -210,8 +196,32 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
     delete a.text;
   }
 
+  if (a.type === "routine.create") {
+    const routine =
+      a.routine && typeof a.routine === "object" && !Array.isArray(a.routine)
+        ? { ...(a.routine as Record<string, unknown>) }
+        : {};
+    for (const key of [
+      "title",
+      "categoryId",
+      "detailTypeId",
+      "schedule",
+      "timeOfDay",
+      "atTime",
+      "workMinutes",
+      "effort",
+      "priority",
+      "notes",
+      "sourceFactId",
+      "relatedMemberIds",
+      "homeAreaIds",
+    ]) {
+      if (routine[key] == null && a[key] != null) routine[key] = a[key];
+    }
+    a.routine = routine;
+  }
+
   if (a.type === "fact.add") {
-    // Backward compatibility for previously emitted internal forecast markers.
     if (typeof a.id === "string" && a.id.startsWith("forecast:")) {
       if (typeof a.text !== "string" || !a.text.startsWith("forecast:"))
         a.text = a.id;
@@ -230,7 +240,6 @@ export function classifyActionPolicy(
   action: Action,
   opts: { userExplicitBulk?: boolean } = {},
 ): ActionPolicyBucket {
-  // New tasks are previewed so the user controls commitments entering her system.
   if (action.type === "task.create") return "proposal";
   if (
     action.type === "task.status" &&
@@ -242,6 +251,7 @@ export function classifyActionPolicy(
     action.type === "shopping.remove" ||
     action.type === "member.remove" ||
     action.type === "homeArea.remove" ||
+    action.type === "routine.remove" ||
     action.type === "history.clear"
   )
     return "proposal";
@@ -249,7 +259,6 @@ export function classifyActionPolicy(
   return "auto";
 }
 
-/** True when chat must show a confirmation Preview. */
 export function chatActionsNeedProposal(actions: Action[]): boolean {
   return actions.some((a) => classifyActionPolicy(a) === "proposal");
 }
@@ -262,9 +271,8 @@ export function partitionActionsByPolicy(actions: Action[]) {
     if (bucket === "auto") auto.push(action);
     else if (bucket === "proposal") proposal.push(action);
   }
-  if (auto.filter((a) => a.type !== "message.add").length > 5) {
+  if (auto.filter((a) => a.type !== "message.add").length > 5)
     return { auto: [] as Action[], proposal: [...auto, ...proposal] };
-  }
   return { auto, proposal };
 }
 
@@ -278,7 +286,7 @@ function parseAgentAction(item: unknown) {
   return AgentActionUnion.safeParse(normalizeLooseAgentAction(item));
 }
 
-/** One malformed action does not destroy the natural-language reply or siblings. */
+/** One malformed action does not destroy the reply or valid sibling actions. */
 export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
   const warnings: string[] = [];
   const rejected: unknown[] = [];
@@ -363,7 +371,11 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       })
       .safeParse({ summary: pRaw.summary, reason });
     if (head.success)
-      proposal = { summary: head.data.summary, reason: head.data.reason, proposedActions };
+      proposal = {
+        summary: head.data.summary,
+        reason: head.data.reason,
+        proposedActions,
+      };
     else warnings.push("proposal_invalid");
   }
 
@@ -413,6 +425,46 @@ export function parseAgentDecisionText(text: string): IsolatedDecision {
 
 const nullableString = { anyOf: [{ type: "string" }, { type: "null" }] };
 const stringArray = { type: "array", items: { type: "string" } };
+const scheduleSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    frequency: {
+      type: "string",
+      enum: ["daily", "weekly", "monthly", "interval_days"],
+    },
+    interval: { type: "integer", minimum: 1, maximum: 30 },
+    weekdays: {
+      type: "array",
+      minItems: 1,
+      maxItems: 7,
+      items: { type: "integer", minimum: 0, maximum: 6 },
+    },
+    dayOfMonth: { type: "integer", minimum: 1, maximum: 31 },
+    everyDays: { type: "integer", minimum: 1, maximum: 366 },
+  },
+  required: ["frequency"],
+};
+
+const routineFields = {
+  id: { type: "string" },
+  title: { type: "string" },
+  categoryId: { type: "string", enum: [...CATEGORY_IDS] },
+  detailTypeId: nullableString,
+  schedule: scheduleSchema,
+  timeOfDay: {
+    type: "string",
+    enum: ["any", "morning", "afternoon", "evening"],
+  },
+  atTime: nullableString,
+  workMinutes: { type: "integer", minimum: 1, maximum: 1440 },
+  effort: { type: "integer", minimum: 1, maximum: 3 },
+  priority: { type: "integer", minimum: 0, maximum: 3 },
+  notes: { type: "string" },
+  sourceFactId: nullableString,
+  relatedMemberIds: stringArray,
+  homeAreaIds: stringArray,
+};
 
 function actionJsonSchema() {
   return {
@@ -422,7 +474,9 @@ function actionJsonSchema() {
       type: { type: "string", enum: [...AGENT_CAPABILITY_TYPES] },
       id: { type: "string" },
       taskId: nullableString,
+      routineId: nullableString,
       stepId: { type: "string" },
+      paused: { type: "boolean" },
       status: {
         type: "string",
         enum: ["open", "done", "cancelled", "unknown", "in_progress"],
@@ -459,12 +513,19 @@ function actionJsonSchema() {
               { type: "null" },
             ],
           },
+          routineId: nullableString,
           notes: { type: "string" },
           dependsOn: stringArray,
           relatedMemberIds: stringArray,
           homeAreaIds: stringArray,
         },
         required: ["title"],
+      },
+      routine: {
+        type: "object",
+        additionalProperties: true,
+        properties: routineFields,
+        required: ["title", "schedule"],
       },
       patch: {
         type: "object",
@@ -485,12 +546,23 @@ function actionJsonSchema() {
               { type: "null" },
             ],
           },
+          routineId: nullableString,
           notes: { type: "string" },
           relatedMemberIds: stringArray,
           homeAreaIds: stringArray,
           urgency: { type: "string", enum: ["urgent", "medium", "low"] },
+          schedule: scheduleSchema,
+          timeOfDay: {
+            type: "string",
+            enum: ["any", "morning", "afternoon", "evening"],
+          },
+          atTime: nullableString,
+          sourceFactId: nullableString,
           name: { type: "string" },
-          addressAs: { type: "string", enum: ["feminine", "masculine", "neutral"] },
+          addressAs: {
+            type: "string",
+            enum: ["feminine", "masculine", "neutral"],
+          },
           rooms: { type: "integer", minimum: 1, maximum: 30 },
           bathrooms: { type: "integer", minimum: 1, maximum: 15 },
           children: { type: "integer", minimum: 0, maximum: 20 },
@@ -545,11 +617,26 @@ function actionJsonSchema() {
           date: { type: "string" },
           availableFrom: nullableString,
           availableUntil: nullableString,
-          unavailable: { type: "array", items: { type: "object", additionalProperties: true } },
-          effort: { anyOf: [{ type: "integer", minimum: 1, maximum: 3 }, { type: "null" }] },
+          unavailable: {
+            type: "array",
+            items: { type: "object", additionalProperties: true },
+          },
+          effort: {
+            anyOf: [
+              { type: "integer", minimum: 1, maximum: 3 },
+              { type: "null" },
+            ],
+          },
           note: { type: "string" },
         },
-        required: ["date", "availableFrom", "availableUntil", "unavailable", "effort", "note"],
+        required: [
+          "date",
+          "availableFrom",
+          "availableUntil",
+          "unavailable",
+          "effort",
+          "note",
+        ],
       },
     },
     required: ["type"],
