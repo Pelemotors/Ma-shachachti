@@ -5,6 +5,11 @@ import { resolvePersonalAgentPolicy } from "@/lib/domain/agent-policy";
 import { sanitizeWorkingMemory } from "@/lib/domain/working-memory";
 import { buildAgentCapabilityContext } from "@/lib/agent/capabilities";
 
+export type AgentSurfaceContext = {
+  memoryKind?: "stable" | "temporary";
+  memoryExpiresAt?: string | null;
+};
+
 function stampLocal(iso: string | null | undefined, timezone: string) {
   if (!iso) return null;
   try {
@@ -83,7 +88,6 @@ function firstScanKnowledge(state: AppState) {
 
 /**
  * Bounded One-Brain context for the single personal agent.
- *
  * It contains what the application knows and what it can execute. It does not
  * contain an intent taxonomy or keyword rules for understanding the user.
  */
@@ -95,6 +99,7 @@ export function buildAgentContext(
     turnId?: string;
     messageLimit?: number;
     surface?: "chat" | "memory" | "planning";
+    surfaceContext?: AgentSurfaceContext | null;
   } = {},
 ) {
   const now = opts.now ?? new Date();
@@ -134,6 +139,7 @@ export function buildAgentContext(
     classification: t.classification,
     recurrenceDays: t.recurrenceDays,
     occurrenceOf: t.occurrenceOf,
+    routineId: t.routineId,
     dependsOn: t.dependsOn,
     steps: t.steps.slice(0, 20),
     notes: t.notes.slice(0, 800),
@@ -156,6 +162,25 @@ export function buildAgentContext(
       expiresAt: f.expiresAt,
       source: f.source,
     }));
+
+  const routines = state.routines.slice(-80).map((r) => ({
+    id: r.id,
+    title: r.title,
+    status: r.status,
+    categoryId: r.categoryId,
+    detailTypeId: r.detailTypeId,
+    schedule: r.schedule,
+    timeOfDay: r.timeOfDay,
+    atTime: r.atTime,
+    workMinutes: r.workMinutes,
+    effort: r.effort,
+    priority: r.priority,
+    notes: r.notes.slice(0, 800),
+    sourceFactId: r.sourceFactId,
+    relatedMemberIds: r.relatedMemberIds,
+    homeAreaIds: r.homeAreaIds,
+    lastMaterializedDate: r.lastMaterializedDate,
+  }));
 
   const profileKnowledge = {
     name: state.profile.name,
@@ -211,28 +236,26 @@ export function buildAgentContext(
     localDateKey: dayKey(now, tz),
     timezone: tz,
     surface: opts.surface ?? "chat",
-    /** What is open now — primary continuity signal across short history windows. */
+    surfaceContext: opts.surfaceContext ?? null,
     workingMemory: sanitizeWorkingMemory(state.agentWorkingMemory, now),
-    /** HOW to work with this user — not household facts. */
     personalAgentPolicy: resolvePersonalAgentPolicy(state),
     /** @deprecated alias — prefer personalAgentPolicy */
     agentPolicy: resolvePersonalAgentPolicy(state),
-    /** Closed executable hands; not a taxonomy of possible user meanings. */
     capabilityContract: buildAgentCapabilityContext(),
-    /** WHAT we know about the user's life (bounded). */
     userKnowledge: {
       profile: profileKnowledge,
       members,
       homeAreas,
       facts,
+      routines,
       compactedMemory,
       learning,
       firstScan,
     },
-    /** Compatibility aliases for existing prompt/evals. */
     profile: profileKnowledge,
     members,
     homeAreas,
+    routines,
     tasks: activeTasks.slice(-100).map(mapTask),
     shopping: state.shopping.filter((x) => !x.purchasedAt).slice(-80),
     reminders: state.reminders
@@ -251,7 +274,6 @@ export function buildAgentContext(
     compactedMemory,
     learning,
     firstScan,
-    /** Deterministic relevance signal only; never an interpretation of the message. */
     important: whatMatters(state, now).map((t) => t.id),
     contextTaskId: opts.contextTaskId ?? null,
     history: state.messages.slice(-(opts.messageLimit ?? 20)),
@@ -262,9 +284,7 @@ export function buildAgentContext(
           availableMinutes: plan.availableMinutes,
           effort: plan.effort,
           plannedTaskIds: plan.items.map((i) => i.taskId),
-          lockedTaskIds: plan.items
-            .filter((i) => i.locked)
-            .map((i) => i.taskId),
+          lockedTaskIds: plan.items.filter((i) => i.locked).map((i) => i.taskId),
           completedPlanItems: plan.items
             .filter((i) => i.planStatus === "done")
             .map((i) => i.taskId),
@@ -281,6 +301,8 @@ export function buildGroundedProposalSummary(actions: { type: string }[]) {
     return `זיהיתי ${creates} משימות. להוסיף אותן לרשימת המשימות?`;
   if (actions.some((a) => a.type === "reminder.add"))
     return "יש תזכורת שדורשת אישור לפני שמירה.";
+  if (actions.some((a) => a.type === "routine.remove"))
+    return "יש הסרת שגרה שדורשת אישור לפני ביצוע.";
   if (actions.length) return "יש פעולות שדורשות אישור לפני ביצוע.";
   return "אין פעולות לאישור.";
 }
