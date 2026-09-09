@@ -9,7 +9,10 @@ import {
   shoppingFactualEvents,
   shoppingPurchaseHistory,
 } from "@/lib/domain/factual-history";
-import { retrieveTasks, type TaskRetrievalQuery } from "@/lib/agent/task-retrieval";
+import {
+  retrieveTasks,
+  type TaskRetrievalQuery,
+} from "@/lib/agent/task-retrieval";
 
 export const DEEP_ACCESS_TOOLS = [
   "state.get_entity",

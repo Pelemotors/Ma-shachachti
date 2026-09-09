@@ -10,7 +10,10 @@ import { buildAgentContext } from "../lib/domain/agent-context";
 import { buildAgentRuntimeContext } from "../lib/agent/runtime-context";
 import { executeDeepAccess } from "../lib/agent/deep-access";
 import { retrieveTasks } from "../lib/agent/task-retrieval";
-import { sanitizePresentation, mergePresentedEntityIds } from "../lib/domain/agent-presentation";
+import {
+  sanitizePresentation,
+  mergePresentedEntityIds,
+} from "../lib/domain/agent-presentation";
 import { analyzeFirstScanWithAgent } from "../lib/domain/first-scan/ai";
 import {
   chunkScanText,
@@ -179,7 +182,10 @@ test("First Scan preserves agent timing through parse and approve", () => {
 });
 
 test("long First Scan input covers beginning and end with no silent 8000 slice", async () => {
-  const ai = readFileSync(join(process.cwd(), "lib/domain/first-scan/ai.ts"), "utf8");
+  const ai = readFileSync(
+    join(process.cwd(), "lib/domain/first-scan/ai.ts"),
+    "utf8",
+  );
   const route = readFileSync(
     join(process.cwd(), "app/api/first-scan/analyze/route.ts"),
     "utf8",
@@ -230,7 +236,10 @@ test("long First Scan input covers beginning and end with no silent 8000 slice",
 });
 
 test("First Scan production path does not fall back to the heuristic parser", () => {
-  const ai = readFileSync(join(process.cwd(), "lib/domain/first-scan/ai.ts"), "utf8");
+  const ai = readFileSync(
+    join(process.cwd(), "lib/domain/first-scan/ai.ts"),
+    "utf8",
+  );
   const route = readFileSync(
     join(process.cwd(), "app/api/first-scan/analyze/route.ts"),
     "utf8",
@@ -242,16 +251,19 @@ test("First Scan production path does not fall back to the heuristic parser", ()
 test("350 active tasks remain reachable via list/search and entity open", () => {
   let state = consentState();
   for (let start = 0; start < 350; start += 50) {
-    const batch = Array.from({ length: Math.min(50, 350 - start) }, (_, offset) => {
-      const i = start + offset;
-      return {
-        type: "task.create" as const,
-        task: {
-          id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(i).padStart(12, "0")}`,
-          title: i === 0 ? "משימה ישנה ייחודית לקריאה" : `משימה פעילה ${i}`,
-        },
-      };
-    });
+    const batch = Array.from(
+      { length: Math.min(50, 350 - start) },
+      (_, offset) => {
+        const i = start + offset;
+        return {
+          type: "task.create" as const,
+          task: {
+            id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(i).padStart(12, "0")}`,
+            title: i === 0 ? "משימה ישנה ייחודית לקריאה" : `משימה פעילה ${i}`,
+          },
+        };
+      },
+    );
     state = applyActions(state, batch, NOW, true);
   }
   const ctx = buildAgentContext(state, { now: NOW, surface: "chat" });
@@ -281,7 +293,9 @@ test("350 active tasks remain reachable via list/search and entity open", () => 
     query: { text: "משימה ישנה ייחודית לקריאה", limit: 10, compact: true },
   });
   assert.equal(found.ok, true);
-  const ids = (found.data as { items: { id: string }[] }).items.map((x) => x.id);
+  const ids = (found.data as { items: { id: string }[] }).items.map(
+    (x) => x.id,
+  );
   assert.ok(ids.includes(OLD_ID));
 
   const opened = executeDeepAccess(state, {
@@ -289,7 +303,10 @@ test("350 active tasks remain reachable via list/search and entity open", () => 
     entityId: OLD_ID,
   });
   assert.equal(opened.ok, true);
-  assert.equal((opened.data as { entity?: { id: string } })?.entity?.id, OLD_ID);
+  assert.equal(
+    (opened.data as { entity?: { id: string } })?.entity?.id,
+    OLD_ID,
+  );
 });
 
 test("Working Memory can keep Focus/Free Time presentation references", () => {

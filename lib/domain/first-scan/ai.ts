@@ -30,10 +30,7 @@ function scanMessage(phase: "single" | "chunk" | "synthesize", index?: number) {
   return "סקירת בית ראשונה";
 }
 
-function parseDraft(
-  raw: unknown,
-  timezone: string,
-): FirstScanAnalysis | null {
+function parseDraft(raw: unknown, timezone: string): FirstScanAnalysis | null {
   if (raw == null) return null;
   try {
     return parseSemanticScanResult(raw, { timezone });
@@ -50,7 +47,11 @@ export async function analyzeFirstScanWithAgent(input: {
   requestId?: string;
   householdId?: string;
   modelCall?: AgentModelCall;
-}): Promise<{ analysis: FirstScanAnalysis; source: "agent"; chunks: ScanTextChunk[] }> {
+}): Promise<{
+  analysis: FirstScanAnalysis;
+  source: "agent";
+  chunks: ScanTextChunk[];
+}> {
   const text = input.text;
   const chunks = chunkScanText(text);
   if (!chunks.length) {

@@ -223,7 +223,8 @@ export function buildScanApproveActions(
               ? [...new Set([...dup.relatedMemberIds, ...relatedMemberIds])]
               : dup.relatedMemberIds,
           recurrenceDays: proposed.recurrenceDays,
-          dueAt: proposed.deadline?.precision === "date" ? null : proposed.dueAt,
+          dueAt:
+            proposed.deadline?.precision === "date" ? null : proposed.dueAt,
           deadline: proposed.deadline ?? null,
         },
       });

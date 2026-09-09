@@ -128,7 +128,11 @@ export const AgentDecisionSchema = z.object({
    * must not persist actions; the server executes requests and continues
    * the same Turn.
    */
-  deepAccessRequests: z.array(DeepAccessRequestSchema).max(4).optional().nullable(),
+  deepAccessRequests: z
+    .array(DeepAccessRequestSchema)
+    .max(4)
+    .optional()
+    .nullable(),
   /**
    * Non-persistent display references. Not an Action, Proposal, or source of truth.
    */
@@ -560,9 +564,7 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
     const parsedReqs = obj.deepAccessRequests
       .map((item) => DeepAccessRequestSchema.safeParse(item))
       .slice(0, 4);
-    deepAccessRequests = parsedReqs
-      .filter((p) => p.success)
-      .map((p) => p.data);
+    deepAccessRequests = parsedReqs.filter((p) => p.success).map((p) => p.data);
     if (parsedReqs.some((p) => !p.success))
       warnings.push("deep_access_requests_invalid");
   }
@@ -1106,7 +1108,11 @@ export function agentDecisionJsonSchema() {
             type: "object",
             additionalProperties: false,
             properties: {
-              facts: { type: "array", maxItems: 100, items: { type: "string" } },
+              facts: {
+                type: "array",
+                maxItems: 100,
+                items: { type: "string" },
+              },
               preferences: {
                 type: "array",
                 maxItems: 100,

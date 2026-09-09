@@ -50,7 +50,11 @@ export function parseDeepAccessRequests(raw: unknown): DeepAccessRequest[] {
     if (typeof row.entityId === "string" && row.entityId.trim()) {
       request.entityId = row.entityId.trim().slice(0, 80);
     }
-    if (row.query && typeof row.query === "object" && !Array.isArray(row.query)) {
+    if (
+      row.query &&
+      typeof row.query === "object" &&
+      !Array.isArray(row.query)
+    ) {
       const q = row.query as Record<string, unknown>;
       request.query = {};
       if (Array.isArray(q.status)) {
@@ -96,7 +100,10 @@ export function executeDeepAccessRound(input: {
   log: DeepAccessLog[];
   callsUsed: number;
 } {
-  const remaining = Math.max(0, MAX_DEEP_ACCESS_CALLS_PER_TURN - input.callsUsed);
+  const remaining = Math.max(
+    0,
+    MAX_DEEP_ACCESS_CALLS_PER_TURN - input.callsUsed,
+  );
   const toRun = input.requests.slice(
     0,
     Math.min(MAX_DEEP_ACCESS_CALLS_PER_ROUND, remaining),

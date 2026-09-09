@@ -91,7 +91,11 @@ function canonicalizeTaskTiming(
 
   if (deadline?.precision === "date") {
     dueAt = null;
-    deadline = { ...deadline, time: null, timezone: deadline.timezone || timezone };
+    deadline = {
+      ...deadline,
+      time: null,
+      timezone: deadline.timezone || timezone,
+    };
   }
 
   if (
@@ -149,8 +153,5 @@ export function parseSemanticScanResult(
   if (!parsed.success) {
     throw new Error("invalid semantic scan output");
   }
-  return applyInventionGuards(
-    parsed.data,
-    opts?.timezone ?? "Asia/Jerusalem",
-  );
+  return applyInventionGuards(parsed.data, opts?.timezone ?? "Asia/Jerusalem");
 }

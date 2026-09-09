@@ -76,7 +76,9 @@ export function useAgentSurfaceTurn(opts: {
       } catch (e) {
         setStatus("error");
         setError(
-          e instanceof Error ? e.message : "הסוכן לא זמין כרגע. אפשר לנסות שוב.",
+          e instanceof Error
+            ? e.message
+            : "הסוכן לא זמין כרגע. אפשר לנסות שוב.",
         );
       } finally {
         inFlight.current = false;

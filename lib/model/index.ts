@@ -599,7 +599,11 @@ export const StateV2Schema = z.object({
         overlapEvidence?: unknown;
       };
       const plans: Record<string, unknown> = {};
-      if (obj.plans && typeof obj.plans === "object" && !Array.isArray(obj.plans)) {
+      if (
+        obj.plans &&
+        typeof obj.plans === "object" &&
+        !Array.isArray(obj.plans)
+      ) {
         Object.assign(plans, obj.plans);
       }
       const legacy = obj.plan;
@@ -642,7 +646,10 @@ export const StateV2Schema = z.object({
     z.object({
       plans: z.record(DateKey, DailyPlanSessionSchema).default({}),
       dayContexts: z.record(DateKey, PlanningDayContextSchema).default({}),
-      overlapEvidence: z.array(ScheduleOverlapEvidenceSchema).max(40).default([]),
+      overlapEvidence: z
+        .array(ScheduleOverlapEvidenceSchema)
+        .max(40)
+        .default([]),
     }),
   ),
   events: z
@@ -661,10 +668,7 @@ export const StateV2Schema = z.object({
   members: z.array(HouseholdMemberSchema).max(50).default([]),
   suggestionHistory: z.array(SuggestionHistorySchema).max(500).default([]),
   learning: z.array(LearningInsightSchema).max(300).default([]),
-  recentExecutionReceipts: z
-    .array(ExecutionReceiptSchema)
-    .max(20)
-    .default([]),
+  recentExecutionReceipts: z.array(ExecutionReceiptSchema).max(20).default([]),
   compactedMemory: CompactedMemorySchema.default({
     facts: [],
     preferences: [],

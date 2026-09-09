@@ -35,9 +35,7 @@ import { useShoppingController } from "@/hooks/use-shopping-controller";
 import { useChecklistController } from "@/hooks/use-checklist-controller";
 import { useReminderController } from "@/hooks/use-reminder-controller";
 import type { AppView } from "./view-header";
-import {
-  FORECAST_USER_INTENT,
-} from "@/lib/agent/forecast-intent";
+import { FORECAST_USER_INTENT } from "@/lib/agent/forecast-intent";
 import { dayKey } from "@/lib/time";
 import { dayContextForDate } from "@/lib/domain/planning/day-context";
 

@@ -11,7 +11,10 @@ export const SCAN_MAX_CHUNKS = 40;
 export const SCAN_SINGLE_PASS_CHARS = 6000;
 
 function newChunkId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   return `00000000-0000-4000-8000-${String(Date.now()).padStart(12, "0").slice(-12)}`;
@@ -20,10 +23,10 @@ function newChunkId() {
 function nextBreak(text: string, start: number, chunkSize: number) {
   const hardEnd = Math.min(start + chunkSize, text.length);
   if (hardEnd >= text.length) return text.length;
-  const window = text.slice(start, hardEnd);
-  const para = window.lastIndexOf("\n\n");
+  const span = text.slice(start, hardEnd);
+  const para = span.lastIndexOf("\n\n");
   if (para >= Math.floor(chunkSize * 0.4)) return start + para + 2;
-  const line = window.lastIndexOf("\n");
+  const line = span.lastIndexOf("\n");
   if (line >= Math.floor(chunkSize * 0.4)) return start + line + 1;
   return hardEnd;
 }

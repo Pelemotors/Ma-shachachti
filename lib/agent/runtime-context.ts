@@ -256,8 +256,7 @@ export function toAgentModelInput(
     budgetExhausted?: boolean;
   },
 ) {
-  const remaining =
-    extras?.remainingCalls ?? MAX_DEEP_ACCESS_CALLS_PER_TURN;
+  const remaining = extras?.remainingCalls ?? MAX_DEEP_ACCESS_CALLS_PER_TURN;
   const deepAccess: DeepAccessModelView = toDeepAccessModelView({
     remainingCalls: remaining,
     budgetExhausted: Boolean(extras?.budgetExhausted),

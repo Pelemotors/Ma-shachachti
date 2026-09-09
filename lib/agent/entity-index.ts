@@ -32,7 +32,12 @@ export type AgentEntityIndex = {
   checklists: { tasksWithSteps: number; openStepCount: number };
   personalChecklists: {
     total: number;
-    entries: { id: string; title: string; itemCount: number; updatedAt: string }[];
+    entries: {
+      id: string;
+      title: string;
+      itemCount: number;
+      updatedAt: string;
+    }[];
   };
   processes: { operationCount: number };
   workingMemory: {
@@ -50,7 +55,9 @@ export function buildEntityIndex(
 ): AgentEntityIndex {
   const tz = state.profile.timezone;
   const openTasks = state.tasks.filter((t) => OPEN_TASK.has(t.status));
-  const pendingReminders = state.reminders.filter((r) => r.status === "pending");
+  const pendingReminders = state.reminders.filter(
+    (r) => r.status === "pending",
+  );
   const activeRoutines = state.routines.filter((r) => r.status === "active");
   const openShopping = state.shopping.filter((s) => !s.purchasedAt);
   const plan = planForDate(state, dayKey(now, tz));

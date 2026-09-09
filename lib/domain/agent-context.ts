@@ -417,8 +417,7 @@ export function buildAgentContext(
 export function buildGroundedProposalSummary(actions: { type: string }[]) {
   const creates = actions.filter((a) => a.type === "task.create").length;
   const scheduled = actions.some((a) => a.type === "schedule.set");
-  if (creates === 1 && scheduled)
-    return "זיהיתי משימה ושיבוץ בלו״ז. לשמור?";
+  if (creates === 1 && scheduled) return "זיהיתי משימה ושיבוץ בלו״ז. לשמור?";
   if (creates > 1 && scheduled)
     return `זיהיתי ${creates} משימות כולל שיבוץ בלו״ז. לשמור?`;
   if (creates === 1) return "זיהיתי משימה אחת. להוסיף אותה לרשימת המשימות?";

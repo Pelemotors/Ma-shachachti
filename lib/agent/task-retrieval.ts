@@ -47,7 +47,10 @@ function matchesText(task: Task, text: string) {
   );
 }
 
-function inDateWindow(iso: string | null | undefined, query: TaskRetrievalQuery) {
+function inDateWindow(
+  iso: string | null | undefined,
+  query: TaskRetrievalQuery,
+) {
   if (!iso) return !query.since && !query.before && !query.after;
   if (query.since && iso < query.since) return false;
   if (query.after && iso < query.after) return false;

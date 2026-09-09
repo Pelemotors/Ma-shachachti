@@ -299,9 +299,7 @@ export async function orchestrateChatTurn(
   for (const r of runtime.knowledge.reminders as { id: string }[])
     coreEntityIds.add(r.id);
 
-  async function invokeWithFallback(
-    payload: unknown,
-  ): Promise<{
+  async function invokeWithFallback(payload: unknown): Promise<{
     decision: AgentDecision;
     model: string;
     rejectedActions: unknown[];
@@ -367,10 +365,7 @@ export async function orchestrateChatTurn(
     );
     decision = continued.decision;
     selectedModel = continued.model;
-    rejectedFromParse = [
-      ...rejectedFromParse,
-      ...continued.rejectedActions,
-    ];
+    rejectedFromParse = [...rejectedFromParse, ...continued.rejectedActions];
     if (budgetExhausted) break;
   }
 
@@ -446,8 +441,7 @@ export async function orchestrateChatTurn(
             ? "new_tasks"
             : inferredLasting &&
                 allProposal.some(
-                  (a) =>
-                    a.type === "shopping.add" || a.type === "reminder.add",
+                  (a) => a.type === "shopping.add" || a.type === "reminder.add",
                 )
               ? "shopping_derived"
               : (decision.proposal?.reason ?? "other")) as NonNullable<

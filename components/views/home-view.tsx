@@ -87,11 +87,7 @@ export function HomeView(props: {
           </span>
           <ChevronLeft size={21} />
         </button>
-        <button
-          className="engine"
-          type="button"
-          onClick={props.onAskForecast}
-        >
+        <button className="engine" type="button" onClick={props.onAskForecast}>
           <span className="engine-icon">
             <ScanSearch size={23} />
           </span>

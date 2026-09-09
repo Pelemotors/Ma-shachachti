@@ -227,7 +227,12 @@ export async function POST(req: Request) {
           .optional(),
         manualPlacementTaskId: z.string().uuid().optional(),
         scheduleIntent: z.enum(["build", "realign", "changed-day"]).optional(),
-        availableMinutes: z.number().int().min(1).max(24 * 60).optional(),
+        availableMinutes: z
+          .number()
+          .int()
+          .min(1)
+          .max(24 * 60)
+          .optional(),
         effort: z.number().int().min(1).max(3).optional(),
         memoryContext: z
           .object({
@@ -377,11 +382,7 @@ export async function POST(req: Request) {
     const typedDecision = result.proposalDecision;
     let workingState = state;
     let workingRevision = revision;
-    if (
-      typedDecision &&
-      pending &&
-      typedDecision.proposalId === pending.id
-    ) {
+    if (typedDecision && pending && typedDecision.proposalId === pending.id) {
       stage = "proposal_decision";
       if (typedDecision.decision === "approve") {
         const approved = await approvePendingProposal(db, {

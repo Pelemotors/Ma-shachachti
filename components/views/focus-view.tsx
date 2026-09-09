@@ -45,7 +45,11 @@ export function FocusView(props: {
           <div>
             <strong>הסוכן לא זמין כרגע</strong>
             <p>{props.focus.error || "אפשר לנסות שוב."}</p>
-            <button type="button" className="text-button" onClick={props.focus.retry}>
+            <button
+              type="button"
+              className="text-button"
+              onClick={props.focus.retry}
+            >
               נסה שוב
             </button>
           </div>
