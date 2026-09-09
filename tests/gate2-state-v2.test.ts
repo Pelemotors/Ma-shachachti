@@ -183,7 +183,10 @@ test("Gate2 rich V1 fixture migrates without losing core data or ids", () => {
   assert.equal(v2.reminders[0].id, _ids.reminderId);
   assert.equal(v2.messages[0].id, _ids.msgId);
   assert.deepEqual(v2.excludedTemplates, ["deep_clean_oven"]);
-  assert.equal(v2.planning.today?.note, "חלון קצר");
+  assert.equal(
+    Object.values(v2.planning.dayContexts)[0]?.note,
+    "חלון קצר",
+  );
   assert.equal(v2.profile.name, "בית בדיקה");
   // Neutral V2-only defaults — no invented members/routines
   assert.deepEqual(v2.members, []);
@@ -308,5 +311,9 @@ test("Gate2 V1 without optional fields does not crash", () => {
   };
   const v2 = StateSchema.parse(minimal);
   assert.equal(v2.schemaVersion, 2);
-  assert.deepEqual(v2.planning, { today: null, plans: {} });
+  assert.deepEqual(v2.planning, {
+    plans: {},
+    dayContexts: {},
+    overlapEvidence: [],
+  });
 });

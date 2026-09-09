@@ -111,6 +111,8 @@ export function useProposalController(
               return;
             }
           }
+          if (!cancelled) clearProposal();
+          return;
         }
         const raw = sessionStorage.getItem(CHAT_UI_KEY);
         if (!raw || cancelled) return;

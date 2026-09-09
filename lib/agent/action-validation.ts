@@ -16,11 +16,19 @@ export function filterRunnableActions(
   actions: Action[],
   now: Date,
 ) {
+  const ordered = orderActionsForApply(actions);
+  try {
+    applyActions(state, ordered, now, true);
+    return { accepted: ordered, rejected: [] as Action[] };
+  } catch {
+    /* fall through to per-action, then drop unpaired creates */
+  }
+
   const accepted: Action[] = [];
   const rejected: Action[] = [];
   let simulated = state;
 
-  for (const action of orderActionsForApply(actions)) {
+  for (const action of ordered) {
     try {
       simulated = applyActions(simulated, [action], now, true);
       accepted.push(action);
@@ -29,5 +37,26 @@ export function filterRunnableActions(
     }
   }
 
-  return { accepted, rejected };
+  const rejectedScheduleIds = new Set(
+    rejected
+      .filter(
+        (action): action is Extract<Action, { type: "schedule.set" }> =>
+          action.type === "schedule.set",
+      )
+      .map((action) => action.taskId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const kept: Action[] = [];
+  for (const action of accepted) {
+    if (
+      action.type === "task.create" &&
+      action.task.id &&
+      rejectedScheduleIds.has(action.task.id)
+    ) {
+      rejected.push(action);
+      continue;
+    }
+    kept.push(action);
+  }
+  return { accepted: kept, rejected };
 }

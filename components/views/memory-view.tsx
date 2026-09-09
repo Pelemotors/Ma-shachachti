@@ -2,9 +2,7 @@
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Action, AppState, Task } from "@/lib/model";
-import { learning } from "@/lib/engine";
 import { formatTime } from "@/lib/time";
-import { consumptionInsights } from "@/lib/insights";
 import { ViewHeader } from "@/components/view-header";
 import { Empty } from "@/components/empty-state";
 
@@ -14,7 +12,13 @@ export function MemoryView(props: {
   clock: Date;
   run: (actions: Action[], confirmed?: boolean) => Promise<void>;
   act: (a: Action) => Promise<void>;
-  onRemember: (text: string) => Promise<string>;
+  onRemember: (
+    text: string,
+    context?: {
+      requestedLifetime?: "stable" | "temporary";
+      expiresAt?: string | null;
+    },
+  ) => Promise<string>;
   onEditTask: (t: Task) => void;
   onNotice: (msg: string) => void;
 }) {
@@ -22,6 +26,16 @@ export function MemoryView(props: {
   const [factKind, setFactKind] = useState<"stable" | "temporary">("stable");
   const [factExpiry, setFactExpiry] = useState("");
   const [saving, setSaving] = useState(false);
+
+  function memoryContext() {
+    return {
+      requestedLifetime: factKind,
+      expiresAt:
+        factKind === "temporary" && factExpiry
+          ? new Date(factExpiry).toISOString()
+          : null,
+    };
+  }
 
   return (
     <>
@@ -38,24 +52,13 @@ export function MemoryView(props: {
           if (!text) return;
           setSaving(true);
           try {
-            await props.run([
-              {
-                type: "fact.add",
-                text,
-                kind: factKind,
-                expiresAt:
-                  factKind === "temporary"
-                    ? new Date(factExpiry).toISOString()
-                    : null,
-              },
-            ]);
+            const reply = await props.onRemember(text, memoryContext());
             setFactText("");
-            try {
-              const reply = await props.onRemember(text);
-              if (reply) props.onNotice(reply);
-            } catch {
-              props.onNotice("המידע נשמר. העיבוד החכם לא הושלם כרגע.");
-            }
+            if (reply) props.onNotice(reply);
+          } catch {
+            props.onNotice(
+              "הסוכן לא זמין כרגע. אפשר לשמור ידנית בלי סוכן, או לנסות שוב.",
+            );
           } finally {
             setSaving(false);
           }
@@ -95,6 +98,35 @@ export function MemoryView(props: {
         <button className="secondary" disabled={props.busy || saving}>
           שמירה בזיכרון
         </button>
+        <button
+          type="button"
+          className="text-button"
+          disabled={props.busy || saving}
+          onClick={async () => {
+            const text = factText.trim();
+            if (!text || saving) return;
+            setSaving(true);
+            try {
+              await props.run([
+                {
+                  type: "fact.add",
+                  text,
+                  kind: factKind,
+                  expiresAt:
+                    factKind === "temporary"
+                      ? new Date(factExpiry).toISOString()
+                      : null,
+                },
+              ]);
+              setFactText("");
+              props.onNotice("נשמר ידנית, בלי עיבוד של הסוכן.");
+            } finally {
+              setSaving(false);
+            }
+          }}
+        >
+          שמירה ידנית בלי סוכן
+        </button>
       </form>
       <div className="task-list">
         {props.state.facts.map((f) => (
@@ -129,56 +161,6 @@ export function MemoryView(props: {
       </div>
       {!props.state.facts.length && (
         <Empty text="עדיין אין פרטים שמורים מעבר לפרופיל הבית." />
-      )}
-      <h2>מחזורי קנייה</h2>
-      {consumptionInsights(props.state, props.clock).length ? (
-        consumptionInsights(props.state, props.clock).map((i) => (
-          <article className="panel" key={i.title}>
-            <strong>{i.title}</strong>
-            <p>
-              הרכישות חוזרות בערך כל {i.days} ימים, לפי {i.samples} רכישות. אולי
-              כדאי לבדוק מלאי סביב{" "}
-              {formatTime(i.expected, props.state.profile.timezone)}.
-            </p>
-            <small>זו תחזית קנייה, לא ידיעה שהמוצר נגמר.</small>
-          </article>
-        ))
-      ) : (
-        <p className="muted">
-          לאחר כמה רכישות נוכל להציע מתי לבדוק מלאי. לא נסיק שהמוצר נגמר רק כי
-          נקנה חדש.
-        </p>
-      )}
-      <h2>מה מתחיל להסתמן</h2>
-      {learning(props.state).length ? (
-        learning(props.state).map((l, i) => (
-          <article className="panel" key={i}>
-            <strong>{l.title}</strong>
-            <p>
-              אולי מתאים מחזור של כ־{l.days} ימים, לפי {l.samples} ביצועים. זו
-              הצעה, והשגרה לא שונתה.
-            </p>
-            <button
-              className="text-button"
-              onClick={() => {
-                const t = props.state.tasks.find(
-                  (task) =>
-                    (l.templateId
-                      ? task.templateId === l.templateId
-                      : task.title === l.title) && task.status === "open",
-                );
-                if (t) props.onEditTask(t);
-                else props.onNotice("אפשר להגדיר חזרה ביצירת המשימה הבאה.");
-              }}
-            >
-              לבחון התאמת חזרה
-            </button>
-          </article>
-        ))
-      ) : (
-        <p className="muted">
-          נלמד רק אחרי כמה ביצועים. יום יוצא דופן לא ישנה את השגרה.
-        </p>
       )}
     </>
   );

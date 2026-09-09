@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CATEGORY_IDS, CategoryId, classifyLegacyCategory } from "../taxonomy";
+import { dayKey } from "../time";
 
 /** Legacy V1 flat Hebrew categories (migration only). */
 export const legacyCategories = [
@@ -181,6 +182,18 @@ export const TaskSchema = z.object({
   createdAt: Stamp,
   updatedAt: Stamp,
   dueAt: Stamp.nullable(),
+  deadline: z
+    .object({
+      date: DateKey,
+      time: z
+        .string()
+        .regex(/^\d{2}:\d{2}$/)
+        .nullable(),
+      timezone: z.string().min(1).max(80),
+      precision: z.enum(["date", "datetime"]),
+    })
+    .nullable()
+    .default(null),
   preferredWindow: PreferredWindowSchema.default(null),
   hiddenUntil: Stamp.nullable(),
   startedAt: Stamp.nullable().default(null),
@@ -345,6 +358,50 @@ export const PlanningConstraintSchema = z
   );
 export type PlanningConstraint = z.infer<typeof PlanningConstraintSchema>;
 
+export const PlanningDayContextSchema = PlanningConstraintSchema.and(
+  z.object({
+    updatedAt: Stamp,
+  }),
+);
+export type PlanningDayContext = z.infer<typeof PlanningDayContextSchema>;
+
+export const ScheduleOverlapEvidenceSchema = z.object({
+  date: DateKey,
+  requestedRange: z.object({
+    taskId: z.string().uuid(),
+    start: Stamp,
+    end: Stamp,
+  }),
+  conflictingItems: z
+    .array(
+      z.object({
+        taskId: z.string().uuid(),
+        plannedStart: Stamp,
+        plannedEnd: Stamp,
+        locked: z.boolean(),
+      }),
+    )
+    .max(20),
+});
+export type ScheduleOverlapEvidence = z.infer<
+  typeof ScheduleOverlapEvidenceSchema
+>;
+
+export const ExecutionReceiptSchema = z.object({
+  proposalId: z.string().uuid().nullable(),
+  turnId: z.string().uuid().nullable(),
+  resolvedAt: Stamp,
+  actions: z
+    .array(
+      z.object({
+        type: z.string().max(80),
+        entityId: z.string().nullable(),
+      }),
+    )
+    .max(40),
+});
+export type ExecutionReceipt = z.infer<typeof ExecutionReceiptSchema>;
+
 export const DailyPlanDayPartSchema = z.enum([
   "morning",
   "afternoon",
@@ -433,6 +490,8 @@ export const CompactedMemorySchema = z.object({
   preferences: z.array(z.string().max(500)).max(100),
   patterns: z.array(z.string().max(500)).max(100),
   updatedAt: Stamp.nullable(),
+  compactedThroughMessageId: z.string().uuid().nullable().default(null),
+  compactedThroughCreatedAt: Stamp.nullable().default(null),
   lifeAdminWindow: z
     .object({
       preferredStartMinutes: z
@@ -530,12 +589,14 @@ export const StateV2Schema = z.object({
   planning: z.preprocess(
     (raw) => {
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return { today: null, plans: {} };
+        return { plans: {}, dayContexts: {}, overlapEvidence: [] };
       }
       const obj = raw as {
-        today?: unknown;
+        today?: { date?: string; updatedAt?: string } | null;
         plan?: { date?: string } | null;
         plans?: Record<string, unknown>;
+        dayContexts?: Record<string, unknown>;
+        overlapEvidence?: unknown;
       };
       const plans: Record<string, unknown> = {};
       if (obj.plans && typeof obj.plans === "object" && !Array.isArray(obj.plans)) {
@@ -550,11 +611,38 @@ export const StateV2Schema = z.object({
       ) {
         plans[legacy.date] = legacy;
       }
-      return { today: obj.today ?? null, plans };
+      const dayContexts: Record<string, unknown> = {};
+      if (
+        obj.dayContexts &&
+        typeof obj.dayContexts === "object" &&
+        !Array.isArray(obj.dayContexts)
+      ) {
+        Object.assign(dayContexts, obj.dayContexts);
+      }
+      const today = obj.today;
+      if (
+        today &&
+        typeof today === "object" &&
+        typeof today.date === "string" &&
+        !dayContexts[today.date]
+      ) {
+        dayContexts[today.date] = {
+          ...today,
+          updatedAt: today.updatedAt ?? "1970-01-01T00:00:00.000Z",
+        };
+      }
+      return {
+        plans,
+        dayContexts,
+        overlapEvidence: Array.isArray(obj.overlapEvidence)
+          ? obj.overlapEvidence
+          : [],
+      };
     },
     z.object({
-      today: PlanningConstraintSchema.nullable().default(null),
       plans: z.record(DateKey, DailyPlanSessionSchema).default({}),
+      dayContexts: z.record(DateKey, PlanningDayContextSchema).default({}),
+      overlapEvidence: z.array(ScheduleOverlapEvidenceSchema).max(40).default([]),
     }),
   ),
   events: z
@@ -573,11 +661,17 @@ export const StateV2Schema = z.object({
   members: z.array(HouseholdMemberSchema).max(50).default([]),
   suggestionHistory: z.array(SuggestionHistorySchema).max(500).default([]),
   learning: z.array(LearningInsightSchema).max(300).default([]),
+  recentExecutionReceipts: z
+    .array(ExecutionReceiptSchema)
+    .max(20)
+    .default([]),
   compactedMemory: CompactedMemorySchema.default({
     facts: [],
     preferences: [],
     patterns: [],
     updatedAt: null,
+    compactedThroughMessageId: null,
+    compactedThroughCreatedAt: null,
     lifeAdminWindow: {
       preferredStartMinutes: null,
       preferredEndMinutes: null,
@@ -678,9 +772,10 @@ export const StateV1Schema = z.object({
   excludedTemplates: z.array(z.string()).max(500),
   planning: z
     .object({
-      today: PlanningConstraintSchema.nullable(),
+      today: PlanningConstraintSchema.nullable().optional().default(null),
       plan: DailyPlanSessionSchema.nullable().optional(),
     })
+    .passthrough()
     .optional(),
   events: z.array(z.any()).max(500).optional(),
 });
@@ -707,6 +802,7 @@ function migrateTask(raw: z.infer<typeof TaskV1Schema>): Task {
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
     dueAt: raw.dueAt,
+    deadline: null,
     preferredWindow: raw.preferredWindow ?? null,
     hiddenUntil: raw.hiddenUntil,
     startedAt: raw.startedAt ?? null,
@@ -753,7 +849,15 @@ export function migrateV1ToV2(v1: StateV1): AppState {
       const legacy = v1.planning?.plan ?? null;
       const plans: Record<string, DailyPlanSession> = {};
       if (legacy?.date) plans[legacy.date] = legacy;
-      return { today: v1.planning?.today ?? null, plans };
+      const dayContexts: Record<string, PlanningDayContext> = {};
+      const today = v1.planning?.today;
+      if (today?.date) {
+        dayContexts[today.date] = {
+          ...today,
+          updatedAt: "1970-01-01T00:00:00.000Z",
+        };
+      }
+      return { plans, dayContexts, overlapEvidence: [] };
     })(),
     events: (v1.events ?? []).map((e: any) => ({
       id: e.id,
@@ -765,11 +869,14 @@ export function migrateV1ToV2(v1: StateV1): AppState {
     members: [],
     suggestionHistory: [],
     learning: [],
+    recentExecutionReceipts: [],
     compactedMemory: {
       facts: [],
       preferences: [],
       patterns: [],
       updatedAt: null,
+      compactedThroughMessageId: null,
+      compactedThroughCreatedAt: null,
       lifeAdminWindow: {
         preferredStartMinutes: v1.profile.children > 0 ? 20 * 60 : null,
         preferredEndMinutes: null,
@@ -873,6 +980,45 @@ function hydrateWorkingMemoryFromLegacy(
   return next;
 }
 
+function clockInZone(iso: string, timezone: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(iso));
+}
+
+/** Idempotent load-time migration. Does not invent date-only times. */
+export function normalizeLoadedState(state: AppState): AppState {
+  const timezone = state.profile.timezone;
+  const tasks = state.tasks.map((task) => {
+    if (task.deadline) return task;
+    if (!task.dueAt) {
+      return task.deadline === null ? task : { ...task, deadline: null };
+    }
+    return {
+      ...task,
+      deadline: {
+        date: dayKey(new Date(task.dueAt), timezone),
+        time: clockInZone(task.dueAt, timezone),
+        timezone,
+        precision: "datetime" as const,
+      },
+    };
+  });
+  return {
+    ...state,
+    tasks,
+    planning: {
+      plans: state.planning.plans ?? {},
+      dayContexts: state.planning.dayContexts ?? {},
+      overlapEvidence: state.planning.overlapEvidence ?? [],
+    },
+    recentExecutionReceipts: state.recentExecutionReceipts ?? [],
+  };
+}
+
 export function migrateState(raw: unknown): AppState {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const obj = raw as Record<string, unknown>;
@@ -887,8 +1033,10 @@ export function migrateState(raw: unknown): AppState {
             : Number.NaN;
 
     if (version === 2) {
-      return StateV2Schema.parse(
-        hydrateWorkingMemoryFromLegacy({ ...obj, schemaVersion: 2 }),
+      return normalizeLoadedState(
+        StateV2Schema.parse(
+          hydrateWorkingMemoryFromLegacy({ ...obj, schemaVersion: 2 }),
+        ),
       );
     }
 
@@ -901,13 +1049,39 @@ export function migrateState(raw: unknown): AppState {
 
     const candidate = { ...obj, schemaVersion: 1 as const };
     const v1 = StateV1Schema.safeParse(candidate);
-    if (v1.success) return StateV2Schema.parse(migrateV1ToV2(v1.data));
+    if (v1.success)
+      return normalizeLoadedState(StateV2Schema.parse(migrateV1ToV2(v1.data)));
+    const coercedTasks = Array.isArray(obj.tasks)
+      ? (obj.tasks as Record<string, unknown>[]).map((task) => {
+          if (task.categoryId) return task;
+          const legacy =
+            typeof task.category === "string"
+              ? task.category
+              : "שונות / לא מסווג";
+          return {
+            ...task,
+            categoryId: classifyLegacyCategory(
+              legacy,
+              String(task.title ?? ""),
+              (task.templateId as string | null) ?? null,
+            ),
+          };
+        })
+      : obj.tasks;
+    const alreadyV2 = StateV2Schema.safeParse(
+      hydrateWorkingMemoryFromLegacy({
+        ...obj,
+        schemaVersion: 2,
+        tasks: coercedTasks,
+      }),
+    );
+    if (alreadyV2.success) return normalizeLoadedState(alreadyV2.data);
     const repaired = {
       ...candidate,
       planning: (obj as { planning?: unknown }).planning ?? { today: null },
     };
     const v1b = StateV1Schema.parse(repaired);
-    return StateV2Schema.parse(migrateV1ToV2(v1b));
+    return normalizeLoadedState(StateV2Schema.parse(migrateV1ToV2(v1b)));
   }
   return emptyState();
 }
@@ -951,16 +1125,19 @@ export function emptyState(): AppState {
     reminders: [],
     messages: [],
     excludedTemplates: [],
-    planning: { today: null, plans: {} },
+    planning: { plans: {}, dayContexts: {}, overlapEvidence: [] },
     events: [],
     members: [],
     suggestionHistory: [],
     learning: [],
+    recentExecutionReceipts: [],
     compactedMemory: {
       facts: [],
       preferences: [],
       patterns: [],
       updatedAt: null,
+      compactedThroughMessageId: null,
+      compactedThroughCreatedAt: null,
       lifeAdminWindow: {
         preferredStartMinutes: null,
         preferredEndMinutes: null,
@@ -991,6 +1168,18 @@ export const TaskCreateInputSchema = z.object({
   enrichmentStatus: z.enum(["none", "pending", "done", "failed"]).optional(),
   kind: z.enum(["task", "idea"]).optional(),
   dueAt: Stamp.nullable().optional(),
+  deadline: z
+    .object({
+      date: DateKey,
+      time: z
+        .string()
+        .regex(/^\d{2}:\d{2}$/)
+        .nullable(),
+      timezone: z.string().min(1).max(80),
+      precision: z.enum(["date", "datetime"]),
+    })
+    .nullable()
+    .optional(),
   preferredWindow: PreferredWindowSchema.optional(),
   hiddenUntil: Stamp.nullable().optional(),
   workMinutes: z.number().int().min(1).max(1440).optional(),
@@ -1066,6 +1255,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
       enrichmentStatus: true,
       kind: true,
       dueAt: true,
+      deadline: true,
       preferredWindow: true,
       workMinutes: true,
       waitMinutes: true,
@@ -1235,7 +1425,10 @@ export const ActionSchema = z.discriminatedUnion("type", [
     type: z.literal("planning.set"),
     constraint: PlanningConstraintSchema,
   }),
-  z.object({ type: z.literal("planning.clear") }),
+  z.object({
+    type: z.literal("planning.clear"),
+    date: DateKey.optional(),
+  }),
   z.object({ type: z.literal("plan.set"), plan: DailyPlanSessionSchema }),
   z.object({
     type: z.literal("plan.clear"),
@@ -1256,6 +1449,8 @@ export const ActionSchema = z.discriminatedUnion("type", [
       plannedStart: Stamp.nullable().optional(),
       plannedEnd: Stamp.nullable().optional(),
       dayPart: DailyPlanDayPartSchema.nullable().optional(),
+      order: z.number().int().min(0).optional(),
+      locked: z.boolean().optional(),
     })
     .refine(
       (row) => Boolean(row.taskId) || row.createIndex !== undefined,
@@ -1265,6 +1460,19 @@ export const ActionSchema = z.discriminatedUnion("type", [
     type: z.literal("schedule.remove"),
     taskId: z.string().uuid(),
     date: DateKey,
+  }),
+  z.object({
+    type: z.literal("schedule.replaceDay"),
+    date: DateKey,
+    items: z.array(DailyPlanItemSchema).max(200),
+  }),
+  z.object({
+    type: z.literal("memory.compact"),
+    facts: z.array(z.string().max(500)).max(100),
+    preferences: z.array(z.string().max(500)).max(100),
+    patterns: z.array(z.string().max(500)).max(100),
+    compactedThroughMessageId: z.string().uuid().nullable(),
+    compactedThroughCreatedAt: Stamp.nullable(),
   }),
   z.object({
     type: z.literal("profile.update"),

@@ -39,6 +39,7 @@ export const AGENT_CAPABILITY_TYPES = [
   "planning.clear",
   "schedule.set",
   "schedule.remove",
+  "schedule.replaceDay",
   "profile.update",
   "member.upsert",
   "member.remove",
@@ -135,12 +136,12 @@ export const AGENT_CAPABILITY_CONTRACT = [
     notes: "This is context for planning, not a replacement task. A free-text note may also require Task or Schedule actions in the same turn.",
   },
   {
-    type: "schedule.set/schedule.remove",
+    type: "schedule.set/schedule.remove/schedule.replaceDay",
     purpose:
-      "Place a Task on a calendar day (and optional day-part or clock time), move it, or remove it from the schedule without deleting the Task.",
+      "Write schedule placement for an existing or same-batch Task, remove it from a day, or replace one day's items atomically.",
     policy: "auto_or_proposal",
     notes:
-      "Task and Schedule are different. Creating a Task does not schedule it. When the same turn creates a Task and places it, return both actions in one Proposal and reuse the same task id (or createIndex). Do not invent a clock time without a basis; date-only or dayPart is enough. schedule.remove unschedules only.",
+      "Task and Schedule are separate records. schedule.replaceDay writes the items the caller already decided. Domain validates IDs and structure only.",
   },
   {
     type: "profile.update",

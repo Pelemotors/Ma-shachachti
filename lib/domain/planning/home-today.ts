@@ -1,16 +1,16 @@
 import type { AppState, Task } from "@/lib/model";
-import { activeDailyPlan, whatMatters } from "@/lib/engine";
+import { activeDailyPlan } from "@/lib/engine";
 import { isActiveVisibleTask } from "@/lib/domain/tasks/visibility";
 import { visiblePlanItems } from "./schedule-day";
 
 /**
- * Home schedule source of truth: active DailyPlan when present, else whatMatters.
- * Does not slice — callers may choose fold presentation without truncating the source.
+ * Home schedule source of truth: the active DailyPlan only.
+ * Without a plan, do not invent a ranked or open-task list.
  */
 export function getHomeTodayTasks(
   state: AppState,
   now: Date = new Date(),
-): { tasks: Task[]; source: "daily_plan" | "what_matters" } {
+): { tasks: Task[]; source: "daily_plan" | "none" } {
   const plan = activeDailyPlan(state, now);
   if (plan?.items.length) {
     const byId = new Map(state.tasks.map((t) => [t.id, t]));
@@ -26,16 +26,13 @@ export function getHomeTodayTasks(
       );
     if (tasks.length) return { tasks, source: "daily_plan" };
   }
-  return {
-    tasks: whatMatters(state, now),
-    source: "what_matters",
-  };
+  return { tasks: [], source: "none" };
 }
 
 /** Compact home fold — does not change the DailyPlan source of truth. */
 export function foldHomeTodayTasks(
   tasks: Task[],
-  source: "daily_plan" | "what_matters",
+  source: "daily_plan" | "none" | "open_list" | "what_matters",
   limit = 3,
 ): Task[] {
   if (source !== "daily_plan") return tasks.slice(0, 6);

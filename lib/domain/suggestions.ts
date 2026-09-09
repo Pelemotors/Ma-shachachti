@@ -1,7 +1,6 @@
 import type { AppState } from "@/lib/model";
 import { normalize } from "@/lib/model";
 import { suggestions as catalogSuggestions } from "@/lib/catalog";
-import { calendarSuggestions as calendarTitles } from "@/lib/insights";
 import type { CategoryId } from "@/lib/taxonomy";
 
 export type UnifiedSuggestion = {
@@ -47,19 +46,6 @@ export function listOpenSuggestions(
       workMinutes: t.workMinutes,
       waitMinutes: t.waitMinutes,
       templateId: t.id,
-    });
-  }
-
-  for (const title of calendarTitles(state, now)) {
-    const suggestionKey = calendarSuggestionKey(title);
-    if (isHandled(state, suggestionKey)) continue;
-    if (out.some((x) => normalize(x.title) === normalize(title))) continue;
-    out.push({
-      id: suggestionKey,
-      suggestionKey,
-      source: "calendar",
-      title,
-      categoryId: "children_daily",
     });
   }
 

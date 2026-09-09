@@ -3,6 +3,10 @@ import { useState } from "react";
 import { Action, AppState, Task } from "@/lib/model";
 import { TASK_CATEGORIES, CategoryId } from "@/lib/taxonomy";
 import { isoAtLocal } from "@/lib/time";
+import {
+  deadlineFromDate,
+  deadlineFromDueAt,
+} from "@/lib/domain/tasks/deadline";
 import { Dialog } from "./dialog";
 
 export function TaskEditor({
@@ -20,19 +24,22 @@ export function TaskEditor({
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(task?.title ?? "");
-  const [hasDeadline, setHasDeadline] = useState(Boolean(task?.dueAt));
+  const [hasDeadline, setHasDeadline] = useState(
+    Boolean(task?.deadline?.date || task?.dueAt),
+  );
   const [dueDate, setDueDate] = useState(
-    task?.dueAt ? task.dueAt.slice(0, 10) : "",
+    task?.deadline?.date ?? (task?.dueAt ? task.dueAt.slice(0, 10) : ""),
   );
   const [dueTime, setDueTime] = useState(
-    task?.dueAt
-      ? new Date(task.dueAt).toLocaleTimeString("en-GB", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-          timeZone: state.profile.timezone,
-        })
-      : "12:00",
+    task?.deadline?.time ??
+      (task?.dueAt
+        ? new Date(task.dueAt).toLocaleTimeString("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: state.profile.timezone,
+          })
+        : ""),
   );
   const [more, setMore] = useState(false);
   const [categoryId, setCategoryId] = useState<CategoryId>(
@@ -63,16 +70,29 @@ export function TaskEditor({
       setError("צריך כותרת למשימה.");
       return;
     }
-    if (hasDeadline && (!dueDate || !dueTime)) {
-      setError("כשמופעל דדליין צריך תאריך ושעה.");
+    if (hasDeadline && !dueDate) {
+      setError("כשמופעל דדליין צריך תאריך.");
       return;
     }
     setSaving(true);
     setError("");
     try {
-      const dueAt = hasDeadline
-        ? new Date(`${dueDate}T${dueTime}:00`).toISOString()
-        : null;
+      const timezone = state.profile.timezone;
+      const dueAt =
+        hasDeadline && dueDate && dueTime
+          ? isoAtLocal(
+              dueDate,
+              Number(dueTime.slice(0, 2)),
+              Number(dueTime.slice(3, 5)),
+              timezone,
+            )
+          : null;
+      const deadline =
+        hasDeadline && dueDate
+          ? dueAt
+            ? deadlineFromDueAt(dueAt, timezone)
+            : deadlineFromDate(dueDate, timezone)
+          : null;
       const userChangedCategory =
         Boolean(task) && task!.categoryId !== categoryId;
       const patch = {
@@ -96,6 +116,7 @@ export function TaskEditor({
         priority,
         recurrenceDays: days || null,
         dueAt,
+        deadline,
         notes,
         dependsOn: deps,
         steps: steps
@@ -243,12 +264,11 @@ export function TaskEditor({
               />
             </label>
             <label className="stack tight grow">
-              <span>שעה</span>
+              <span>שעה (רשות)</span>
               <input
                 type="time"
                 value={dueTime}
                 onChange={(e) => setDueTime(e.target.value)}
-                required={hasDeadline}
               />
             </label>
           </div>

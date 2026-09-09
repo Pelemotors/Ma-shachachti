@@ -317,14 +317,22 @@ export function useChatController(
   );
 
   /**
-   * Interpret a fact that the Memory screen has already persisted. This keeps
-   * raw user knowledge durable even if AI is unavailable, while giving the same
-   * personal agent a chance to apply systemic consequences such as a Routine.
+   * Ask the personal agent to remember text. The fact is NOT pre-persisted;
+   * the agent (or an explicit manual fallback on the Memory screen) writes it.
    */
   const processMemory = useCallback(
-    async (text: string): Promise<string> => {
+    async (
+      text: string,
+      memoryContext?: {
+        requestedLifetime?: "stable" | "temporary";
+        expiresAt?: string | null;
+      },
+    ): Promise<string> => {
       const message = text.trim();
-      if (!message || mode !== "cloud") return "";
+      if (!message) return "";
+      if (mode !== "cloud") {
+        throw new Error("כדי שהסוכן יזכור צריך חיבור לחשבון.");
+      }
       if (thinking || busy || proposal || sendLock.current) return "";
 
       const idempotencyKey = crypto.randomUUID();
@@ -340,6 +348,7 @@ export function useChatController(
             idempotencyKey,
             turnId: idempotencyKey,
             surface: "memory",
+            memoryContext: memoryContext ?? null,
           }),
         });
         const data = await response.json();

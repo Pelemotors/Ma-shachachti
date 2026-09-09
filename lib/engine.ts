@@ -41,6 +41,13 @@ import {
   removeTaskFromOtherDates,
   writeDailyPlan,
 } from "./domain/planning/plans";
+import {
+  clearDayContext,
+  dayContextForDate,
+  writeDayContext,
+} from "./domain/planning/day-context";
+import { recordPlanOverlaps } from "./domain/planning/overlap";
+import { deadlineFromDueAt } from "./domain/tasks/deadline";
 
 /** Structured internal marker; the personal agent uses typed inventory.event. */
 const FORECAST_FACT_RE =
@@ -170,7 +177,16 @@ export function applyActions(
           status: "open",
           createdAt: stamp,
           updatedAt: stamp,
-          dueAt: input.dueAt ?? null,
+          dueAt:
+            input.deadline?.precision === "date"
+              ? null
+              : (input.dueAt ?? null),
+          deadline:
+            input.deadline !== undefined
+              ? input.deadline
+              : input.dueAt
+                ? deadlineFromDueAt(input.dueAt, s.profile.timezone)
+                : null,
           preferredWindow: input.preferredWindow ?? null,
           hiddenUntil: input.hiddenUntil ?? null,
           startedAt: null,
@@ -199,9 +215,18 @@ export function applyActions(
         });
         break;
       }
-      case "task.update":
-        Object.assign(task(action.id), action.patch, { updatedAt: stamp });
+      case "task.update": {
+        const current = task(action.id);
+        const nextDue = action.patch.dueAt;
+        const nextDeadline = action.patch.deadline;
+        Object.assign(current, action.patch, { updatedAt: stamp });
+        if (nextDeadline !== undefined) current.deadline = nextDeadline;
+        else if (nextDue && !current.deadline)
+          current.deadline = deadlineFromDueAt(nextDue, s.profile.timezone);
+        if (current.deadline?.precision === "date") current.dueAt = null;
+        else if (nextDue !== undefined) current.dueAt = nextDue;
         break;
+      }
       case "task.defer": {
         const t = task(action.id);
         t.hiddenUntil = nextDayStart(now, s.profile.timezone);
@@ -577,13 +602,23 @@ export function applyActions(
         break;
       }
       case "planning.set":
-        s.planning.today = action.constraint;
+        writeDayContext(s, {
+          ...action.constraint,
+          updatedAt: stamp,
+        });
         break;
       case "planning.clear":
-        s.planning.today = null;
+        clearDayContext(
+          s,
+          action.date ?? dayKey(now, s.profile.timezone),
+        );
         break;
       case "plan.set":
         writeDailyPlan(s, action.plan);
+        s.planning.overlapEvidence = recordPlanOverlaps(
+          s.planning.overlapEvidence,
+          action.plan,
+        );
         break;
       case "plan.clear":
         deleteDailyPlan(
@@ -605,6 +640,8 @@ export function applyActions(
         break;
       }
       case "schedule.set": {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(action.date))
+          throw new Error("תאריך שיבוץ לא תקין.");
         const taskId = action.taskId;
         if (!taskId) throw new Error("חסר מזהה משימה לשיבוץ.");
         task(taskId);
@@ -612,7 +649,7 @@ export function applyActions(
         const plan =
           existing ??
           createEmptyDailyPlan(action.date, stamp, {
-            effort: s.planning.today?.effort ?? 2,
+            effort: dayContextForDate(s, action.date)?.effort ?? 2,
             availableMinutes: 120,
           });
         ensurePlanningPlans(s)[action.date] = plan;
@@ -630,6 +667,8 @@ export function applyActions(
           };
           plan.items.push(item);
         }
+        if (action.order !== undefined) item.order = action.order;
+        if (action.locked !== undefined) item.locked = action.locked;
         if (action.plannedStart) {
           item.plannedStart = action.plannedStart;
           item.plannedEnd = action.plannedEnd ?? null;
@@ -646,10 +685,50 @@ export function applyActions(
         item.planStatus = "planned";
         plan.updatedAt = stamp;
         writeDailyPlan(s, plan);
+        s.planning.overlapEvidence = recordPlanOverlaps(
+          s.planning.overlapEvidence,
+          plan,
+        );
         break;
       }
       case "schedule.remove":
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(action.date))
+          throw new Error("תאריך שיבוץ לא תקין.");
         removeTaskFromDate(s, action.taskId, action.date, stamp);
+        break;
+      case "schedule.replaceDay": {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(action.date))
+          throw new Error("תאריך שיבוץ לא תקין.");
+        const existing = planForDate(s, action.date);
+        const plan =
+          existing ??
+          createEmptyDailyPlan(action.date, stamp, {
+            effort: dayContextForDate(s, action.date)?.effort ?? 2,
+          });
+        plan.items = action.items.map((item, index) => ({
+          ...item,
+          order: item.order ?? index,
+          plannedStart: item.plannedStart ?? null,
+          plannedEnd: item.plannedEnd ?? null,
+        }));
+        plan.updatedAt = stamp;
+        writeDailyPlan(s, plan);
+        s.planning.overlapEvidence = recordPlanOverlaps(
+          s.planning.overlapEvidence,
+          plan,
+        );
+        break;
+      }
+      case "memory.compact":
+        s.compactedMemory = {
+          ...s.compactedMemory,
+          facts: action.facts,
+          preferences: action.preferences,
+          patterns: action.patterns,
+          updatedAt: stamp,
+          compactedThroughMessageId: action.compactedThroughMessageId,
+          compactedThroughCreatedAt: action.compactedThroughCreatedAt,
+        };
         break;
       case "profile.update":
         Object.assign(s.profile, action.patch);
@@ -1005,10 +1084,7 @@ export function opportunities(
 
 type BusyWindow = { start: number; end: number };
 function planConstraint(s: AppState, now: Date) {
-  const constraint = s.planning.today;
-  if (!constraint || constraint.date !== dayKey(now, s.profile.timezone))
-    return null;
-  return constraint;
+  return dayContextForDate(s, dayKey(now, s.profile.timezone));
 }
 function minuteOffset(iso: string, now: Date) {
   return msUntil(iso, now) / 60000;
@@ -1140,8 +1216,8 @@ export function buildDailyPlanSession(
     items: computed.selected.map((row, order) => ({
       taskId: row.task.id,
       order,
-      plannedStart: new Date(now.getTime() + row.start * 60000).toISOString(),
-      plannedEnd: new Date(now.getTime() + row.end * 60000).toISOString(),
+      plannedStart: null,
+      plannedEnd: null,
       locked: row.task.status === "in_progress",
       planStatus:
         row.task.status === "in_progress"
@@ -1229,8 +1305,8 @@ export function replanDailyPlan(
     .map((row, idx) => ({
       taskId: row.task.id,
       order: preserved.length + idx,
-      plannedStart: new Date(now.getTime() + row.start * 60000).toISOString(),
-      plannedEnd: new Date(now.getTime() + row.end * 60000).toISOString(),
+      plannedStart: null,
+      plannedEnd: null,
       locked: false,
       planStatus: "planned" as const,
     }));
@@ -1308,6 +1384,37 @@ export function freeTimeV2(
     })
     .slice(0, 4);
 
+  return { closeFirst, outsidePlan };
+}
+
+/** Duration/effort/plan membership only — no importance ranking. */
+export function freeTimeMechanical(
+  s: AppState,
+  minutes: number,
+  effort: number,
+  now = new Date(),
+) {
+  const plan = activeDailyPlan(s, now);
+  const plannedIds = new Set(plan?.items.map((i) => i.taskId) ?? []);
+  const fits = (t: Task) =>
+    visible(t, now) &&
+    t.status === "open" &&
+    !blocked(t, s) &&
+    t.effort <= effort &&
+    estimatedMinutes(t, s) + t.waitMinutes <= minutes &&
+    (!t.hiddenUntil || new Date(t.hiddenUntil) <= now);
+  const closeFirst = s.tasks
+    .filter(
+      (t) =>
+        fits(t) &&
+        (plannedIds.has(t.id) ||
+          Boolean(t.dueAt && Date.parse(t.dueAt) <= now.getTime() + 86400000)),
+    )
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const closeIds = new Set(closeFirst.map((t) => t.id));
+  const outsidePlan = s.tasks
+    .filter((t) => fits(t) && !plannedIds.has(t.id) && !closeIds.has(t.id))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   return { closeFirst, outsidePlan };
 }
 

@@ -1,6 +1,8 @@
 import type { AppState, Task } from "../../model";
+import { dayKey } from "../../time";
 import { isActiveVisibleTask } from "../tasks/visibility";
 import { isLifeAdminTask } from "../notifications/life-admin";
+import { planForDate } from "../planning/plans";
 import {
   buildSharedDecisionContext,
   sharedRank,
@@ -73,7 +75,25 @@ export type ForgottenItem = {
   source: "task" | "reminder";
 };
 
-/** Independent of DailyPlan — “מה שכחתי?” */
+/** Visible open tasks that are not on today's stored plan. No ranking. */
+export function listUnscheduledOpenTasks(
+  state: AppState,
+  now: Date = new Date(),
+): Task[] {
+  const planned = new Set(
+    planForDate(state, dayKey(now, state.profile.timezone))?.items.map(
+      (item) => item.taskId,
+    ) ?? [],
+  );
+  return state.tasks.filter(
+    (task) =>
+      task.kind === "task" &&
+      isActiveVisibleTask(task, now) &&
+      !planned.has(task.id),
+  );
+}
+
+/** Ranked helper kept for tests/mechanics. Production Focus uses listUnscheduledOpenTasks. */
 export function getForgottenCandidates(
   state: AppState,
   now: Date = new Date(),

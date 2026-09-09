@@ -117,50 +117,6 @@ export function KitView(props: {
           </button>
         </section>
       )}
-      {listOpenSuggestions(props.state, props.clock, 20)
-        .filter((s) => s.source === "calendar")
-        .map((s) => (
-          <article className="suggestion" key={s.suggestionKey}>
-            <span className="tag">רעיון לפי התקופה בשנה</span>
-            <h3>{s.title}</h3>
-            <button
-              className="text-button"
-              onClick={() => {
-                void (async () => {
-                  await props.act({
-                    type: "task.create",
-                    task: {
-                      title: s.title,
-                      kind: "idea",
-                      categoryId: "children_daily",
-                    },
-                  });
-                  await props.act({
-                    type: "suggestion.record",
-                    suggestionKey: s.suggestionKey,
-                    source: "calendar",
-                    outcome: "selected",
-                  });
-                })();
-              }}
-            >
-              לשמור כאפשרות
-            </button>
-            <button
-              className="text-button"
-              onClick={() =>
-                void props.act({
-                  type: "suggestion.record",
-                  suggestionKey: s.suggestionKey,
-                  source: "calendar",
-                  outcome: "declined",
-                })
-              }
-            >
-              לא רלוונטי
-            </button>
-          </article>
-        ))}
       <p className="intro">אלה הצעות בלבד. נבחר מה שמתאים, והשאר יכול לחכות.</p>
       <select
         aria-label="תחום הצעות"

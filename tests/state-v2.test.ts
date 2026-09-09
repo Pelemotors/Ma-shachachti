@@ -193,5 +193,9 @@ test("StateSchema dual-read accepts missing planning", () => {
   (legacy as { schemaVersion: number }).schemaVersion = 1;
   const parsed = StateSchema.parse(legacy);
   assert.equal(parsed.schemaVersion, 2);
-  assert.deepEqual(parsed.planning, { today: null, plans: {} });
+  assert.deepEqual(parsed.planning, {
+    plans: {},
+    dayContexts: {},
+    overlapEvidence: [],
+  });
 });

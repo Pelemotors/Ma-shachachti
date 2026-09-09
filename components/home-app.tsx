@@ -37,6 +37,8 @@ import type { AppView } from "./view-header";
 import {
   FORECAST_USER_INTENT,
 } from "@/lib/agent/forecast-intent";
+import { dayKey } from "@/lib/time";
+import { dayContextForDate } from "@/lib/domain/planning/day-context";
 
 export function HomeApp() {
   const h = useHousehold();
@@ -55,7 +57,9 @@ export function HomeApp() {
   const free = useFreeTimeController({ state, clock });
   const plan = useDailyPlanController(h, {
     clock,
-    defaultEffort: state.planning.today?.effort ?? 2,
+    defaultEffort:
+      dayContextForDate(state, dayKey(clock, state.profile.timezone))?.effort ??
+      undefined,
     run: tasks.run,
     sendLock: chat.sendLock,
     onAgentPayload: chat.persistServerProposal,

@@ -260,12 +260,12 @@ test("changedDay note reaches planning constraint used by planDay/agent context"
     ],
     now,
   );
-  assert.equal(s.planning.today?.note, "יש ילד חולה בבית");
+  assert.equal(s.planning.dayContexts[dateKey]?.note, "יש ילד חולה בבית");
   const plan = planDay(s, 120, 2, now);
   assert.ok(plan);
   const session = buildDailyPlanSession(s, 120, 1, 0, now);
   assert.equal(session.effort, 1);
-  assert.equal(s.planning.today?.note, "יש ילד חולה בבית");
+  assert.equal(s.planning.dayContexts[dateKey]?.note, "יש ילד חולה בבית");
 });
 
 test("first scan: return-to-capture preserves session id+chunks; add-missing new session", () => {

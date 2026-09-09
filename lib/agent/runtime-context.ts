@@ -278,6 +278,28 @@ export function toAgentModelInput(
       deepAccess,
       knowledge: runtime.knowledge,
       turn: (runtime.knowledge as { turn?: unknown }).turn ?? null,
+      temporalContext:
+        (runtime.knowledge as { temporalContext?: unknown }).temporalContext ??
+        null,
+      needsCompaction: Boolean(
+        (
+          runtime.knowledge as {
+            surfaceContext?: { needsCompaction?: boolean };
+          }
+        ).surfaceContext?.needsCompaction,
+      ),
+      memoryContext:
+        (
+          runtime.knowledge as {
+            surfaceContext?: { memoryContext?: unknown };
+          }
+        ).surfaceContext?.memoryContext ?? null,
+      scheduleIntent:
+        (
+          runtime.knowledge as {
+            surfaceContext?: { scheduleIntent?: unknown };
+          }
+        ).surfaceContext?.scheduleIntent ?? null,
       deferrableCandidates: runtime.deferrableCandidates,
       protectedFromDefer: runtime.protectedFromDefer,
     },

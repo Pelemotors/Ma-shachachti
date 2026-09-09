@@ -52,11 +52,7 @@ export function ScheduleItemRow(props: {
         </button>
         {props.timeLabel ? (
           <span className="schedule-row-time">{props.timeLabel}</span>
-        ) : (
-          <span className="schedule-row-time is-empty" aria-hidden="true">
-            —
-          </span>
-        )}
+        ) : null}
         <span className="task-emoji" aria-hidden="true">
           {emojiForTask(t.title, t.categoryId)}
         </span>

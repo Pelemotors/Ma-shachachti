@@ -1,20 +1,21 @@
+import type { AppState } from "@/lib/model";
+import { dayContextForDate } from "./day-context";
+
 /**
- * Product defaults for building a DailyPlan when no planning.today capacity is set.
+ * Product defaults when a date has no stored day context capacity.
  * These are documented fallbacks — not a claim that this is "the user's whole day".
  */
+
 export const DEFAULT_PLAN_AVAILABLE_MINUTES = 120;
 export const DEFAULT_PLAN_EFFORT = 2 as const;
 
 export function resolvePlanCapacity(state: {
-  planning: {
-    today: {
-      effort: number | null;
-      availableFrom: string | null;
-      availableUntil: string | null;
-    } | null;
-  };
+  planning: AppState["planning"];
+  dateKey?: string;
 }): { minutes: number; effort: 1 | 2 | 3 } {
-  const today = state.planning.today;
+  const today = state.dateKey
+    ? dayContextForDate(state as AppState, state.dateKey)
+    : null;
   let minutes = DEFAULT_PLAN_AVAILABLE_MINUTES;
   if (today?.availableFrom && today?.availableUntil) {
     const ms =
