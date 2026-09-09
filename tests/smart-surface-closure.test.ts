@@ -235,6 +235,44 @@ test("long First Scan input covers beginning and end with no silent 8000 slice",
   assert.ok(seen.some((row) => row.includes("UNIQUE_TAIL_TOKEN_OMEGA")));
 });
 
+test("First Scan can reuse typed agent actions when scanDraft is omitted", async () => {
+  const result = await analyzeFirstScanWithAgent({
+    text: "יש מטבח. כל יום לרוקן מדיח. ארנונה עד 2026-09-20.",
+    state: consentState(),
+    revision: 1,
+    modelCall: async () => ({
+      decision: decision({
+        reply: "זיהיתי משימות מהסקירה.",
+        proposal: {
+          summary: "יש משימות חדשות",
+          reason: "new_tasks",
+          proposedActions: [
+            {
+              type: "task.create",
+              task: {
+                title: "לרוקן מדיח",
+                categoryId: "kitchen_dishes",
+                recurrenceDays: 1,
+                deadline: {
+                  date: "2026-09-20",
+                  time: null,
+                  timezone: "Asia/Jerusalem",
+                  precision: "date",
+                },
+              },
+            },
+          ],
+        },
+      }),
+      model: "injected",
+      rejectedActions: [],
+    }),
+  });
+  assert.equal(result.analysis.proposedTasks[0]?.recurrenceDays, 1);
+  assert.equal(result.analysis.proposedTasks[0]?.deadline?.precision, "date");
+  assert.equal(result.analysis.proposedTasks[0]?.dueAt, null);
+});
+
 test("First Scan production path does not fall back to the heuristic parser", () => {
   const ai = readFileSync(
     join(process.cwd(), "lib/domain/first-scan/ai.ts"),
