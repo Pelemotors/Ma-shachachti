@@ -1,0 +1,32 @@
+name: Temporary personal-agent formatter
+
+on:
+  push:
+    branches:
+      - arch/personal-agent-freedom
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arch/personal-agent-freedom
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run format
+      - name: Commit formatting if needed
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "style: prettier-format personal agent branch"
+            git push origin HEAD:arch/personal-agent-freedom
+          fi
