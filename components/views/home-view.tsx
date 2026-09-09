@@ -35,7 +35,7 @@ export function HomeView(props: {
   const shown = source === "daily_plan" ? relevant : relevant.slice(0, 6);
   return (
     <>
-      <section className="greeting">
+      <section className="greeting home-hero">
         <p className="eyebrow">הבית שלך, בקצב שלך</p>
         <h1>
           {+props.greetingHour < 12
@@ -46,9 +46,9 @@ export function HomeView(props: {
           {props.state.profile.name ? `, ${props.state.profile.name}` : ""}
           <span className="greeting-dot">.</span>
         </h1>
-        <p>מה יעזור לך עכשיו?</p>
+        <p className="home-hero-subtitle">מה יעזור לך עכשיו?</p>
       </section>
-      <div className="engines">
+      <div className="engines home-actions">
         <button
           className="engine main-engine"
           onClick={() => props.onNavigate("focus")}
@@ -83,7 +83,7 @@ export function HomeView(props: {
           <ChevronLeft size={21} />
         </button>
       </div>
-      <section>
+      <section className="home-tasks">
         <div className="section-heading">
           <h2>עכשיו אצלך</h2>
           <button
