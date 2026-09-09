@@ -71,16 +71,6 @@ export const ClarificationSchema = z.object({
   unresolvedPart: z.string().max(500).nullable(),
 });
 
-/**
- * @deprecated Trait-signal dual-read only. Production path ignores these.
- */
-export const AgentPolicySignalSchema = z.object({
-  trait: z.string().max(64),
-  direction: z.enum(["increase", "decrease"]),
-  strength: z.enum(["weak", "medium", "strong"]),
-  evidence: z.enum(["explicit", "behavioral"]),
-});
-
 export const AgentProposalSchema = z.object({
   summary: z.string().min(1).max(800),
   reason: z.enum([
@@ -102,10 +92,6 @@ export const AgentDecisionSchema = z.object({
   clarification: ClarificationSchema.nullable(),
   proposal: AgentProposalSchema.nullable(),
   affectsToday: z.boolean(),
-  /**
-   * @deprecated Accepted then dropped on production path — never written to learning.
-   */
-  policySignals: z.array(AgentPolicySignalSchema).max(8).default([]),
   /** Patch only when there is genuinely open conversational state. */
   workingMemoryUpdate: AgentWorkingMemoryPatchSchema.nullable().optional(),
   /** Optional indexes into proposal.proposedActions task.create list (0-based). */
@@ -351,12 +337,6 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
     if (idxs.length) requestedTodayCreateIndexes = idxs;
   }
 
-  // DEPRECATED: trait policySignals are dual-read then discarded — never applied.
-  const policySignals: AgentDecision["policySignals"] = [];
-  if (Array.isArray(obj.policySignals) && obj.policySignals.length > 0) {
-    warnings.push("policy_signals_ignored_deprecated");
-  }
-
   let clarification: AgentDecision["clarification"] = null;
   if (obj.clarification != null) {
     const c = ClarificationSchema.safeParse(obj.clarification);
@@ -439,7 +419,6 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       clarification,
       proposal,
       affectsToday,
-      policySignals,
       workingMemoryUpdate,
       requestedTodayCreateIndexes,
     },
