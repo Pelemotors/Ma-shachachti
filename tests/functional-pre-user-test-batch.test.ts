@@ -21,7 +21,11 @@ const create = (title: string, extra = {}) =>
   ({ type: "task.create", task: { title, ...extra } }) as Action;
 
 test("durationFeedbackAskedAt: ask once, dismiss still counts, occurrence inherits", () => {
-  let s = applyActions(emptyState(), [create("כביסה", { recurrenceDays: 7 })], now);
+  let s = applyActions(
+    emptyState(),
+    [create("כביסה", { recurrenceDays: 7 })],
+    now,
+  );
   const task = s.tasks[0]!;
   assert.equal(task.durationFeedbackAskedAt, null);
   assert.equal(shouldAskWorkTime(task, s), true);
@@ -233,7 +237,11 @@ test("suggestions: handled filtered before slice; next fills slot", () => {
 });
 
 test("changedDay note reaches planning constraint used by planDay/agent context", () => {
-  let s = applyActions(emptyState(), [create("משימה חשובה", { effort: 1 })], now);
+  let s = applyActions(
+    emptyState(),
+    [create("משימה חשובה", { effort: 1 })],
+    now,
+  );
   const dateKey = "2026-09-08";
   s = applyActions(
     s,

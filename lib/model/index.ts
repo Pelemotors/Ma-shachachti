@@ -71,7 +71,8 @@ export const PendingAgentIntentValueSchema = z.object({
   createdAt: Stamp,
   expiresAt: Stamp,
 });
-export const PendingAgentIntentSchema = PendingAgentIntentValueSchema.nullable();
+export const PendingAgentIntentSchema =
+  PendingAgentIntentValueSchema.nullable();
 export type PendingAgentIntent = z.infer<typeof PendingAgentIntentSchema>;
 
 /** Open personal-agent working memory — what is open now, not which workflow. */
@@ -106,7 +107,9 @@ export const AgentWorkingMemoryPatchSchema = z.object({
   relevantEntityIds: z.array(z.string().uuid()).max(40).optional(),
   assumptions: z.array(AgentWorkingMemoryAssumptionSchema).max(12).optional(),
 });
-export type AgentWorkingMemoryPatch = z.infer<typeof AgentWorkingMemoryPatchSchema>;
+export type AgentWorkingMemoryPatch = z.infer<
+  typeof AgentWorkingMemoryPatchSchema
+>;
 
 /**
  * Typed recurring responsibility. Whether something is a routine is a semantic
@@ -320,7 +323,11 @@ export const DailyPlanSessionSchema = z.object({
   date: DateKey,
   createdAt: Stamp,
   updatedAt: Stamp,
-  availableMinutes: z.number().int().min(1).max(24 * 60),
+  availableMinutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 60),
   effort: z.number().int().min(1).max(3),
   generatedFromRevision: z.number().int().min(0),
   items: z.array(DailyPlanItemSchema).max(200),
@@ -383,8 +390,18 @@ export const CompactedMemorySchema = z.object({
   updatedAt: Stamp.nullable(),
   lifeAdminWindow: z
     .object({
-      preferredStartMinutes: z.number().int().min(0).max(24 * 60).nullable(),
-      preferredEndMinutes: z.number().int().min(0).max(24 * 60).nullable(),
+      preferredStartMinutes: z
+        .number()
+        .int()
+        .min(0)
+        .max(24 * 60)
+        .nullable(),
+      preferredEndMinutes: z
+        .number()
+        .int()
+        .min(0)
+        .max(24 * 60)
+        .nullable(),
       confidence: z.number().min(0).max(1),
       samples: z.number().int().min(0),
     })
@@ -668,7 +685,9 @@ function hydrateWorkingMemoryFromLegacy(
   if (next.routines === undefined) next.routines = [];
 
   if (next.agentWorkingMemory == null && next.pendingAgentIntent != null) {
-    const pending = PendingAgentIntentValueSchema.safeParse(next.pendingAgentIntent);
+    const pending = PendingAgentIntentValueSchema.safeParse(
+      next.pendingAgentIntent,
+    );
     if (pending.success) {
       const p = pending.data;
       const ids: string[] = [];
@@ -719,8 +738,8 @@ function hydrateWorkingMemoryFromLegacy(
       const id =
         typeof row.id === "string"
           ? row.id
-          : globalThis.crypto?.randomUUID?.() ??
-            `00000000-0000-4000-8000-${String(Math.random()).slice(2, 14).padEnd(12, "0")}`;
+          : (globalThis.crypto?.randomUUID?.() ??
+            `00000000-0000-4000-8000-${String(Math.random()).slice(2, 14).padEnd(12, "0")}`);
       const suggestionKey =
         typeof row.suggestionKey === "string"
           ? row.suggestionKey
@@ -896,23 +915,25 @@ export const RoutineCreateInputSchema = RoutineSchema.pick({
   sourceFactId: true,
   relatedMemberIds: true,
   homeAreaIds: true,
-}).partial({
-  categoryId: true,
-  detailTypeId: true,
-  timeOfDay: true,
-  atTime: true,
-  workMinutes: true,
-  effort: true,
-  priority: true,
-  notes: true,
-  sourceFactId: true,
-  relatedMemberIds: true,
-  homeAreaIds: true,
-}).extend({
-  id: z.string().uuid().optional(),
-  title: z.string().min(1).max(200),
-  schedule: RoutineScheduleSchema,
-});
+})
+  .partial({
+    categoryId: true,
+    detailTypeId: true,
+    timeOfDay: true,
+    atTime: true,
+    workMinutes: true,
+    effort: true,
+    priority: true,
+    notes: true,
+    sourceFactId: true,
+    relatedMemberIds: true,
+    homeAreaIds: true,
+  })
+  .extend({
+    id: z.string().uuid().optional(),
+    title: z.string().min(1).max(200),
+    schedule: RoutineScheduleSchema,
+  });
 
 /** @deprecated Prefer TaskCreateInputSchema — kept as alias during transition. */
 export const TaskInput = TaskCreateInputSchema;
@@ -1013,7 +1034,11 @@ export const ActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("fact.update"),
     id: z.string().uuid(),
-    patch: FactSchema.pick({ text: true, kind: true, expiresAt: true }).partial(),
+    patch: FactSchema.pick({
+      text: true,
+      kind: true,
+      expiresAt: true,
+    }).partial(),
   }),
   z.object({ type: z.literal("fact.remove"), id: z.string().uuid() }),
   z.object({
@@ -1057,7 +1082,10 @@ export const ActionSchema = z.discriminatedUnion("type", [
     taskId: z.string().uuid(),
     patch: DailyPlanItemSchema.partial(),
   }),
-  z.object({ type: z.literal("profile.update"), patch: ProfileSchema.partial() }),
+  z.object({
+    type: z.literal("profile.update"),
+    patch: ProfileSchema.partial(),
+  }),
   z.object({ type: z.literal("template.exclude"), id: z.string() }),
   z.object({ type: z.literal("template.restore"), id: z.string() }),
   z.object({
@@ -1118,7 +1146,11 @@ export const ActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("memory.lifeAdmin"),
     response: z.enum(["yes", "earlier", "later", "varies"]),
-    completedAtMinutes: z.number().int().min(0).max(24 * 60),
+    completedAtMinutes: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 60),
   }),
 ]);
 export type Action = z.infer<typeof ActionSchema>;

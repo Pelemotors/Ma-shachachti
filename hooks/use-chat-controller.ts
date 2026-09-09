@@ -26,8 +26,11 @@ export type PendingUserMessage = {
 };
 
 function apiError(data: unknown, fallback: string) {
-  const obj = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
-  const err = new Error(typeof obj.error === "string" ? obj.error : fallback) as Error & {
+  const obj =
+    data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const err = new Error(
+    typeof obj.error === "string" ? obj.error : fallback,
+  ) as Error & {
     code?: string;
     requestId?: string;
   };
@@ -262,12 +265,13 @@ export function useChatController(
         lastFailedMessage.current = message;
         setFailedTurnId(idempotencyKey);
         setSendStatus("failed");
-        setPendingUserMessage((prev) =>
-          prev ?? {
-            text: message,
-            turnId: idempotencyKey,
-            createdAt,
-          },
+        setPendingUserMessage(
+          (prev) =>
+            prev ?? {
+              text: message,
+              turnId: idempotencyKey,
+              createdAt,
+            },
         );
         sessionStorage.setItem(
           CHAT_UI_KEY,

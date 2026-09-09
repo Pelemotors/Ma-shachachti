@@ -76,8 +76,8 @@ export function filterReferentialActions(state: AppState, actions: Action[]) {
         rejected.push(action);
         continue;
       }
-      const relatedMemberIds = (action.task.relatedMemberIds ?? []).filter((id) =>
-        memberIds.has(id),
+      const relatedMemberIds = (action.task.relatedMemberIds ?? []).filter(
+        (id) => memberIds.has(id),
       );
       const relatedHomeAreaIds = (action.task.homeAreaIds ?? []).filter((id) =>
         homeAreaIds.has(id),
@@ -100,8 +100,8 @@ export function filterReferentialActions(state: AppState, actions: Action[]) {
         ...action,
         routine: {
           ...action.routine,
-          relatedMemberIds: (action.routine.relatedMemberIds ?? []).filter((id) =>
-            memberIds.has(id),
+          relatedMemberIds: (action.routine.relatedMemberIds ?? []).filter(
+            (id) => memberIds.has(id),
           ),
           homeAreaIds: (action.routine.homeAreaIds ?? []).filter((id) =>
             homeAreaIds.has(id),
@@ -155,7 +155,11 @@ export function enforceReferentialIntegrity(
   const filtered = filterReferentialActions(state, decision.explicitActions);
   let clarification = decision.clarification;
 
-  if (filtered.rejected.length > 0 && filtered.kept.length === 0 && !clarification) {
+  if (
+    filtered.rejected.length > 0 &&
+    filtered.kept.length === 0 &&
+    !clarification
+  ) {
     clarification = {
       question: "לא מצאתי את הפריט במצב הבית — אפשר לציין למה התכוונת?",
       unresolvedPart: null,

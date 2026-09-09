@@ -108,7 +108,8 @@ export const AGENT_CAPABILITY_CONTRACT = [
   },
   {
     type: "profile.update",
-    purpose: "Update safe household/profile facts explicitly stated by the user.",
+    purpose:
+      "Update safe household/profile facts explicitly stated by the user.",
     policy: "auto",
     notes: `Only safe fields are exposed: ${SAFE_AGENT_PROFILE_FIELDS.join(", ")}. Consent, device permissions, theme and protected settings are not agent capabilities.`,
   },
@@ -117,7 +118,8 @@ export const AGENT_CAPABILITY_CONTRACT = [
     purpose:
       "Maintain real household members when the user supplies or corrects them.",
     policy: "auto_or_proposal",
-    notes: "Never invent a person. Removal is destructive and requires proposal.",
+    notes:
+      "Never invent a person. Removal is destructive and requires proposal.",
   },
   {
     type: "homeArea.upsert/homeArea.remove",
@@ -152,8 +154,7 @@ export function buildAgentCapabilityContext() {
     capabilities: AGENT_CAPABILITY_CONTRACT,
     categoryField: {
       purpose: "optional task/routine storage classification",
-      rule:
-        "The executable action schema constrains valid categoryId values. Infer a category from meaning only when clear; otherwise omit it. Never ask only to classify and never use storage categories to decide what the user is allowed to mean.",
+      rule: "The executable action schema constrains valid categoryId values. Infer a category from meaning only when clear; otherwise omit it. Never ask only to classify and never use storage categories to decide what the user is allowed to mean.",
     },
   };
 }

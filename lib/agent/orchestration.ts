@@ -102,7 +102,10 @@ async function callAgent(
 
   const raw = await response.text();
   if (!response.ok) {
-    console.error("OpenAI chat upstream error", { model, status: response.status });
+    console.error("OpenAI chat upstream error", {
+      model,
+      status: response.status,
+    });
     throw upstreamError(response.status, raw);
   }
 
@@ -213,7 +216,9 @@ export async function orchestrateChatTurn(
   };
   const models = Array.from(
     new Set(
-      [process.env.OPENAI_MODEL, process.env.OPENAI_FALLBACK_MODEL].filter(Boolean),
+      [process.env.OPENAI_MODEL, process.env.OPENAI_FALLBACK_MODEL].filter(
+        Boolean,
+      ),
     ),
   ) as string[];
 

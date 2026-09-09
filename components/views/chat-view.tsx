@@ -99,7 +99,8 @@ export function ChatView(props: {
         {showPending && pending && (
           <div
             className={
-              "message user" + (failed ? " message-send-failed" : " message-pending")
+              "message user" +
+              (failed ? " message-send-failed" : " message-pending")
             }
           >
             <span className="sr-only">ההודעה שלך: </span>

@@ -284,7 +284,9 @@ export function buildAgentContext(
           availableMinutes: plan.availableMinutes,
           effort: plan.effort,
           plannedTaskIds: plan.items.map((i) => i.taskId),
-          lockedTaskIds: plan.items.filter((i) => i.locked).map((i) => i.taskId),
+          lockedTaskIds: plan.items
+            .filter((i) => i.locked)
+            .map((i) => i.taskId),
           completedPlanItems: plan.items
             .filter((i) => i.planStatus === "done")
             .map((i) => i.taskId),

@@ -349,7 +349,10 @@ export function ProfileForm({
                       }
                       onClick={() => patch({ fixedTheme: theme })}
                     >
-                      <span className="theme-season-preview" aria-hidden="true" />
+                      <span
+                        className="theme-season-preview"
+                        aria-hidden="true"
+                      />
                       <span className="theme-season-meta">
                         <span className="theme-season-emoji" aria-hidden="true">
                           {SEASON_EMOJIS[theme]}

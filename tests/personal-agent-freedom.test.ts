@@ -15,10 +15,7 @@ import {
   isRoutineDueToday,
   materializeDueRoutinesInPlace,
 } from "../lib/domain/routines";
-import {
-  isRoutineHousehold,
-  rankForgotten,
-} from "../lib/domain/forgotten";
+import { isRoutineHousehold, rankForgotten } from "../lib/domain/forgotten";
 
 const NOW = new Date("2026-09-09T07:00:00Z");
 
@@ -39,7 +36,12 @@ test("agent capability contract includes semantic task categories and excludes i
 test("profile capability strips protected settings but keeps household facts", () => {
   const normalized = normalizeLooseAgentAction({
     type: "profile.update",
-    patch: { garden: true, dishwasher: true, aiConsent: false, themeMode: "fixed" },
+    patch: {
+      garden: true,
+      dishwasher: true,
+      aiConsent: false,
+      themeMode: "fixed",
+    },
   }) as { patch: Record<string, unknown> };
   assert.equal(normalized.patch.garden, true);
   assert.equal(normalized.patch.dishwasher, true);
@@ -69,7 +71,10 @@ test("routine is first-class and materializes at most one occurrence per day", (
   );
 
   assert.equal(state.routines.length, 1);
-  assert.equal(isRoutineDueToday(state.routines[0]!, NOW, state.profile.timezone), true);
+  assert.equal(
+    isRoutineDueToday(state.routines[0]!, NOW, state.profile.timezone),
+    true,
+  );
   const first = state.tasks.filter((t) => t.routineId === routineId);
   assert.equal(first.length, 1);
   assert.ok(first[0]!.preferredWindow?.start);
@@ -114,14 +119,12 @@ test("removing a source fact pauses its routine without deleting task history", 
   );
   const occurrenceId = state.tasks.find((t) => t.routineId === routineId)!.id;
 
-  state = applyActions(
-    state,
-    [{ type: "fact.remove", id: factId }],
-    NOW,
-    true,
-  );
+  state = applyActions(state, [{ type: "fact.remove", id: factId }], NOW, true);
 
-  assert.equal(state.routines.find((r) => r.id === routineId)?.status, "paused");
+  assert.equal(
+    state.routines.find((r) => r.id === routineId)?.status,
+    "paused",
+  );
   assert.ok(state.tasks.some((t) => t.id === occurrenceId));
 });
 

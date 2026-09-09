@@ -113,9 +113,7 @@ export function RemindersView(props: {
           חשיבות ההתראה
           <select
             value={props.reminderUrgency}
-            onChange={(e) =>
-              props.onUrgency(e.target.value as ReminderUrgency)
-            }
+            onChange={(e) => props.onUrgency(e.target.value as ReminderUrgency)}
           >
             <option value="low">נמוכה — אפשר לחכות</option>
             <option value="medium">רגילה</option>

@@ -2,9 +2,7 @@
 import { Action, AppState } from "@/lib/model";
 import { categoryLabel, TASK_CATEGORIES } from "@/lib/taxonomy";
 import { catalog, templateAction } from "@/lib/catalog";
-import {
-  listOpenSuggestions,
-} from "@/lib/domain/suggestions";
+import { listOpenSuggestions } from "@/lib/domain/suggestions";
 import { ViewHeader } from "@/components/view-header";
 import { FirstScanPanel } from "@/components/views/first-scan-panel";
 
@@ -122,47 +120,47 @@ export function KitView(props: {
       {listOpenSuggestions(props.state, props.clock, 20)
         .filter((s) => s.source === "calendar")
         .map((s) => (
-        <article className="suggestion" key={s.suggestionKey}>
-          <span className="tag">רעיון לפי התקופה בשנה</span>
-          <h3>{s.title}</h3>
-          <button
-            className="text-button"
-            onClick={() => {
-              void (async () => {
-                await props.act({
-                  type: "task.create",
-                  task: {
-                    title: s.title,
-                    kind: "idea",
-                    categoryId: "children_daily",
-                  },
-                });
-                await props.act({
+          <article className="suggestion" key={s.suggestionKey}>
+            <span className="tag">רעיון לפי התקופה בשנה</span>
+            <h3>{s.title}</h3>
+            <button
+              className="text-button"
+              onClick={() => {
+                void (async () => {
+                  await props.act({
+                    type: "task.create",
+                    task: {
+                      title: s.title,
+                      kind: "idea",
+                      categoryId: "children_daily",
+                    },
+                  });
+                  await props.act({
+                    type: "suggestion.record",
+                    suggestionKey: s.suggestionKey,
+                    source: "calendar",
+                    outcome: "selected",
+                  });
+                })();
+              }}
+            >
+              לשמור כאפשרות
+            </button>
+            <button
+              className="text-button"
+              onClick={() =>
+                void props.act({
                   type: "suggestion.record",
                   suggestionKey: s.suggestionKey,
                   source: "calendar",
-                  outcome: "selected",
-                });
-              })();
-            }}
-          >
-            לשמור כאפשרות
-          </button>
-          <button
-            className="text-button"
-            onClick={() =>
-              void props.act({
-                type: "suggestion.record",
-                suggestionKey: s.suggestionKey,
-                source: "calendar",
-                outcome: "declined",
-              })
-            }
-          >
-            לא רלוונטי
-          </button>
-        </article>
-      ))}
+                  outcome: "declined",
+                })
+              }
+            >
+              לא רלוונטי
+            </button>
+          </article>
+        ))}
       <p className="intro">אלה הצעות בלבד. נבחר מה שמתאים, והשאר יכול לחכות.</p>
       <select
         aria-label="תחום הצעות"
