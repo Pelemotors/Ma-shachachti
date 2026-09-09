@@ -1,3 +1,4 @@
+export * from "./agent-guide";
 export * from "./tasks";
 export * from "./planning";
 export * from "./free-time";

@@ -525,6 +525,33 @@ export const StateV2Schema = z.object({
   /** @deprecated Dual-read only — prefer agentWorkingMemory. */
   pendingAgentIntent: PendingAgentIntentSchema.default(null),
   agentWorkingMemory: AgentWorkingMemorySchema.nullable().default(null),
+  /**
+   * Opaque Personal Agent Guide document. Code stores/reads only — never
+   * interprets personality meaning. null = guide does not exist yet.
+   */
+  personalAgentGuide: z
+    .object({
+      text: z.string().max(50_000),
+      revision: z.number().int().nonnegative(),
+      createdAt: Stamp.nullable(),
+      updatedAt: Stamp.nullable(),
+    })
+    .nullable()
+    .default(null),
+  /** In-state audit trail (capped). Durable table may mirror successful writes. */
+  personalAgentGuideHistory: z
+    .array(
+      z.object({
+        revision: z.number().int().positive(),
+        previousRevision: z.number().int().nonnegative(),
+        text: z.string().max(50_000),
+        sourceTurnId: z.string().uuid().nullable(),
+        proposalId: z.string().uuid().nullable(),
+        createdAt: Stamp,
+      }),
+    )
+    .max(40)
+    .default([]),
 });
 
 export type AppState = z.infer<typeof StateV2Schema>;
@@ -675,6 +702,8 @@ export function migrateV1ToV2(v1: StateV1): AppState {
     firstScan: { status: "not_started", completedAt: null, session: null },
     pendingAgentIntent: null,
     agentWorkingMemory: null,
+    personalAgentGuide: null,
+    personalAgentGuideHistory: [],
   };
 }
 
@@ -683,6 +712,9 @@ function hydrateWorkingMemoryFromLegacy(
 ): Record<string, unknown> {
   const next = { ...obj };
   if (next.routines === undefined) next.routines = [];
+  if (next.personalAgentGuide === undefined) next.personalAgentGuide = null;
+  if (next.personalAgentGuideHistory === undefined)
+    next.personalAgentGuideHistory = [];
 
   if (next.agentWorkingMemory == null && next.pendingAgentIntent != null) {
     const pending = PendingAgentIntentValueSchema.safeParse(
@@ -860,6 +892,8 @@ export function emptyState(): AppState {
     firstScan: { status: "not_started", completedAt: null, session: null },
     pendingAgentIntent: null,
     agentWorkingMemory: null,
+    personalAgentGuide: null,
+    personalAgentGuideHistory: [],
   };
 }
 
@@ -1105,6 +1139,13 @@ export const ActionSchema = z.discriminatedUnion("type", [
     patch: AgentWorkingMemoryPatchSchema,
   }),
   z.object({ type: z.literal("workingMemory.clear") }),
+  z.object({
+    type: z.literal("agentGuide.update"),
+    expectedRevision: z.number().int().nonnegative(),
+    text: z.string().min(1).max(50_000),
+    sourceTurnId: z.string().uuid().nullable().optional(),
+    proposalId: z.string().uuid().nullable().optional(),
+  }),
   z.object({
     type: z.literal("member.upsert"),
     member: HouseholdMemberSchema.partial({

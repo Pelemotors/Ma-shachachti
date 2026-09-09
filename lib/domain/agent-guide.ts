@@ -1,0 +1,176 @@
+/**
+ * Personal Agent Guide — opaque per-user document.
+ * Domain validates ownership/revision/size only; never interprets text meaning.
+ */
+import type { AppState } from "@/lib/model";
+
+/** Technical max size for guide text (UTF-16 code units ≈ Zod string max). */
+export const PERSONAL_AGENT_GUIDE_MAX_CHARS = 50_000;
+
+export const PERSONAL_AGENT_GUIDE_HISTORY_MAX = 40;
+
+export type PersonalAgentGuideDoc = {
+  text: string;
+  revision: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type PersonalAgentGuideRevisionEntry = {
+  revision: number;
+  previousRevision: number;
+  text: string;
+  sourceTurnId: string | null;
+  proposalId: string | null;
+  createdAt: string;
+};
+
+export type RuntimePersonalAgentGuide = {
+  exists: boolean;
+  text: string;
+  revision: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export function emptyRuntimePersonalAgentGuide(): RuntimePersonalAgentGuide {
+  return {
+    exists: false,
+    text: "",
+    revision: 0,
+    createdAt: null,
+    updatedAt: null,
+  };
+}
+
+export function toRuntimePersonalAgentGuide(
+  state: AppState,
+): RuntimePersonalAgentGuide {
+  const g = state.personalAgentGuide;
+  if (!g) return emptyRuntimePersonalAgentGuide();
+  return {
+    exists: true,
+    text: g.text,
+    revision: g.revision,
+    createdAt: g.createdAt,
+    updatedAt: g.updatedAt,
+  };
+}
+
+export function guideRevisionFingerprint(state: AppState): string {
+  const g = state.personalAgentGuide;
+  if (!g) return "0:missing";
+  return `${g.revision}:${g.updatedAt ?? ""}:${g.text.length}`;
+}
+
+export type ApplyAgentGuideUpdateInput = {
+  expectedRevision: number;
+  text: string;
+  sourceTurnId?: string | null;
+  proposalId?: string | null;
+  now?: Date;
+};
+
+export type ApplyAgentGuideUpdateResult =
+  | { ok: true; state: AppState; revisionEntry: PersonalAgentGuideRevisionEntry }
+  | {
+      ok: false;
+      code:
+        | "guide_empty"
+        | "guide_too_large"
+        | "guide_revision_conflict"
+        | "guide_invalid_revision";
+      message: string;
+    };
+
+/**
+ * Pure domain apply for agentGuide.update.
+ * Does not interpret guide text. Caller must only invoke after Approval.
+ */
+export function applyAgentGuideUpdate(
+  state: AppState,
+  input: ApplyAgentGuideUpdateInput,
+): ApplyAgentGuideUpdateResult {
+  const text = typeof input.text === "string" ? input.text.trim() : "";
+  if (!text)
+    return {
+      ok: false,
+      code: "guide_empty",
+      message: "מדריך הסוכן לא יכול להיות ריק.",
+    };
+  if (text.length > PERSONAL_AGENT_GUIDE_MAX_CHARS)
+    return {
+      ok: false,
+      code: "guide_too_large",
+      message: "מדריך הסוכן גדול מדי.",
+    };
+
+  if (
+    !Number.isInteger(input.expectedRevision) ||
+    input.expectedRevision < 0
+  ) {
+    return {
+      ok: false,
+      code: "guide_invalid_revision",
+      message: "מספר גרסה לא תקין.",
+    };
+  }
+
+  const current = state.personalAgentGuide;
+  const currentRevision = current?.revision ?? 0;
+  if (input.expectedRevision !== currentRevision) {
+    return {
+      ok: false,
+      code: "guide_revision_conflict",
+      message: "מדריך הסוכן השתנה. רעננו לפני שמירה.",
+    };
+  }
+
+  const now = (input.now ?? new Date()).toISOString();
+  const nextRevision = currentRevision + 1;
+  const previousRevision = currentRevision;
+  const createdAt = current?.createdAt ?? now;
+
+  const revisionEntry: PersonalAgentGuideRevisionEntry = {
+    revision: nextRevision,
+    previousRevision,
+    text,
+    sourceTurnId: input.sourceTurnId ?? null,
+    proposalId: input.proposalId ?? null,
+    createdAt: now,
+  };
+
+  const history = [
+    revisionEntry,
+    ...(state.personalAgentGuideHistory ?? []),
+  ].slice(0, PERSONAL_AGENT_GUIDE_HISTORY_MAX);
+
+  const nextGuide: PersonalAgentGuideDoc = {
+    text,
+    revision: nextRevision,
+    createdAt,
+    updatedAt: now,
+  };
+
+  return {
+    ok: true,
+    state: {
+      ...state,
+      personalAgentGuide: nextGuide,
+      personalAgentGuideHistory: history,
+    },
+    revisionEntry,
+  };
+}
+
+/** Legacy learning keys written by the old trait policy system. */
+export const LEGACY_AGENT_POLICY_KEY_PREFIX = "agent_policy:";
+
+export function listLegacyAgentPolicyLearning(state: AppState) {
+  return state.learning.filter(
+    (x) =>
+      x.kind === "correction" &&
+      typeof x.key === "string" &&
+      x.key.startsWith(LEGACY_AGENT_POLICY_KEY_PREFIX),
+  );
+}

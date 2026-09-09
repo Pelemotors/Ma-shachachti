@@ -24,6 +24,7 @@ import {
 } from "./domain/notifications/life-admin";
 import { applyWorkingMemoryPatch } from "./domain/working-memory";
 import { materializeDueRoutinesInPlace } from "./domain/routines";
+import { applyAgentGuideUpdate } from "./domain/agent-guide";
 
 /** Structured internal marker; the personal agent uses typed inventory.event. */
 const FORECAST_FACT_RE =
@@ -41,6 +42,7 @@ export function requiresConfirmation(actions: Action[]) {
           "member.remove",
           "homeArea.remove",
           "routine.remove",
+          "agentGuide.update",
         ].includes(a.type) ||
         (a.type === "task.status" && a.status === "cancelled") ||
         (a.type === "profile.update" &&
@@ -632,6 +634,23 @@ export function applyActions(
       case "workingMemory.clear":
         s.agentWorkingMemory = null;
         break;
+      case "agentGuide.update": {
+        const result = applyAgentGuideUpdate(s, {
+          expectedRevision: action.expectedRevision,
+          text: action.text,
+          sourceTurnId: action.sourceTurnId ?? null,
+          proposalId: action.proposalId ?? null,
+          now,
+        });
+        if (!result.ok) {
+          throw new Error(result.message);
+        }
+        Object.assign(s, {
+          personalAgentGuide: result.state.personalAgentGuide,
+          personalAgentGuideHistory: result.state.personalAgentGuideHistory,
+        });
+        break;
+      }
       case "homeArea.upsert": {
         const incoming = action.area;
         const id = incoming.id ?? crypto.randomUUID();
