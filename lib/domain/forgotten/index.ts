@@ -1,5 +1,4 @@
 import type { AppState, Task } from "../../model";
-import type { CategoryId } from "../../taxonomy";
 import { isActiveVisibleTask } from "../tasks/visibility";
 import { isLifeAdminTask } from "../notifications/life-admin";
 import {
@@ -9,17 +8,9 @@ import {
   type SharedDecisionTaskView,
 } from "../decision-context";
 
-const ROUTINE: CategoryId[] = [
-  "kitchen_dishes",
-  "laundry",
-  "floors",
-  "bathroom_toilets",
-  "cleaning_reset",
-  "living_spaces",
-];
-
+/** A routine task is routine because it was materialized from a Routine entity. */
 export function isRoutineHousehold(task: Task): boolean {
-  return ROUTINE.includes(task.categoryId);
+  return Boolean(task.routineId);
 }
 
 export function isRoutineException(
@@ -27,18 +18,14 @@ export function isRoutineException(
   state: AppState,
   now: Date,
 ): boolean {
+  if (!task.routineId) return false;
   if (task.priority >= 3) return true;
   if (task.dueAt) {
     const hours = (Date.parse(task.dueAt) - now.getTime()) / 3600000;
-    // Only near/overdue deadlines elevate routine into WhatForgot.
+    // Only near/overdue exact timing elevates a routine into WhatForgot.
     if (Number.isFinite(hours) && hours < 48) return true;
   }
-  if (
-    task.categoryId === "laundry" &&
-    task.waitMinutes > 0 &&
-    task.status === "in_progress"
-  )
-    return true;
+  if (task.waitMinutes > 0 && task.status === "in_progress") return true;
   const dependsOnWaiting = task.dependsOn.some((id) => {
     const d = state.tasks.find((x) => x.id === id);
     return (
@@ -49,8 +36,7 @@ export function isRoutineException(
       Date.parse(d.completedAt) + d.waitMinutes * 60000 <= now.getTime()
     );
   });
-  if (dependsOnWaiting && isRoutineHousehold(task)) return true;
-  return false;
+  return Boolean(dependsOnWaiting);
 }
 
 function eligibleForgotten(
@@ -61,7 +47,6 @@ function eligibleForgotten(
   const t = view.task;
   if (!isActiveVisibleTask(t, now)) return false;
   if (t.kind !== "task") return false;
-  // Not-today / hiddenUntil already excluded via isActiveVisibleTask.
   if (isLifeAdminTask(t)) return true;
   if (isRoutineHousehold(t)) return isRoutineException(t, state, now);
   return true;
@@ -72,13 +57,11 @@ function forgottenScore(
   ctx: SharedDecisionContext,
 ): number {
   let n = sharedRank(view);
-  // Old != urgent: age contributes softly and is capped.
   n += Math.min(45, view.ageHours * 0.18);
   if (view.hoursUntilDue != null && view.hoursUntilDue < 6) n += 80;
   if (view.feasibility < 20) n -= 35;
   if (ctx.temporaryFacts.length && view.lifeAdmin) n += 15;
   if (ctx.reminders.some((r) => r.taskId === view.task.id)) n += 60;
-  // Uncertainty → prefer check-in style (unknown status).
   if (view.task.status === "unknown") n += 25;
   return n;
 }
@@ -140,8 +123,6 @@ export function rankForgotten(
     });
   }
 
-  // No overload: hard cap at limit (default 5–6).
-  // Forecasts are check-ins (labeled), not facts — soft score into the ranked list.
   for (const f of ctx.actionableForecasts) {
     const proxy = state.tasks.find(
       (t) =>
