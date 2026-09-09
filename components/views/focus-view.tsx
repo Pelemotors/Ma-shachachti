@@ -2,7 +2,6 @@ import { Bell } from "lucide-react";
 import { Action, AppState, Task } from "@/lib/model";
 import { followUps } from "@/lib/engine";
 import { getForgottenCandidates } from "@/lib/domain/forgotten";
-import { buildSharedDecisionContext } from "@/lib/domain/decision-context";
 import { ViewHeader } from "@/components/view-header";
 import { TaskCard } from "@/components/task-card";
 import { Empty } from "@/components/empty-state";
@@ -19,10 +18,6 @@ export function FocusView(props: {
 }) {
   const relevant = getForgottenCandidates(props.state, props.clock);
   const followup = followUps(props.state, props.clock);
-  const forecasts = buildSharedDecisionContext(
-    props.state,
-    props.clock,
-  ).actionableForecasts;
   return (
     <>
       <ViewHeader view="focus" />
@@ -39,17 +34,6 @@ export function FocusView(props: {
           </div>
         </div>
       )}
-      {forecasts.map((f) => (
-        <div className="callout" key={f.id}>
-          <Bell size={20} />
-          <div>
-            <strong>תחזית לבדיקה</strong>
-            <p>
-              ייתכן שכדאי לבדוק מלאי של {f.subject} בקרוב — זו תחזית, לא עובדה.
-            </p>
-          </div>
-        </div>
-      ))}
       <div className="task-list">
         {relevant.map((t) => (
           <TaskCard
@@ -69,7 +53,7 @@ export function FocusView(props: {
           />
         ))}
       </div>
-      {!relevant.length && !forecasts.length && (
+      {!relevant.length && (
         <Empty text="אין כרגע משהו נוסף שדורש את תשומת הלב שלך." />
       )}
       {props.state.reminders

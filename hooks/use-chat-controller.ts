@@ -158,22 +158,9 @@ export function useChatController(
           sessionStorage.removeItem(CHAT_UI_KEY);
           setSendStatus("idle");
 
-          const proposed =
-            data.proposal?.proposedActions ??
-            data.explicitActions?.filter?.(
-              (a: Action) => a.type === "task.create",
-            ) ??
-            [];
-          const { auto, proposal: needConfirm } = partitionActionsByPolicy([
-            ...(data.explicitActions ?? []),
-            ...proposed,
-          ]);
-          void auto;
-          if (needConfirm.length || proposed.length) {
-            const actions = (
-              needConfirm.length ? needConfirm : proposed
-            ) as Action[];
-            persistProposal(actions, {
+          const proposed = data.proposal?.proposedActions ?? [];
+          if (proposed.length) {
+            persistProposal(proposed as Action[], {
               proposalId: data.proposalId ?? null,
               summary: data.proposal?.summary,
               similarHints: data.similarHints,
@@ -219,6 +206,7 @@ export function useChatController(
           );
           const { auto, proposal: needConfirm } = partitionActionsByPolicy(
             answer.actions,
+            { initiative: "user_requested" },
           );
           void auto;
           if (needConfirm.length || chatActionsNeedProposal(answer.actions)) {

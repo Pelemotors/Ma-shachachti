@@ -5,6 +5,8 @@ import {
   agentDecisionJsonSchema,
   parseAgentDecisionText,
   partitionActionsByPolicy,
+  resolveAgentInitiative,
+  isLastingMutation,
 } from "@/lib/agent/schema";
 import { filterRunnableActions } from "@/lib/agent/action-validation";
 import { enforceReferentialIntegrity } from "@/lib/agent/referential-integrity";
@@ -301,6 +303,9 @@ export async function orchestrateChatTurn(
   // task.create + dependent reminder/update into an invalid half-executed turn.
   const { auto, proposal: policyProposal } = partitionActionsByPolicy(
     decision.explicitActions,
+    {
+      initiative: resolveAgentInitiative(decision.initiative, input.message),
+    },
   );
   const fromModel = decision.proposal?.proposedActions ?? [];
   const allProposal = [...policyProposal, ...fromModel]
@@ -314,6 +319,7 @@ export async function orchestrateChatTurn(
       arr.findIndex((x) => JSON.stringify(x) === JSON.stringify(a)) === i,
   );
 
+  const inferredLasting = policyProposal.some(isLastingMutation);
   const proposal =
     allProposal.length === 0
       ? null
@@ -321,7 +327,13 @@ export async function orchestrateChatTurn(
           summary: buildGroundedProposalSummary(allProposal),
           reason: (allProposal.some((a) => a.type === "task.create")
             ? "new_tasks"
-            : (decision.proposal?.reason ?? "other")) as NonNullable<
+            : inferredLasting &&
+                allProposal.some(
+                  (a) =>
+                    a.type === "shopping.add" || a.type === "reminder.add",
+                )
+              ? "shopping_derived"
+              : (decision.proposal?.reason ?? "other")) as NonNullable<
             AgentDecision["proposal"]
           >["reason"],
           proposedActions: allProposal,

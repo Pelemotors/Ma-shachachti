@@ -3,11 +3,7 @@ import { activeFacts, blocked, estimatedMinutes } from "../engine";
 import { isActiveVisibleTask } from "./tasks/visibility";
 import { isLifeAdminTask } from "./notifications/life-admin";
 import { isStampPast, msUntil, stampMs } from "../time";
-import {
-  activeForecasts,
-  forecastActionableNow,
-  type ForecastModel,
-} from "./forecast";
+import type { ForecastModel } from "./forecast";
 import { learnedDurationMinutes } from "./learning/pace";
 
 /**
@@ -130,9 +126,8 @@ export function buildSharedDecisionContext(
     availableMinutes,
     effort,
     shoppingOpen: state.shopping.filter((s) => !s.purchasedAt),
-    actionableForecasts: activeForecasts(state).filter((f) =>
-      forecastActionableNow(f, now),
-    ),
+    // OLD_FORECAST_REASONING_PATH = DISCONNECTED — LLM decides what to suggest.
+    actionableForecasts: [] as ForecastModel[],
   };
 }
 

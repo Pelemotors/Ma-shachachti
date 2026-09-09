@@ -3,7 +3,6 @@
  * Never mutates. Never interprets natural language.
  */
 import type { AppState } from "@/lib/model";
-import { activeFacts } from "@/lib/engine";
 import {
   recentCompletedTasks,
   shoppingFactualEvents,
@@ -173,21 +172,25 @@ export function executeDeepAccess(
         };
       }
       case "state.get_forecast_evidence": {
-        const now = opts?.now ?? new Date();
         return {
           tool: req.tool,
           ok: true,
           fromCoreHint: false,
           data: {
-            learning: state.learning.slice(-limit),
-            activeFacts: activeFacts(state, now)
+            recorded: state.learning
+              .filter((row) => row.kind === "forecast")
               .slice(-limit)
-              .map((f) => ({
-                id: f.id,
-                text: f.text,
-                kind: f.kind,
-                source: f.source,
+              .map((row) => ({
+                id: row.id,
+                key: row.key,
+                events: Array.isArray(row.payload.events)
+                  ? row.payload.events
+                  : [],
+                subject: row.payload.subject ?? null,
+                lastObservedAt: row.lastObservedAt,
               })),
+            purchased: shoppingPurchaseHistory(state, limit),
+            shoppingEvents: shoppingFactualEvents(state, limit),
           },
         };
       }

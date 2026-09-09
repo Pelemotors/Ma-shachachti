@@ -123,33 +123,7 @@ export function rankForgotten(
     });
   }
 
-  for (const f of ctx.actionableForecasts) {
-    const proxy = state.tasks.find(
-      (t) =>
-        t.status === "open" &&
-        normalizeLoose(t.title).includes(normalizeLoose(f.subject)),
-    );
-    if (proxy && items.some((i) => i.task.id === proxy.id)) {
-      const hit = items.find((i) => i.task.id === proxy.id)!;
-      hit.score += 40 + f.confidence * 50;
-      if (!hit.reasons.includes("forecast")) hit.reasons.push("forecast");
-      continue;
-    }
-    if (proxy) {
-      items.push({
-        task: proxy,
-        score: 120 + f.confidence * 80,
-        reasons: ["forecast", "check_in"],
-        source: "task",
-      });
-    }
-  }
-
   return items.sort((a, b) => b.score - a.score).slice(0, limit);
-}
-
-function normalizeLoose(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 export function whatForgotNow(state: AppState, now: Date = new Date()): Task[] {

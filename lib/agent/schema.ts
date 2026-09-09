@@ -10,6 +10,7 @@ import {
   AGENT_CAPABILITY_TYPES,
   SAFE_AGENT_PROFILE_FIELDS,
 } from "./capabilities";
+import { FORECAST_USER_INTENT } from "./forecast-intent";
 
 const INTERNAL_AGENT_ACTION_TYPES = new Set([
   "history.clear",
@@ -92,6 +93,13 @@ export const AgentDecisionSchema = z.object({
   clarification: ClarificationSchema.nullable(),
   proposal: AgentProposalSchema.nullable(),
   affectsToday: z.boolean(),
+  /**
+   * Grounding of lasting mutations in this turn.
+   * agent_inferred = inferred need/forecast; code forces Proposal before persist.
+   * user_requested = explicit user instruction; regular capability policy applies.
+   * Parser fail-closes to agent_inferred when omitted.
+   */
+  initiative: z.enum(["user_requested", "agent_inferred"]).optional(),
   /** Patch only when there is genuinely open conversational state. */
   workingMemoryUpdate: AgentWorkingMemoryPatchSchema.nullable().optional(),
   /** Optional indexes into proposal.proposedActions task.create list (0-based). */
@@ -262,6 +270,30 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
   return a;
 }
 
+export type AgentInitiative = "user_requested" | "agent_inferred";
+
+const EPHEMERAL_AGENT_ACTION_TYPES = new Set([
+  "message.add",
+  "workingMemory.patch",
+  "workingMemory.clear",
+  "operation.record",
+  "durationFeedback.markAsked",
+]);
+
+export function isLastingMutation(action: Action): boolean {
+  return !EPHEMERAL_AGENT_ACTION_TYPES.has(action.type);
+}
+
+/** Fail closed: omitted initiative is treated as agent-inferred. */
+export function resolveAgentInitiative(
+  raw: unknown,
+  message?: string,
+): AgentInitiative {
+  if (typeof message === "string" && message.trim() === FORECAST_USER_INTENT)
+    return "agent_inferred";
+  return raw === "user_requested" ? "user_requested" : "agent_inferred";
+}
+
 export function classifyActionPolicy(
   action: Action,
   opts: { userExplicitBulk?: boolean } = {},
@@ -301,10 +333,18 @@ export function chatActionsNeedProposal(actions: Action[]): boolean {
   return actions.some((a) => classifyActionPolicy(a) === "proposal");
 }
 
-export function partitionActionsByPolicy(actions: Action[]) {
+export function partitionActionsByPolicy(
+  actions: Action[],
+  opts: { initiative?: AgentInitiative } = {},
+) {
+  const inferred = opts.initiative !== "user_requested";
   const auto: Action[] = [];
   const proposal: Action[] = [];
   for (const action of actions) {
+    if (inferred && isLastingMutation(action)) {
+      proposal.push(action);
+      continue;
+    }
     const bucket = classifyActionPolicy(action);
     if (bucket === "auto") auto.push(action);
     else if (bucket === "proposal") proposal.push(action);
@@ -423,6 +463,8 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
     }
   }
 
+  const initiative = resolveAgentInitiative(obj.initiative);
+
   return {
     decision: {
       reply,
@@ -430,6 +472,7 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       clarification,
       proposal,
       affectsToday,
+      initiative,
       workingMemoryUpdate,
       requestedTodayCreateIndexes,
     },
@@ -701,6 +744,10 @@ export function agentDecisionJsonSchema() {
     additionalProperties: true,
     properties: {
       reply: { type: "string" },
+      initiative: {
+        type: "string",
+        enum: ["user_requested", "agent_inferred"],
+      },
       explicitActions: { type: "array", maxItems: 20, items: action },
       clarification: {
         anyOf: [
@@ -792,6 +839,7 @@ export function agentDecisionJsonSchema() {
     },
     required: [
       "reply",
+      "initiative",
       "explicitActions",
       "clarification",
       "proposal",

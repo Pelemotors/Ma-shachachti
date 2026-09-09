@@ -217,15 +217,31 @@ export function buildAgentContext(
     source: a.source,
   }));
 
-  const learning = state.learning.slice(-30).map((l) => ({
-    id: l.id,
-    kind: l.kind,
-    key: l.key,
-    payload: l.payload,
-    confidence: l.confidence,
-    samples: l.samples,
-    lastObservedAt: l.lastObservedAt,
-  }));
+  const learning = state.learning.slice(-30).map((l) => {
+    if (l.kind !== "forecast") {
+      return {
+        id: l.id,
+        kind: l.kind,
+        key: l.key,
+        payload: l.payload,
+        confidence: l.confidence,
+        samples: l.samples,
+        lastObservedAt: l.lastObservedAt,
+      };
+    }
+    return {
+      id: l.id,
+      kind: l.kind,
+      key: l.key,
+      payload: {
+        events: Array.isArray(l.payload.events) ? l.payload.events : [],
+        subject: l.payload.subject ?? null,
+        lastEventAt: l.payload.lastEventAt ?? null,
+      },
+      samples: l.samples,
+      lastObservedAt: l.lastObservedAt,
+    };
+  });
 
   const compactedMemory = {
     facts: state.compactedMemory.facts.slice(-30),

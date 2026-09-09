@@ -1,7 +1,5 @@
 import type { AppState, DailyPlanSession, Task } from "../../model";
 import { isRoutineHousehold } from "../forgotten";
-import type { ForecastModel } from "../forecast";
-import { forecastActionableNow } from "../forecast";
 
 export type NotificationUrgency = "low" | "medium" | "urgent";
 
@@ -48,7 +46,6 @@ export function evaluateNotificationPolicy(input: {
   plan?: DailyPlanSession | null;
   personalization?: AppState["compactedMemory"] | null;
   profile?: AppState["profile"] | null;
-  forecast?: ForecastModel | null;
   now?: Date;
 }): NotificationDecision {
   const now = input.now ?? new Date();
@@ -76,16 +73,6 @@ export function evaluateNotificationPolicy(input: {
       reason: "explicit_reminder",
       channel: urgency === "urgent" ? "immediate" : "digest",
       groupKey: `reminder:${input.reminder.id}`,
-    };
-  }
-
-  if (input.forecast && forecastActionableNow(input.forecast, now)) {
-    return {
-      shouldNotify: input.forecast.confidence >= 0.7 && !quiet,
-      urgency: "medium",
-      reason: "forecast_digest",
-      channel: "digest",
-      groupKey: `forecast:${input.forecast.id}`,
     };
   }
 

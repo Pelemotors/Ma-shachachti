@@ -48,10 +48,13 @@ test("P0: single and five task.create go to proposal bucket, not auto", () => {
 });
 
 test("P0: autoApply-safe shopping stays auto; task.create still proposal", () => {
-  const { auto, proposal } = partitionActionsByPolicy([
-    { type: "shopping.add", title: "חלב" },
-    { type: "task.create", task: { title: "לשטוף רצפה", kind: "task" } },
-  ]);
+  const { auto, proposal } = partitionActionsByPolicy(
+    [
+      { type: "shopping.add", title: "חלב" },
+      { type: "task.create", task: { title: "לשטוף רצפה", kind: "task" } },
+    ],
+    { initiative: "user_requested" },
+  );
   assert.equal(auto.length, 1);
   assert.equal(auto[0]?.type, "shopping.add");
   assert.equal(proposal.length, 1);

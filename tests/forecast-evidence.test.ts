@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { emptyState } from "../lib/model";
 import { applyActions } from "../lib/engine";
 import { buildAgentContext } from "../lib/domain/agent-context";
-import { classifyActionPolicy, partitionActionsByPolicy } from "../lib/agent/schema";
+import { classifyActionPolicy, partitionActionsByPolicy, resolveAgentInitiative } from "../lib/agent/schema";
 import {
   FORECAST_USER_INTENT,
   FORECAST_USER_INTENT_LABEL,
@@ -77,26 +77,41 @@ test("FORECAST-03: manual intent is a chat message, not a Forecast Engine", () =
   assert.match(agentDir, /not a Forecast Engine/i);
 });
 
-test("FORECAST-04: shopping.add follows current policy; proposal actions are not auto", () => {
+test("FORECAST-04: inferred shopping.add is proposal; explicit request follows regular policy", () => {
   const add = { type: "shopping.add" as const, title: "חלב" };
   assert.equal(classifyActionPolicy(add), "auto");
-  const split = partitionActionsByPolicy([add]);
-  assert.equal(split.auto[0]?.type, "shopping.add");
-  assert.equal(split.proposal.length, 0);
+  const inferred = partitionActionsByPolicy([add], {
+    initiative: "agent_inferred",
+  });
+  assert.equal(inferred.auto.length, 0);
+  assert.equal(inferred.proposal[0]?.type, "shopping.add");
+
+  const requested = partitionActionsByPolicy([add], {
+    initiative: "user_requested",
+  });
+  assert.equal(requested.auto[0]?.type, "shopping.add");
+  assert.equal(requested.proposal.length, 0);
+
+  const omitted = partitionActionsByPolicy([add]);
+  assert.equal(omitted.proposal[0]?.type, "shopping.add");
 
   const createTask = {
     type: "task.create" as const,
     task: { title: "לקנות חלב", kind: "task" as const },
   };
   assert.equal(classifyActionPolicy(createTask), "proposal");
-  const mixed = partitionActionsByPolicy([add, createTask]);
-  assert.ok(mixed.proposal.some((action) => action.type === "task.create"));
 });
 
-test("FORECAST: no shopping-recurrence classifier was added to the live agent path", () => {
+test("FORECAST: no shopping-recurrence classifier; forecast button fail-closes to inferred", () => {
   const orch = readFileSync("lib/agent/orchestration.ts", "utf8");
   assert.equal(orch.includes("Forecast Mode"), false);
   assert.equal(orch.includes("כל 14 יום"), false);
   const intent = readFileSync("lib/agent/forecast-intent.ts", "utf8");
   assert.equal(intent.includes("recurrence classifier"), false);
+  assert.equal(
+    resolveAgentInitiative("user_requested", FORECAST_USER_INTENT),
+    "agent_inferred",
+  );
+  assert.equal(resolveAgentInitiative(undefined), "agent_inferred");
+  assert.equal(resolveAgentInitiative("user_requested"), "user_requested");
 });
