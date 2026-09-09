@@ -4,22 +4,19 @@
 
 המסמך הזה מתאר את הממשק הטכני של הסוכן אל המערכת. הוא אינו מגדיר כיצד לפרש את המשתמש ואינו מחליף את שיקול הדעת של הסוכן.
 
-בכל Turn ה־Runtime עשוי לספק Context הכולל חלק מהמידע הבא:
+בכל Turn ה־Runtime עשוי לספק Context מצומצם הכולל חלק מהמידע הבא:
 
-- הזמן והתאריך הנוכחיים
-- התאריך שעליו המשתמש עובד כרגע
 - State נוכחי
+- זמן ותאריך
+- התאריך שעליו המשתמש עובד כרגע
 - Tasks
 - Daily Plans / Schedules
-- Day Contexts
-- Routines
+- Day Context
+- Routines ו־routine projection לתאריך הנבחר
 - Reminders
 - Facts
-- Household Profile
-- Members
-- Home Areas
-- Shopping
-- Checklists
+- Household Profile / Members / Home Areas
+- Shopping / Checklists
 - Working Memory
 - Compacted Memory
 - Personal Agent Guide
@@ -29,31 +26,11 @@
 - Capability Registry
 - Deep Access doors
 
-ה־Context עשוי להיות bounded. מידע שאינו נמצא ב־Context הראשוני אינו בהכרח חסר מהמערכת.
+Context הוא bounded. מידע שאינו מופיע בו אינו בהכרח חסר מהמערכת. Deep Access מאפשר קריאה read-only של מידע נוסף דרך הדלתות וה־IDs שה־Runtime מפרסם.
 
-## 2. Capability Registry
+### Temporal Context
 
-רשימת ה־Capabilities והסכמות שמסופקות בכל Turn היא הרשימה הקובעת של הפעולות הזמינות באותו רגע.
-
-Capability מתארת יכולת טכנית ואת הנתונים שהיא דורשת. היא אינה intent taxonomy ואינה קובעת את משמעות דברי המשתמש.
-
-אין להחזיר Action type, field, enum value או reference שאינם קיימים בסכמה שסופקה.
-
-ניתן להחזיר כמה Actions באותו Turn כאשר הסכמה מאפשרת זאת.
-
-## 3. State, IDs ו־Deep Access
-
-ה־State הקבוע הוא מקור האמת של הישויות שכבר נשמרו.
-
-פעולה על ישות קיימת משתמשת ב־ID האמיתי שסופק על ידי המערכת. אין להמציא ID של ישות קיימת.
-
-כאשר נוצרת ישות חדשה, יש להשתמש במנגנון ה־ID או reference שה־Capability המתאימה מאפשרת. אם כמה Actions באותו batch מתייחסים לאותה ישות חדשה, אותו stable reference נשמר ביניהן.
-
-Deep Access הוא מנגנון read-only לקריאת מידע נוסף שאינו נמצא ב־Context הראשוני. ה־Runtime מפרסם את הדלתות וה־IDs הזמינים לקריאה. תוצאת הקריאה חוזרת לאותו Turn. קריאה שנכשלה או ישות שלא נמצאה אינן מקור להמצאת תוכן.
-
-## 4. Temporal Context
-
-ה־Runtime עשוי לספק Context קלנדרי כגון:
+ה־Runtime מספק אובייקט `temporalContext` שעשוי לכלול:
 
 - `nowUtc`
 - `nowLocal`
@@ -67,29 +44,42 @@ Deep Access הוא מנגנון read-only לקריאת מידע נוסף שאי�
 - `workingMemoryDateKey`
 - `dayChangedSinceWorkingMemoryUpdate`
 
-`localDateKey` הוא התאריך המקומי הנוכחי בפועל.
+`localDateKey` הוא היום המקומי הנוכחי. `selectedDateKey` הוא התאריך שעליו המשתמש עובד כרגע, אם סופק, והוא יכול להיות שונה מהיום הנוכחי. `selectedDateRelation` הוא חישוב קלנדרי טכני כגון `past`, `today` או `future` ואינו intent.
 
-`selectedDateKey` הוא התאריך שעליו המשתמש עובד כרגע כאשר קיים כזה. הוא יכול להיות שונה מהיום הנוכחי.
+## 2. Capability Registry
 
-`selectedDateRelation` הוא חישוב קלנדרי טכני כגון `past`, `today` או `future`. הוא אינו intent ואינו קובע פעולה.
+רשימת ה־Capabilities והסכמות שמסופקות בכל Turn היא הרשימה הקובעת של הפעולות הזמינות באותו רגע.
 
-## 5. Task, Schedule, Deadline, Daily Plan ו־Day Context
+Capability מתארת יכולת טכנית ואת הנתונים שהיא דורשת. היא אינה intent taxonomy ואינה קובעת את משמעות דברי המשתמש.
+
+אין להחזיר Action type, field, enum value או reference שאינם קיימים בסכמה שסופקה.
+
+ניתן להחזיר כמה Actions באותו Turn כאשר הסכמה מאפשרת זאת.
+
+Capabilities רלוונטיות לתכנון כוללות, כאשר הן מופיעות ב־Registry:
+
+- `schedule.set` — יוצר או מעדכן שיבוץ. ה־payload החי עשוי לכלול `taskId` או `createIndex`, `date`, וכן `order?`, `locked?`, `dayPart?`, `plannedStart?`, `plannedEnd?`.
+- `schedule.remove` — מסיר שיבוץ ואינו מוחק את ה־Task.
+- `schedule.replaceDay` — כותב יום שלם אטומית מתוך `{ date, items[] }`. ה־Capability כותבת את הפריטים שסופקו; היא אינה בוחרת אילו Tasks צריכים להיכנס ליום.
+- `planning.set` — כותב Day Context עבור תאריך לתוך `planning.dayContexts[date]`.
+- `planning.clear` — מנקה Day Context; הסכמה החיה עשויה לכלול `date?`.
+- `task.create` / `task.update` — יכולים לכלול deadline בהתאם לסכמה החיה.
+
+## 3. State, IDs ו־Deep Access
+
+ה־State הקבוע הוא מקור האמת של הישויות שכבר נשמרו.
+
+פעולה על ישות קיימת משתמשת ב־ID האמיתי שסופק על ידי המערכת. אין להמציא ID של ישות קיימת.
+
+כאשר נוצרת ישות חדשה, יש להשתמש במנגנון ה־ID או reference שה־Capability המתאימה מאפשרת. אם כמה Actions באותו batch מתייחסים לאותה ישות חדשה, אותו stable reference נשמר ביניהן.
+
+Deep Access הוא read-only. ה־Runtime מפרסם את הדלתות וה־IDs הזמינים לקריאה, ותוצאת הקריאה חוזרת לאותו Turn. קריאה שנכשלה או ישות שלא נמצאה אינן מקור להמצאת תוכן.
+
+## 4. Task, Schedule, Deadline, Daily Plan ו־Day Context
 
 ### Task
 
-Task מייצג דבר שצריך לבצע.
-
-Task עשוי לכלול בין היתר:
-- `id`
-- `title`
-- `status`
-- `notes`
-- due / deadline information
-- `preferredWindow`
-- `workMinutes`
-- `effort`
-- dependencies
-- references ל־members, home areas או routines
+Task מייצג דבר שצריך לבצע. הוא עשוי לכלול בין היתר `id`, `title`, `status`, `notes`, deadline, `preferredWindow`, `workMinutes`, `effort`, dependencies ו־references לישויות אחרות.
 
 Task אינו Schedule. יצירת Task אינה שיבוץ שלו בזמן.
 
@@ -97,84 +87,84 @@ Task אינו Schedule. יצירת Task אינה שיבוץ שלו בזמן.
 
 Schedule מייצג מתי מתכננים לבצע Task.
 
-בהתאם לסכמה הזמינה, שיבוץ יכול להיות ברמות דיוק שונות:
+שיבוץ יכול להיות ברמות דיוק שונות:
+
 - date בלבד
-- date + order
-- date + dayPart
-- date + plannedStart
-- date + plannedStart + plannedEnd
+- date + `order`
+- date + `dayPart`
+- date + `plannedStart`
+- date + `plannedStart` + `plannedEnd`
 
-שעה אינה חלק חובה משיבוץ אלא אם הסכמה הספציפית דורשת אותה.
+שעה אינה חובה אלא אם הסכמה הספציפית דורשת אותה.
 
-`schedule.set` יוצר או מעדכן שיבוץ כאשר Capability זו זמינה.
-
-`schedule.remove` מסיר שיבוץ ואינו מוחק את ה־Task.
-
-כאשר Task חדש ושיבוץ נוצרים באותו batch, יש להשתמש באותו stable reference ביניהם, למשל UUID שכבר הוגדר ב־`task.create`, `createIndex`, או reference אחר שהסכמה מפרסמת.
+Task חדש ושיבוץ שלו יכולים להופיע באותו batch באמצעות אותו stable reference, למשל UUID שהוגדר ב־`task.create` או `createIndex` כאשר הסכמה מאפשרת זאת.
 
 ### Deadline
 
-Deadline ו־Schedule הם שני נתונים שונים.
+הייצוג החי של deadline הוא:
 
-Deadline מייצג מועד אחרון או גבול של Task. Schedule מייצג את זמן הביצוע המתוכנן.
+`Task.deadline = { date, time: "HH:mm" | null, timezone, precision: "date" | "datetime" } | null`
 
-Task יכול להחזיק Deadline ו־Schedule במקביל.
+`dueAt` נשאר representation של datetime מדויק כאשר הוא קיים, או `null`.
 
-Deadline עשוי להיות date-only או exact datetime בהתאם למודל ולסכמה הפעילים. כאשר המערכת מספקת representation ל־date-only deadline, אין צורך להמיר אותו ל־datetime מלאכותי.
+Date-only deadline אינו דורש מילוי `dueAt` בשעה מלאכותית.
 
-שינוי Schedule אינו משנה Deadline, ושינוי Deadline אינו משנה Schedule, אלא אם Action נפרדת משנה גם את הנתון האחר.
+Task יכול להחזיק Deadline וגם Schedule במקביל. שינוי של אחד מהם אינו משנה את השני אלא אם Action נפרדת עושה זאת.
 
 ### Daily Plans
 
-Daily Plans נשמרים לפי date key. תוכנית של יום אחד אינה מחליפה תוכנית של יום אחר.
+Source of Truth חי לתוכניות הוא:
 
-ה־Source of Truth הפעיל עשוי להיות מבנה כגון `planning.plans[date]` בהתאם לגרסת ה־State.
+`planning.plans[date]`
 
-כאשר קיימת Capability לכתיבה או החלפה אטומית של יום שלם, היא מקבלת את התוכנית לכתיבה; היא אינה מנוע תכנון בפני עצמה.
+תוכנית של יום אחד אינה מחליפה תוכנית של יום אחר.
+
+`schedule.replaceDay` מאפשר כתיבה אטומית של `items[]` לתאריך נתון כאשר Capability זו זמינה.
 
 ### Day Context
 
-Day Context הוא מידע ששייך לתאריך מסוים ומשמש Context לתכנון אותו תאריך.
+Source of Truth חי ל־Day Context הוא:
 
-ה־Source of Truth הפעיל עשוי להיות מבנה כגון `planning.dayContexts[date]` בהתאם לגרסת ה־State.
+`planning.dayContexts[date]`
 
-הוא עשוי לכלול נתונים כגון:
-- `note`
-- `effort`
-- `availableFrom`
-- `availableUntil`
-- `unavailable`
-- `updatedAt`
+`planning.today` הוא מבנה legacy לקריאה לאחור בלבד ואינו Source of Truth פעיל לאחר normalization.
 
-Day Context של תאריך אחד אינו Day Context של תאריך אחר.
+Day Context עשוי לכלול `note`, `effort`, `availableFrom`, `availableUntil`, `unavailable`, `updatedAt` ושדות נוספים בהתאם לסכמה החיה.
 
-### Routines ו־commitments
+ה־Context עשוי לספק ישירות:
 
-Routine הוא מידע קבוע או חוזר שנשמר ב־State. חישוב occurrence לתאריך מסוים יכול להיעשות באופן דטרמיניסטי כ־calendar mechanics.
+- `dayContext` — ה־Day Context של `selectedDate`
+- `routinesOnSelectedDate` או `routineProjection` — occurrences דטרמיניסטיים לתאריך הנבחר, ללא דירוג סמנטי
+- `overlapEvidence` או `planning.overlapEvidence` — evidence מתמטי על overlaps בזמנים מדויקים
 
-Commitments, locked schedule items, reminders, deadlines ו־routine occurrences עשויים להופיע ב־Context או דרך Deep Access כראיות תכנוניות.
+Structured overlap/conflict הוא evidence טכני. ה־Domain אינו שכבת reasoning סמנטית.
 
-אם ה־Domain מזהה overlap מתמטי או conflict קשיח, הוא עשוי להחזיר structured conflict. ה־conflict הוא מידע טכני; ה־Domain אינו שכבת reasoning סמנטית.
-
-## 6. Working Memory, Compacted Memory, Facts ו־Personal Agent Guide
+## 5. Working Memory, Compacted Memory, Facts ו־Personal Agent Guide
 
 ### Working Memory
 
-Working Memory הוא מצב שיחתי זמני להמשכיות בין Turns.
+Working Memory הוא מצב שיחתי זמני להמשכיות בין Turns. הוא עשוי לכלול `objective`, `contextSummary`, `openLoops`, `lastAgentQuestion`, `relevantEntityIds`, `assumptions` ו־`updatedAt` בהתאם לסכמה החיה.
 
-הוא עשוי להכיל objective, open loops, temporary assumptions, relevant entity references או Context שנדרש להמשך השיחה.
-
-Working Memory אינו Source of Truth קבוע של Tasks, Facts, Schedules או Personal Agent Guide.
-
-הוא יכול להמשיך מעבר לחצות. Temporal Context מציין אם התאריך השתנה מאז העדכון האחרון שלו.
+Working Memory אינו Source of Truth קבוע של Tasks, Facts, Schedules או Personal Agent Guide. הוא יכול להמשיך מעבר לחצות; `temporalContext` מציין אם היום השתנה מאז העדכון האחרון שלו.
 
 ### Compacted Memory
 
-Compacted Memory הוא סיכום דחוס של היסטוריה ו־evidence ישנים יותר שנועד לשמור רציפות בלי להחזיק את כל ההיסטוריה ב־Context בכל Turn.
+Compacted Memory הוא סיכום דחוס של היסטוריה ו־evidence ישנים יותר. הוא אינו Task store, Schedule store, Personal Agent Guide או Action policy.
 
-הוא אינו Task store, Schedule store, Personal Agent Guide או Action policy.
+ה־State החי עשוי לכלול:
 
-המערכת עשויה לספק metadata כגון `updatedAt`, `compactedThroughMessageId` או cursor שקול כדי לזהות עד איזו נקודה בהיסטוריה בוצע compaction.
+- `facts`
+- `preferences`
+- `patterns`
+- `updatedAt`
+- `compactedThroughMessageId`
+- `compactedThroughCreatedAt`
+
+כאשר Output schema כולל `compactedMemoryUpdate`, זהו שדה output ייעודי לייצוג הדחוס החדש:
+
+`{ facts, preferences, patterns }`
+
+`memory.compact` הוא מנגנון פנימי של המערכת ואינו Capability חיצונית ב־Agent Capability Registry.
 
 ### Facts ו־historical evidence
 
@@ -182,96 +172,109 @@ Facts הם מידע שנשמר על המציאות של המשתמש בהתאם 
 
 Historical evidence עשוי לכלול events, completion dates, purchase dates, counts, intervals, durations, routine occurrences או statistical summaries.
 
-Evidence וסטטיסטיקה הם נתונים. הם אינם mutation, recommendation, instruction או הוכחה לכוונת המשתמש.
+Evidence וסטטיסטיקה הם נתונים; הם אינם mutation, recommendation, instruction או הוכחה לכוונת המשתמש.
 
 ### Personal Agent Guide
 
 `runtime.personalAgentGuide` הוא מסמך העבודה המתמשך של הסוכן עם המשתמש, בשפה טבעית.
 
-ה־Runtime עשוי לספק:
+הממשק החי כולל:
+
 - `exists`
 - `text`
 - `revision`
 - `createdAt`
 - `updatedAt`
 
-כאשר Capability כגון `agentGuide.update` זמינה, יצירה או עדכון של ה־Guide נעשים דרכה.
-
-אם ה־Capability דורשת `expectedRevision`, הערך הוא ה־revision הנוכחי שמוחלף, לא ה־revision הבא. יש להשתמש בערך שסופק על ידי ה־Runtime; למשתמש חדש הוא עשוי להיות `0`.
-
-`text` הוא המסמך המלא לאחר השינוי כאשר כך מוגדר בסכמה.
+יצירה או עדכון נעשים דרך `agentGuide.update` כאשר Capability זו זמינה. אם נדרש `expectedRevision`, משתמשים ב־revision הנוכחי שסיפק ה־Runtime; למשתמש חדש הוא עשוי להיות `0`. `text` הוא המסמך המלא לאחר השינוי כאשר כך מוגדר בסכמה.
 
 Personal Agent Guide, Working Memory, Compacted Memory ו־Fact הם מבנים שונים ואינם מחליפים זה את זה.
 
+## 6. Surface Context
+
+Surface מציין מאיפה הגיעה הפנייה ומהו ההקשר הטכני שלה. הוא אינו intent taxonomy ואינו מגביל את ה־Capabilities שניתן לבחור.
+
+### Planning
+
+Planning Turn עשוי לספק:
+
+- `selectedDate`
+- `scheduleIntent: "build" | "realign" | "changed-day"`
+- Daily Plan קיים
+- `dayContext`
+- `routinesOnSelectedDate` / `routineProjection`
+- `overlapEvidence`
+
+`scheduleIntent` מתאר את פעולת ה־UI שהפעילה את ה־Turn. הוא אינו תחליף להבנת דברי המשתמש.
+
+### Memory
+
+Memory Turn עשוי לספק:
+
+`memoryContext: { requestedLifetime?: "stable" | "temporary", expiresAt?: string | null }`
+
+וכן:
+
+`needsCompaction?: boolean`
+
+אלה נתוני Context טכניים. הם אינם Action בפני עצמם ואינם מסווגים אוטומטית את הקלט כ־Fact.
+
 ## 7. Proposals ו־Proposal Decisions
 
-Proposal הוא אוסף Actions שממתין להחלטת המשתמש כאשר מדיניות ה־Capability דורשת אישור.
+Proposal הוא אוסף Actions שממתין להחלטת המשתמש כאשר מדיניות ה־Capability דורשת אישור. עד שה־Proposal מאושר ונשמר, ה־State הקבוע אינו משתנה.
 
-עד שמירה מוצלחת לאחר Approval, ה־State הקבוע אינו משתנה.
+Pending Proposal עשוי לכלול `proposalId`, `summary`, `actionTypes`, `actionCount`, `sourceRevision`, `turnId` ו־`expiresAt`.
 
-Pending Proposal עשוי לכלול:
-- `proposalId`
-- `summary`
-- `proposedActions`
-- `actionTypes`
-- `actionCount`
-- `sourceRevision`
-- `turnId`
-- `expiresAt`
+כאשר Output schema כולל `proposalDecision`, הצורה החיה היא:
 
-`proposalId` הוא המזהה הקנוני של ההצעה.
+`{ proposalId, decision: "approve" | "reject" | "revise" }`
 
-אם Output schema מספק `proposalDecision`, המבנה הזה מתייחס ל־Proposal קיים באמצעות `proposalId` וה־decision שהסכמה מאפשרת. פירוש דברי המשתמש אינו מתבצע באמצעות keyword detector בקוד.
+`proposalId` מתייחס ל־Proposal הקיים. המערכת מאמתת בעלות, status, revision, expiration ו־applicability.
 
-Proposal יכול לעבור בין מצבים כגון `pending`, `accepted`, `partial`, `declined` או `expired` בהתאם למימוש הפעיל. Proposal שאינו `pending` אינו ממתין עוד לאישור.
-
-Retry של Approval עשוי להיות idempotent, והמערכת עשויה להחזיר `alreadyApplied=true` אם אותו אישור כבר נשמר בעבר.
+Proposal lifecycle עשוי לכלול `pending`, `accepted`, `partial`, `declined` ו־`expired`. Proposal שאינו `pending` אינו ממתין עוד לאישור. Retry של Approval עשוי להיות idempotent.
 
 ## 8. Execution, Receipts, Revisions ו־Conflicts
 
-Action הוא בקשה לבצע שינוי. Proposal הוא הצעה לביצוע. Reply הוא טקסט שיחתי.
-
-אף אחד מהם אינו הוכחה ל־Persistence.
+Action הוא בקשה לבצע שינוי. Proposal אינו Execution. Reply אינו Persistence.
 
 רק State מעודכן או Execution Receipt לאחר שמירה מוצלחת מוכיחים שהשינוי התרחש.
 
-Execution Receipt עשוי לכלול:
-- `proposalId`
-- `turnId`
-- `resolvedAt`
-- `status`
-- action type
-- entity IDs שנוצרו או עודכנו
+ה־Runtime עשוי לספק `recentExecutionReceipts` בצורה החיה:
 
-Entity IDs מתוך Receipt זמינים ל־Turns הבאים כ־references לישויות שכבר נוצרו או עודכנו.
+`[{ proposalId, turnId, resolvedAt, actions: [{ type, entityId }] }]`
 
-חלק מה־Capabilities משתמשות ב־`revision`, `expectedRevision` או `sourceRevision`. כאשר הסכמה דורשת revision, הערך מגיע מהמערכת ואין לחשב revision חדש באופן עצמאי.
+ל־receipt עצמו אין שדה `status` במבנה החי הזה.
 
-Revision conflict, invalid reference, expired proposal, missing entity או schedule overlap עשויים לחזור כ־structured conflicts/errors. הם אינם persistence ואינם מתוקנים באמצעות mutation סמוי אלא אם Capability מגדירה זאת במפורש.
+Receipts הם evidence עובדתי על ישויות ופעולות שבוצעו, ו־entity IDs מתוכם זמינים ל־Turns הבאים.
 
-## 9. Source of Truth, Surface Context ו־Cache
+Capabilities מסוימות משתמשות ב־`revision`, `expectedRevision` או source revision. כאשר schema דורשת revision, משתמשים בערך שסיפקה המערכת. Revision conflict אומר שהמצב הישן אינו תקף לביצוע הנוכחי.
+
+ה־Domain עשוי להחזיר structured conflict עבור overlap, invalid reference, stale revision, expired proposal או missing entity. Conflict כזה הוא מידע טכני ולא mutation אוטומטי.
+
+## 9. Source of Truth ו־Cache
 
 ה־State הקבוע הוא מקור האמת של מידע שנשמר.
 
-Context, Cache, Working Memory, Proposal ו־Reply הם אמצעי עבודה ואינם Source of Truth חלופי לביצועים שנשמרו.
+מבנים כגון Context, Cache, Working Memory, Reply ו־Proposal אינם הופכים פעולה ל־Persistence בפני עצמם.
 
-אין ליצור SoT מקביל רק לצורך UI, Cache או Agent Context.
+אין ליצור Source of Truth מקביל רק לצורך UI או Agent Context.
 
-Turn עשוי להגיע מתוך `surface` כגון `chat`, `planning` או `memory`. Surface מספק הקשר טכני לגבי המקום שממנו הגיעה הפנייה ואינו intent taxonomy.
-
-Planning surface עשוי לספק `selectedDateKey`, Daily Plan קיים, Day Context או metadata תכנוני.
-
-Memory surface עשוי לספק בחירות מפורשות של המשתמש כגון lifetime, temporary/stable selection או expiry. נתונים אלה הם Context ואינם Action בפני עצמם.
-
-Cache משמש ליעילות, freshness ו־retrieval. Cache hit/miss אינם משמעות סמנטית ואינם שכבת reasoning.
+Cache משמש ליעילות, freshness ו־retrieval. Cache אינו reasoning layer, ו־cache hit או miss אינם משמעות סמנטית.
 
 ## 10. Output Contract
 
 הפלט חייב להתאים בדיוק לסכמה שהמערכת מספקת באותו Turn.
 
-אין להוסיף Action types, fields, enum values, IDs או references שאינם קיימים בסכמה.
+בנוסף לשדות הקיימים בסכמה, שני שדות output טכניים עשויים להיות זמינים:
 
-ההפרדות הטכניות המרכזיות הן:
+- `proposalDecision?: { proposalId, decision: "approve" | "reject" | "revise" } | null`
+- `compactedMemoryUpdate?: { facts, preferences, patterns } | null`
+
+`compactedMemoryUpdate` אינו Action חיצוני; הוא output ייעודי ל־memory compaction.
+
+אין להוסיף Action types, fields, IDs או enum values שאינם קיימים בסכמה החיה.
+
+הפרדות טכניות מרכזיות:
 
 - Task אינו Schedule
 - Schedule אינו Deadline
@@ -280,5 +283,3 @@ Cache משמש ליעילות, freshness ו־retrieval. Cache hit/miss אינם 
 - Compacted Memory אינו Personal Agent Guide
 - Proposal אינו Execution
 - Action אינו הוכחת Persistence
-
-כאשר הסכמה או Capability Registry המעודכנים שונים מדוגמה כללית במסמך הזה, הסכמה החיה שסופקה באותו Turn היא הקובעת.
