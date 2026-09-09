@@ -17,7 +17,8 @@ import {
   stampTaskCreateIds,
   buildApproveTaskNotice,
 } from "../lib/domain/planning/plan-intent";
-import { AGENT_INSTRUCTIONS } from "../lib/agent/instructions";
+import { GLOBAL_AGENT_CONSTITUTION } from "../lib/agent/instructions";
+import { RUNTIME_CAPABILITY_CONTRACT } from "../lib/agent/runtime-contract";
 
 const NOW = new Date("2026-09-08T10:00:00+03:00");
 
@@ -276,9 +277,8 @@ test("TaskCreateInputSchema does not inject migration defaults", () => {
   assert.equal(parsed.priority, undefined);
 });
 
-test("instructions include urgency and single-agent rules", () => {
-  assert.match(AGENT_INSTRUCTIONS, /priority/);
-  assert.match(AGENT_INSTRUCTIONS, /urgent/);
-  assert.match(AGENT_INSTRUCTIONS, /workingMemory|Working Memory/);
-  assert.match(AGENT_INSTRUCTIONS, /classification\.source/);
+test("instructions include constitution learning and runtime working memory", () => {
+  assert.match(GLOBAL_AGENT_CONSTITUTION, /מדריך האישי/);
+  assert.match(RUNTIME_CAPABILITY_CONTRACT, /Working Memory/);
+  assert.match(RUNTIME_CAPABILITY_CONTRACT, /Personal Agent Guide/);
 });

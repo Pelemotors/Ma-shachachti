@@ -11,12 +11,11 @@ import { enforceReferentialIntegrity } from "@/lib/agent/referential-integrity";
 import { outputText, type OpenAIResponse } from "@/lib/agent/client";
 import type { AppState } from "@/lib/model";
 import {
-  AGENT_INSTRUCTIONS,
+  GLOBAL_AGENT_CONSTITUTION,
   AGENT_CONTRACT_VERSION,
 } from "@/lib/agent/instructions";
-import { PERSONAL_AGENT_RUNTIME_GUIDANCE } from "@/lib/agent/runtime-guidance";
+import { RUNTIME_CAPABILITY_CONTRACT } from "@/lib/agent/runtime-contract";
 import { buildGroundedProposalSummary } from "@/lib/domain/agent-context";
-import { PERSONAL_AGENT_POLICY_INSTRUCTIONS } from "@/lib/domain/agent-policy";
 import { filterSafeDeferActions } from "@/lib/domain/tasks/deferrable";
 import {
   buildAgentRuntimeContext,
@@ -179,7 +178,6 @@ export type ChatOrchestrationResult = {
   clarification: AgentDecision["clarification"];
   proposal: AgentDecision["proposal"];
   affectsToday: boolean;
-  policySignals: AgentDecision["policySignals"];
   workingMemoryUpdate: AgentDecision["workingMemoryUpdate"];
   requestedTodayCreateIndexes?: number[];
   rejectedActionCount: number;
@@ -207,9 +205,7 @@ export async function orchestrateChatTurn(
       "ai_not_configured",
     );
 
-  // DEPRECATED: trait instruction block kept until product Guide prompts ship.
-  // Trait learning / policySignals persistence is disconnected.
-  const instructions = `${AGENT_INSTRUCTIONS}${PERSONAL_AGENT_POLICY_INSTRUCTIONS}${PERSONAL_AGENT_RUNTIME_GUIDANCE}`;
+  const instructions = `${GLOBAL_AGENT_CONSTITUTION}${RUNTIME_CAPABILITY_CONTRACT}`;
   const now = new Date();
   const state = input.state;
   const runtime = buildAgentRuntimeContext({
@@ -353,7 +349,6 @@ export async function orchestrateChatTurn(
     clarification: decision.clarification,
     proposal: decision.proposal,
     affectsToday: decision.affectsToday,
-    policySignals: decision.policySignals,
     workingMemoryUpdate: decision.workingMemoryUpdate ?? null,
     requestedTodayCreateIndexes: decision.requestedTodayCreateIndexes,
     rejectedActionCount: rejectedFromParse.length + rejectedApply.length,

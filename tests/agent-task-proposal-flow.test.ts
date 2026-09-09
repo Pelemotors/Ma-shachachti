@@ -22,7 +22,8 @@ import {
   classifyTaskDuplicate,
   isHardDuplicate,
 } from "../lib/domain/tasks/dedupe";
-import { AGENT_INSTRUCTIONS } from "../lib/agent/instructions";
+import { GLOBAL_AGENT_CONSTITUTION } from "../lib/agent/instructions";
+import { RUNTIME_CAPABILITY_CONTRACT } from "../lib/agent/runtime-contract";
 
 const NOW = new Date("2026-09-08T10:00:00+03:00");
 
@@ -223,11 +224,12 @@ test("T11: success notice claims plan only when exact taskId in plan.items", () 
   assert.equal(countPlannedCreates(["a"], [{ taskId: "a" }]), 1);
 });
 
-test("task-create Proposal policy section is bundled in agent instructions", () => {
-  assert.match(AGENT_INSTRUCTIONS, /מדיניות יצירת משימה \(Proposal\)/);
-  assert.match(AGENT_INSTRUCTIONS, /Agent פתוח|workingMemoryUpdate/);
-  assert.match(AGENT_INSTRUCTIONS, /requestedTodayCreateIndexes/);
-  assert.equal(AGENT_INSTRUCTIONS.includes("שמרתי"), false);
+test("global constitution and runtime contract cover proposal and working memory", () => {
+  assert.match(RUNTIME_CAPABILITY_CONTRACT, /Proposal/);
+  assert.match(RUNTIME_CAPABILITY_CONTRACT, /Working Memory/);
+  assert.match(GLOBAL_AGENT_CONSTITUTION, /מדריך האישי/);
+  assert.equal(GLOBAL_AGENT_CONSTITUTION.includes("שמרתי"), false);
+  assert.equal(RUNTIME_CAPABILITY_CONTRACT.includes("שמרתי"), false);
 });
 
 test("approve client keeps stable idempotency key per proposal", () => {

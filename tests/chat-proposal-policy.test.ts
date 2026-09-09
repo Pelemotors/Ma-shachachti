@@ -16,9 +16,10 @@ import {
 } from "../lib/domain/tasks/dedupe";
 import { revalidateProposalActions } from "../lib/server/proposals";
 import {
-  AGENT_INSTRUCTIONS,
+  GLOBAL_AGENT_CONSTITUTION,
   AGENT_CONTRACT_VERSION,
 } from "../lib/agent/instructions";
+import { RUNTIME_CAPABILITY_CONTRACT } from "../lib/agent/runtime-contract";
 
 test("P0: task.create always classifies as proposal", () => {
   const a: Action = {
@@ -163,8 +164,10 @@ test("P1: revision-unrelated state still revalidates proposal actions", () => {
 });
 
 test("P1: agent instructions are bundled — no runtime readFile dependency marker", () => {
-  assert.ok(AGENT_INSTRUCTIONS.length > 500);
-  assert.ok(AGENT_INSTRUCTIONS.includes("task.create"));
+  assert.ok(GLOBAL_AGENT_CONSTITUTION.length > 500);
+  assert.ok(RUNTIME_CAPABILITY_CONTRACT.length > 500);
+  assert.ok(GLOBAL_AGENT_CONSTITUTION.includes("מדריך האישי"));
+  assert.ok(RUNTIME_CAPABILITY_CONTRACT.includes("Personal Agent Guide"));
   assert.ok(AGENT_CONTRACT_VERSION.length > 0);
   const orch = readFileSync(
     join(
@@ -174,14 +177,24 @@ test("P1: agent instructions are bundled — no runtime readFile dependency mark
     "utf8",
   );
   assert.ok(!orch.includes("readFile("));
-  assert.ok(orch.includes("AGENT_INSTRUCTIONS"));
+  assert.ok(orch.includes("GLOBAL_AGENT_CONSTITUTION"));
+  assert.ok(orch.includes("RUNTIME_CAPABILITY_CONTRACT"));
+  assert.equal(orch.includes("PERSONAL_AGENT_POLICY"), false);
 });
 
 test("P1: instructions.ts stays synced with INSTRUCTIONS.he.md", () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const md = readFileSync(join(root, "lib/agent/INSTRUCTIONS.he.md"), "utf8");
-  assert.ok(md.includes("משימה חדשה שהוסקה"));
-  assert.ok(AGENT_INSTRUCTIONS.includes("משימה חדשה שהוסקה"));
-  assert.ok(md.includes("חוזה הפלט"));
-  assert.ok(AGENT_INSTRUCTIONS.includes("חוזה הפלט"));
+  const contractMd = readFileSync(
+    join(root, "lib/agent/RUNTIME_CAPABILITY_CONTRACT.he.md"),
+    "utf8",
+  );
+  assert.ok(md.includes("Global Agent Constitution"));
+  assert.ok(GLOBAL_AGENT_CONSTITUTION.includes("Global Agent Constitution"));
+  assert.ok(md.includes("מדריך האישי"));
+  assert.ok(GLOBAL_AGENT_CONSTITUTION.includes("מדריך האישי"));
+  assert.ok(contractMd.includes("Runtime / Capability Contract"));
+  assert.ok(
+    RUNTIME_CAPABILITY_CONTRACT.includes("Runtime / Capability Contract"),
+  );
 });
