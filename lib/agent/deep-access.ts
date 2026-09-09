@@ -12,6 +12,7 @@ export const DEEP_ACCESS_TOOLS = [
   "state.get_behavior_events",
   "state.get_scan_history",
   "state.get_forecast_evidence",
+  "state.get_agent_guide",
 ] as const;
 
 export type DeepAccessTool = (typeof DEEP_ACCESS_TOOLS)[number];
@@ -179,6 +180,29 @@ export function executeDeepAccess(
                 source: f.source,
               })),
           },
+        };
+      }
+      case "state.get_agent_guide": {
+        const g = state.personalAgentGuide;
+        return {
+          tool: req.tool,
+          ok: true,
+          fromCoreHint: false,
+          data: g
+            ? {
+                exists: true,
+                text: g.text,
+                revision: g.revision,
+                createdAt: g.createdAt,
+                updatedAt: g.updatedAt,
+              }
+            : {
+                exists: false,
+                text: "",
+                revision: 0,
+                createdAt: null,
+                updatedAt: null,
+              },
         };
       }
       default:

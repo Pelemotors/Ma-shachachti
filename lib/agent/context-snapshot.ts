@@ -1,12 +1,15 @@
 /**
  * Domain-slice revisions + AgentContextSnapshot cache.
- * Snapshot records reality for the agent; it does not interpret meaning.
+ * Snapshot records structural State slices; it does not interpret meaning.
+ * Invalidation is revision/status/date based only — never message keywords.
  */
 import { createHash } from "node:crypto";
 import type { AppState } from "@/lib/model";
+import { guideRevisionFingerprint } from "@/lib/domain/agent-guide";
 
 export type DomainRevisions = {
   stateRevision: number;
+  profileRevision: string;
   taskRevision: string;
   reminderRevision: string;
   routineRevision: string;
@@ -17,6 +20,9 @@ export type DomainRevisions = {
   messageRevision: string;
   shoppingRevision: string;
   planRevision: string;
+  processRevision: string;
+  workingMemoryRevision: string;
+  agentGuideRevision: string;
 };
 
 export type AgentContextSnapshotMeta = {
@@ -43,6 +49,10 @@ export function computeDomainRevisions(
 ): DomainRevisions {
   return {
     stateRevision,
+    profileRevision: hashSlice([
+      state.profile,
+      state.members.map((m) => [m.id, m.name, m.type, m.aliases]),
+    ]),
     taskRevision: hashSlice(
       state.tasks.map((t) => [t.id, t.updatedAt, t.status, t.title]),
     ),
@@ -64,7 +74,6 @@ export function computeDomainRevisions(
     memoryRevision: hashSlice([
       state.facts.map((f) => [f.id, f.text, f.kind, f.expiresAt]),
       state.compactedMemory,
-      state.agentWorkingMemory?.updatedAt,
     ]),
     messageRevision: hashSlice(
       state.messages.map((m) => [m.id, m.role, m.text.slice(0, 80)]),
@@ -73,20 +82,31 @@ export function computeDomainRevisions(
       state.shopping.map((s) => [s.id, s.title, s.purchasedAt]),
     ),
     planRevision: hashSlice([state.planning.today, state.planning.plan]),
+    processRevision: hashSlice(
+      state.operations.map((o) => [o.turnId, o.summary, o.createdAt, o.actionTypes]),
+    ),
+    workingMemoryRevision: hashSlice(state.agentWorkingMemory),
+    agentGuideRevision: hashSlice(guideRevisionFingerprint(state)),
   };
 }
 
+/** Structural domain slices — mirrors Domain Model entities, not topics. */
 export type SnapshotSlices = {
-  core: unknown;
+  profile: unknown;
   tasks: unknown;
   reminders: unknown;
   routines: unknown;
+  plans: unknown;
   home: unknown;
   memory: unknown;
-  plan: unknown;
+  checklists: unknown;
+  forecasts: unknown;
+  processes: unknown;
   shopping: unknown;
   messages: unknown;
   workingMemory: unknown;
+  entityIndex: unknown;
+  personalAgentGuide: unknown;
 };
 
 type CacheEntry = {
@@ -116,7 +136,8 @@ function sliceNeedsRebuild(
 }
 
 /**
- * Build or reuse per-slice snapshot. Capability registry is not rebuilt here.
+ * Build or reuse per-slice snapshot.
+ * Does not accept or inspect user message text.
  */
 export function buildAgentContextSnapshot(input: {
   householdId: string;
@@ -139,42 +160,77 @@ export function buildAgentContextSnapshot(input: {
     name: keyof SnapshotSlices;
     rev: keyof DomainRevisions;
   }[] = [
+    { name: "profile", rev: "profileRevision" },
     { name: "tasks", rev: "taskRevision" },
     { name: "reminders", rev: "reminderRevision" },
     { name: "routines", rev: "routineRevision" },
+    { name: "plans", rev: "planRevision" },
     { name: "home", rev: "homeRevision" },
     { name: "memory", rev: "memoryRevision" },
-    { name: "plan", rev: "planRevision" },
+    { name: "checklists", rev: "checklistRevision" },
+    { name: "forecasts", rev: "forecastRevision" },
+    { name: "processes", rev: "processRevision" },
     { name: "shopping", rev: "shoppingRevision" },
     { name: "messages", rev: "messageRevision" },
-    { name: "workingMemory", rev: "memoryRevision" },
-    { name: "core", rev: "stateRevision" },
+    { name: "workingMemory", rev: "workingMemoryRevision" },
+    { name: "entityIndex", rev: "stateRevision" },
+    { name: "personalAgentGuide", rev: "agentGuideRevision" },
   ];
+
+  const capabilityChanged =
+    Boolean(prev) && prev!.capabilityVersion !== input.capabilityVersion;
 
   for (const { name, rev } of mapping) {
     const rebuild =
       !prev?.slices[name] ||
       sliceNeedsRebuild(prev.domainRevisions, domainRevisions, rev) ||
-      prev.capabilityVersion !== input.capabilityVersion;
+      capabilityChanged;
     if (rebuild) {
       cacheMisses.push(name);
       rebuiltSlices.push(name);
-      // keep input.slices[name]
     } else {
       cacheHits.push(name);
       nextSlices[name] = prev!.slices[name]!;
     }
   }
 
-  // core always tracks full revision number — if stateRevision changed, rebuild core
+  // entityIndex also tracks open/active inventory — rebuild if task/reminder/routine moved
   if (
     prev &&
-    prev.domainRevisions.stateRevision === domainRevisions.stateRevision &&
-    prev.slices.core
+    !rebuiltSlices.includes("entityIndex") &&
+    (sliceNeedsRebuild(prev.domainRevisions, domainRevisions, "taskRevision") ||
+      sliceNeedsRebuild(
+        prev.domainRevisions,
+        domainRevisions,
+        "reminderRevision",
+      ) ||
+      sliceNeedsRebuild(
+        prev.domainRevisions,
+        domainRevisions,
+        "routineRevision",
+      ) ||
+      sliceNeedsRebuild(
+        prev.domainRevisions,
+        domainRevisions,
+        "checklistRevision",
+      ) ||
+      sliceNeedsRebuild(
+        prev.domainRevisions,
+        domainRevisions,
+        "processRevision",
+      ) ||
+      sliceNeedsRebuild(
+        prev.domainRevisions,
+        domainRevisions,
+        "workingMemoryRevision",
+      ))
   ) {
-    if (!cacheHits.includes("core")) {
-      /* already handled */
-    }
+    const idx = cacheHits.indexOf("entityIndex");
+    if (idx >= 0) cacheHits.splice(idx, 1);
+    if (!cacheMisses.includes("entityIndex")) cacheMisses.push("entityIndex");
+    if (!rebuiltSlices.includes("entityIndex"))
+      rebuiltSlices.push("entityIndex");
+    nextSlices.entityIndex = input.slices.entityIndex;
   }
 
   const entry: CacheEntry = {
@@ -211,3 +267,23 @@ export function invalidateAgentContextCache(householdId?: string) {
 export function peekAgentContextCache(householdId: string) {
   return cacheByHousehold.get(householdId) ?? null;
 }
+
+/** Fixed structural domain list sent every turn (not message-dependent). */
+export const STRUCTURAL_CONTEXT_DOMAINS = [
+  "profile",
+  "tasks",
+  "reminders",
+  "routines",
+  "plans",
+  "home",
+  "memory",
+  "checklists",
+  "forecasts",
+  "processes",
+  "shopping",
+  "messages",
+  "workingMemory",
+  "entityIndex",
+  "personalAgentGuide",
+  "capabilities",
+] as const;

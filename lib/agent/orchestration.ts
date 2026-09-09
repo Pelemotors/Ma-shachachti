@@ -207,7 +207,8 @@ export async function orchestrateChatTurn(
       "ai_not_configured",
     );
 
-  // One personal agent. Fallback is the same contract on an alternate model.
+  // DEPRECATED: trait instruction block kept until product Guide prompts ship.
+  // Trait learning / policySignals persistence is disconnected.
   const instructions = `${AGENT_INSTRUCTIONS}${PERSONAL_AGENT_POLICY_INSTRUCTIONS}${PERSONAL_AGENT_RUNTIME_GUIDANCE}`;
   const now = new Date();
   const state = input.state;
@@ -217,7 +218,6 @@ export async function orchestrateChatTurn(
     householdId: input.householdId ?? "local",
     turnId: input.turnId,
     requestId: input.requestId,
-    message: input.message,
     contextTaskId: input.contextTaskId,
     surface: input.surface ?? "chat",
     pendingProposal: input.pendingProposal ?? null,

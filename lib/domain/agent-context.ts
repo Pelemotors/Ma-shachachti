@@ -1,9 +1,9 @@
 import type { AppState, Task, HouseholdMember } from "@/lib/model";
 import { dayKey, formatTime } from "@/lib/time";
-import { activeFacts, whatMatters } from "@/lib/engine";
-import { resolvePersonalAgentPolicy } from "@/lib/domain/agent-policy";
+import { activeFacts } from "@/lib/engine";
 import { sanitizeWorkingMemory } from "@/lib/domain/working-memory";
 import { buildAgentCapabilityContext } from "@/lib/agent/capabilities";
+import { toRuntimePersonalAgentGuide } from "@/lib/domain/agent-guide";
 
 export type AgentSurfaceContext = {
   memoryKind?: "stable" | "temporary";
@@ -238,9 +238,8 @@ export function buildAgentContext(
     surface: opts.surface ?? "chat",
     surfaceContext: opts.surfaceContext ?? null,
     workingMemory: sanitizeWorkingMemory(state.agentWorkingMemory, now),
-    personalAgentPolicy: resolvePersonalAgentPolicy(state),
-    /** @deprecated alias — prefer personalAgentPolicy */
-    agentPolicy: resolvePersonalAgentPolicy(state),
+    /** Opaque per-user guide document — code does not interpret text. */
+    personalAgentGuide: toRuntimePersonalAgentGuide(state),
     capabilityContract: buildAgentCapabilityContext(),
     userKnowledge: {
       profile: profileKnowledge,
@@ -274,7 +273,6 @@ export function buildAgentContext(
     compactedMemory,
     learning,
     firstScan,
-    important: whatMatters(state, now).map((t) => t.id),
     contextTaskId: opts.contextTaskId ?? null,
     history: state.messages.slice(-(opts.messageLimit ?? 20)),
     turnId: opts.turnId,

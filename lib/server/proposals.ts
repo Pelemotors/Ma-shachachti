@@ -15,7 +15,8 @@ import {
   stampTaskCreateIds,
 } from "@/lib/domain/planning/plan-intent";
 import { ApiError } from "./errors";
-import { readState } from "./state-store";
+import { readState, rememberSavedState } from "./state-store";
+import { appendPersonalAgentGuideRevision } from "./agent-guide-revisions";
 
 export const ProposalPayloadSchema = z.object({
   summary: z.string().min(1).max(800),
@@ -323,6 +324,25 @@ export async function approvePendingProposal(
 
   const alreadyApplied = Boolean(saved?.alreadyApplied);
   const finalState = StateSchema.parse(saved.state);
+  const finalRevision = Number(saved.revision);
+  rememberSavedState(input.userId, finalRevision, finalState);
+
+  // Durable guide audit — best-effort after AppState success (in-state history already written).
+  if (!alreadyApplied) {
+    const prevRev = state.personalAgentGuide?.revision ?? 0;
+    const nextRev = finalState.personalAgentGuide?.revision ?? 0;
+    if (nextRev > prevRev && finalState.personalAgentGuide) {
+      const entry = finalState.personalAgentGuideHistory[0];
+      if (entry && entry.revision === nextRev) {
+        try {
+          await appendPersonalAgentGuideRevision(db, input.userId, entry);
+        } catch {
+          // Table may be missing until migration is applied; AppState history remains source of truth.
+        }
+      }
+    }
+  }
+
   const appliedCount = applicable.filter(
     (a) => a.type === "task.create",
   ).length;
@@ -350,7 +370,7 @@ export async function approvePendingProposal(
 
   return {
     state: finalState,
-    revision: Number(saved.revision),
+    revision: finalRevision,
     proposalStatus: (saved.proposalStatus ?? proposalStatus) as
       "accepted" | "partial",
     appliedActions: applicable,

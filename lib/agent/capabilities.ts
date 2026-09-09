@@ -37,6 +37,8 @@ export const AGENT_CAPABILITY_TYPES = [
   "template.restore",
   /** Agent-facing typed capability; normalized to the internal forecast event. */
   "inventory.event",
+  /** Opaque Personal Agent Guide document update (always proposal). */
+  "agentGuide.update",
 ] as const;
 
 export type AgentCapabilityType = (typeof AGENT_CAPABILITY_TYPES)[number];
@@ -143,6 +145,14 @@ export const AGENT_CAPABILITY_CONTRACT = [
     policy: "auto",
     notes:
       "Use eventType + subject. The agent never needs to emit internal marker strings.",
+  },
+  {
+    type: "agentGuide.update",
+    purpose:
+      "Propose replacing the user's Personal Agent Guide document text (opaque to domain code).",
+    policy: "proposal",
+    notes:
+      "Requires expectedRevision + text. No persistence before Approval. Domain validates size/revision only — never guide meaning.",
   },
 ] as const;
 

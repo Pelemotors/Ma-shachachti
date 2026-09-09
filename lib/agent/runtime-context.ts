@@ -1,6 +1,9 @@
 /**
- * AgentRuntimeContext — single structured payload for the personal agent per turn.
- * Records + capabilities only; no intent taxonomy.
+ * AgentRuntimeContext — structural State + capabilities for the personal agent.
+ *
+ * Cache / snapshot decide where data lives and whether it changed.
+ * The agent alone decides what is meaningful for the current conversation.
+ * Do not select domains from message keywords, taxonomy, or relevance classifiers.
  */
 import type { AppState } from "@/lib/model";
 import {
@@ -10,6 +13,7 @@ import {
 import { buildLiveCapabilityContext } from "@/lib/agent/capability-registry";
 import {
   buildAgentContextSnapshot,
+  STRUCTURAL_CONTEXT_DOMAINS,
   type AgentContextSnapshotMeta,
 } from "@/lib/agent/context-snapshot";
 import {
@@ -17,6 +21,14 @@ import {
   hydrateMissingReferences,
   type DeepAccessLog,
 } from "@/lib/agent/deep-access";
+import {
+  buildEntityIndex,
+  type AgentEntityIndex,
+} from "@/lib/agent/entity-index";
+import {
+  toRuntimePersonalAgentGuide,
+  type RuntimePersonalAgentGuide,
+} from "@/lib/domain/agent-guide";
 import { filterSafeDeferActions } from "@/lib/domain/tasks/deferrable";
 import { sanitizeWorkingMemory } from "@/lib/domain/working-memory";
 
@@ -44,6 +56,8 @@ export type AgentRuntimeInstrumentation = {
   pendingProposalIncluded: boolean;
   coreEntityCount: number;
   hydratedReferenceCount: number;
+  /** True when context shape ignored message text (always expected true). */
+  messageIndependent: true;
 };
 
 export type AgentRuntimeContext = {
@@ -54,8 +68,13 @@ export type AgentRuntimeContext = {
   capabilityRegistry: ReturnType<typeof buildLiveCapabilityContext>;
   workingMemory: ReturnType<typeof sanitizeWorkingMemory>;
   pendingProposal: PendingProposalContext;
+  /** Opaque guide document — always present as exists true/false. */
+  personalAgentGuide: RuntimePersonalAgentGuide;
+  /** Structural inventory — counts / open-active / IDs. */
+  entityIndex: AgentEntityIndex;
   references: {
-    relevantEntityIds: string[];
+    /** IDs from Working Memory + explicit contextTaskId — not NLP extraction. */
+    referencedEntityIds: string[];
     hydratedEntities: unknown[];
   };
   deepAccessAvailable: readonly string[];
@@ -71,7 +90,10 @@ export function buildAgentRuntimeContext(input: {
   householdId: string;
   turnId: string;
   requestId: string;
-  message?: string;
+  /**
+   * Explicit UI selection (task id). Allowed: objective reference.
+   * Must not be confused with message-based domain picking.
+   */
   contextTaskId?: string | null;
   surface?: "chat" | "memory" | "planning";
   surfaceContext?: AgentSurfaceContext | null;
@@ -90,7 +112,6 @@ export function buildAgentRuntimeContext(input: {
     surfaceContext: input.surfaceContext ?? null,
   });
 
-  // Prefer live capability registry over static contract dump.
   const knowledgeForAgent = {
     ...knowledge,
     capabilityContract: capabilityRegistry,
@@ -99,6 +120,8 @@ export function buildAgentRuntimeContext(input: {
 
   const wm = sanitizeWorkingMemory(input.state.agentWorkingMemory, now);
   const deferral = filterSafeDeferActions(input.state, [], now);
+  const entityIndex = buildEntityIndex(input.state, now);
+  const personalAgentGuide = toRuntimePersonalAgentGuide(input.state);
 
   const coreEntityIds = new Set<string>();
   for (const t of knowledge.tasks as { id: string }[]) coreEntityIds.add(t.id);
@@ -108,7 +131,7 @@ export function buildAgentRuntimeContext(input: {
     coreEntityIds.add(r.id);
   if (input.contextTaskId) coreEntityIds.add(input.contextTaskId);
 
-  const relevantEntityIds = [
+  const referencedEntityIds = [
     ...new Set([
       ...(wm?.relevantEntityIds ?? []),
       ...(wm?.openLoops.flatMap((l) => l.relevantEntityIds) ?? []),
@@ -118,32 +141,40 @@ export function buildAgentRuntimeContext(input: {
 
   const hydrated = hydrateMissingReferences(
     input.state,
-    relevantEntityIds,
+    referencedEntityIds,
     coreEntityIds,
   );
 
   const snapshotSlices = {
-    core: {
+    profile: {
       profile: knowledge.profile,
       timezone: knowledge.timezone,
       localDateKey: knowledge.localDateKey,
+      members: knowledge.members,
     },
     tasks: knowledge.tasks,
     reminders: knowledge.reminders,
     routines: knowledge.routines,
+    plans: {
+      dailyPlan: knowledge.dailyPlan,
+      planningConstraint: knowledge.planningConstraint,
+    },
     home: { homeAreas: knowledge.homeAreas, firstScan: knowledge.firstScan },
     memory: {
       facts: knowledge.facts,
       compactedMemory: knowledge.compactedMemory,
       learning: knowledge.learning,
     },
-    plan: {
-      dailyPlan: knowledge.dailyPlan,
-      planningConstraint: knowledge.planningConstraint,
-    },
+    checklists: (knowledge.tasks as { id: string; steps?: unknown[] }[]).map(
+      (t) => ({ id: t.id, steps: t.steps ?? [] }),
+    ),
+    forecasts: knowledge.learning,
+    processes: input.state.operations.slice(-40),
     shopping: knowledge.shopping,
     messages: knowledge.history,
     workingMemory: wm,
+    entityIndex,
+    personalAgentGuide,
   };
 
   const snapshot = buildAgentContextSnapshot({
@@ -157,6 +188,11 @@ export function buildAgentRuntimeContext(input: {
   const pendingProposal = input.pendingProposal ?? null;
   const dbFetches = [...(input.dbFetches ?? [])];
 
+  const contextDomains = [
+    ...STRUCTURAL_CONTEXT_DOMAINS,
+    ...(pendingProposal ? (["pendingProposal"] as const) : []),
+  ];
+
   const instrumentation: AgentRuntimeInstrumentation = {
     turnId: input.turnId,
     requestId: input.requestId,
@@ -167,23 +203,11 @@ export function buildAgentRuntimeContext(input: {
     cacheMisses: snapshot.cacheMisses,
     dbFetches,
     deepAccess: hydrated.log,
-    contextDomains: [
-      "profile",
-      "tasks",
-      "reminders",
-      "routines",
-      "home",
-      "memory",
-      "plan",
-      "shopping",
-      "messages",
-      "workingMemory",
-      "capabilities",
-      ...(pendingProposal ? (["pendingProposal"] as const) : []),
-    ],
+    contextDomains: [...contextDomains],
     pendingProposalIncluded: Boolean(pendingProposal),
     coreEntityCount: coreEntityIds.size,
     hydratedReferenceCount: hydrated.entities.length,
+    messageIndependent: true,
   };
 
   return {
@@ -194,8 +218,10 @@ export function buildAgentRuntimeContext(input: {
     capabilityRegistry,
     workingMemory: wm,
     pendingProposal,
+    personalAgentGuide,
+    entityIndex,
     references: {
-      relevantEntityIds,
+      referencedEntityIds,
       hydratedEntities: hydrated.entities,
     },
     deepAccessAvailable: DEEP_ACCESS_TOOLS,
@@ -222,6 +248,8 @@ export function toAgentModelInput(
       capabilityRegistry: runtime.capabilityRegistry,
       workingMemory: runtime.workingMemory,
       pendingProposal: runtime.pendingProposal,
+      personalAgentGuide: runtime.personalAgentGuide,
+      entityIndex: runtime.entityIndex,
       references: runtime.references,
       deepAccessAvailable: runtime.deepAccessAvailable,
       knowledge: runtime.knowledge,

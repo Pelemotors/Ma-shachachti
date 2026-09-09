@@ -6,7 +6,6 @@ import {
   ProfileSchema,
 } from "../model";
 import { CATEGORY_IDS } from "../taxonomy";
-import { AGENT_POLICY_TRAITS } from "../domain/agent-policy";
 import {
   AGENT_CAPABILITY_TYPES,
   SAFE_AGENT_PROFILE_FIELDS,
@@ -72,8 +71,11 @@ export const ClarificationSchema = z.object({
   unresolvedPart: z.string().max(500).nullable(),
 });
 
+/**
+ * @deprecated Trait-signal dual-read only. Production path ignores these.
+ */
 export const AgentPolicySignalSchema = z.object({
-  trait: z.enum(AGENT_POLICY_TRAITS),
+  trait: z.string().max(64),
   direction: z.enum(["increase", "decrease"]),
   strength: z.enum(["weak", "medium", "strong"]),
   evidence: z.enum(["explicit", "behavioral"]),
@@ -100,6 +102,9 @@ export const AgentDecisionSchema = z.object({
   clarification: ClarificationSchema.nullable(),
   proposal: AgentProposalSchema.nullable(),
   affectsToday: z.boolean(),
+  /**
+   * @deprecated Accepted then dropped on production path — never written to learning.
+   */
   policySignals: z.array(AgentPolicySignalSchema).max(8).default([]),
   /** Patch only when there is genuinely open conversational state. */
   workingMemoryUpdate: AgentWorkingMemoryPatchSchema.nullable().optional(),
@@ -276,6 +281,7 @@ export function classifyActionPolicy(
   opts: { userExplicitBulk?: boolean } = {},
 ): ActionPolicyBucket {
   if (action.type === "task.create") return "proposal";
+  if (action.type === "agentGuide.update") return "proposal";
   if (
     action.type === "task.status" &&
     (action.status === "cancelled" || action.status === "unknown")
@@ -345,13 +351,10 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
     if (idxs.length) requestedTodayCreateIndexes = idxs;
   }
 
+  // DEPRECATED: trait policySignals are dual-read then discarded — never applied.
   const policySignals: AgentDecision["policySignals"] = [];
-  if (Array.isArray(obj.policySignals)) {
-    for (const item of obj.policySignals.slice(0, 8)) {
-      const parsed = AgentPolicySignalSchema.safeParse(item);
-      if (parsed.success) policySignals.push(parsed.data);
-      else warnings.push("policy_signal_invalid");
-    }
+  if (Array.isArray(obj.policySignals) && obj.policySignals.length > 0) {
+    warnings.push("policy_signals_ignored_deprecated");
   }
 
   let clarification: AgentDecision["clarification"] = null;
@@ -518,6 +521,9 @@ function actionJsonSchema() {
       },
       title: { type: "string" },
       text: { type: "string" },
+      expectedRevision: { type: "integer", minimum: 0 },
+      sourceTurnId: nullableString,
+      proposalId: nullableString,
       quantity: { type: "string" },
       checked: { type: "boolean" },
       dueAt: { type: "string" },
@@ -728,21 +734,6 @@ export function agentDecisionJsonSchema() {
         ],
       },
       affectsToday: { type: "boolean" },
-      policySignals: {
-        type: "array",
-        maxItems: 8,
-        items: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            trait: { type: "string", enum: [...AGENT_POLICY_TRAITS] },
-            direction: { type: "string", enum: ["increase", "decrease"] },
-            strength: { type: "string", enum: ["weak", "medium", "strong"] },
-            evidence: { type: "string", enum: ["explicit", "behavioral"] },
-          },
-          required: ["trait", "direction", "strength", "evidence"],
-        },
-      },
       requestedTodayCreateIndexes: {
         type: "array",
         maxItems: 20,
@@ -796,7 +787,6 @@ export function agentDecisionJsonSchema() {
       "clarification",
       "proposal",
       "affectsToday",
-      "policySignals",
       "workingMemoryUpdate",
     ],
   } as Record<string, unknown>;

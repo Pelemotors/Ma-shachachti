@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
   authorize,
   readState,
+  loadStateForTurn,
+  rememberSavedState,
   budget,
   fail,
   ApiError,
@@ -28,10 +30,6 @@ import {
   stampTaskCreateIds,
 } from "@/lib/domain/planning/plan-intent";
 import { buildGroundedProposalSummary } from "@/lib/domain/agent-context";
-import {
-  applyAgentPolicySignals,
-  type AgentPolicySignal,
-} from "@/lib/domain/agent-policy";
 import { AGENT_CONTRACT_VERSION } from "@/lib/agent/instructions";
 import { CHAT_API_SUPPORTED, CHAT_API_VERSION } from "@/lib/version";
 
@@ -106,17 +104,11 @@ async function saveTurnState(
     actions: Action[];
     affectsToday: boolean;
     requestedTodayTaskIds?: string[];
-    policySignals?: AgentPolicySignal[];
     idempotencyKey: string;
     requestHash: string;
   },
 ) {
-  const learnedState = applyAgentPolicySignals(
-    input.state,
-    input.policySignals ?? [],
-    new Date(),
-  );
-  let working = applyActions(learnedState, input.actions, new Date(), false);
+  let working = applyActions(input.state, input.actions, new Date(), false);
   const synced = syncDailyPlanAfterActions({
     state: working,
     actions: input.actions,
@@ -139,12 +131,8 @@ async function saveTurnState(
   if (saveError) {
     if (saveError.message.includes("revision_conflict")) {
       const latest = await readState(db, input.userId);
-      const latestLearned = applyAgentPolicySignals(
-        latest.state,
-        input.policySignals ?? [],
-        new Date(),
-      );
-      let simulated = latestLearned;
+      rememberSavedState(input.userId, latest.revision, latest.state);
+      let simulated = latest.state;
       try {
         for (const action of input.actions) {
           simulated = applyActions(simulated, [action], new Date(), false);
@@ -185,18 +173,24 @@ async function saveTurnState(
           );
         throw new ApiError(503, "שמירת תור השיחה נכשלה.", "state_save_failed");
       }
+      const recovered = StateSchema.parse(saved2.state);
+      const recoveredRevision = Number(saved2.revision);
+      rememberSavedState(input.userId, recoveredRevision, recovered);
       return {
-        state: StateSchema.parse(saved2.state),
-        revision: Number(saved2.revision),
+        state: recovered,
+        revision: recoveredRevision,
         planSyncFailed: retrySync.planSyncFailed,
         planNotice: retrySync.notice,
       };
     }
     throw new ApiError(503, "שמירת תור השיחה נכשלה.", "state_save_failed");
   }
+  const nextState = StateSchema.parse(saved.state);
+  const nextRevision = Number(saved.revision);
+  rememberSavedState(input.userId, nextRevision, nextState);
   return {
-    state: StateSchema.parse(saved.state),
-    revision: Number(saved.revision),
+    state: nextState,
+    revision: nextRevision,
     planSyncFailed: synced.planSyncFailed,
     planNotice: synced.notice,
   };
@@ -284,9 +278,10 @@ export async function POST(req: Request) {
     claimed = true;
 
     stage = "state_read";
-    const { state, revision } = await readState(db, userId);
+    const loaded = await loadStateForTurn(db, userId);
+    const { state, revision } = loaded;
     stateRevision = revision;
-    const dbFetches = ["app_states"];
+    const dbFetches = [...loaded.dbFetches];
 
     stage = "pending_proposal_read";
     const pending = await getLatestPendingProposal(db, userId);
@@ -375,7 +370,6 @@ export async function POST(req: Request) {
       revision,
       actions: turnActions,
       affectsToday: Boolean(result.affectsToday),
-      policySignals: result.policySignals,
       idempotencyKey: body.idempotencyKey,
       requestHash,
     });
@@ -432,7 +426,6 @@ export async function POST(req: Request) {
 
     const {
       selectedModel: _model,
-      policySignals: _policySignals,
       instrumentation: _instrumentation,
       ...orch
     } = result;
@@ -489,7 +482,6 @@ export async function POST(req: Request) {
       actionCount: result.explicitActions.length,
       hasClarification: Boolean(result.clarification),
       hasProposal: Boolean(proposalId),
-      policySignalCount: result.policySignals.length,
       rejectedActionCount: result.rejectedActionCount,
       capabilityVersion: contextTrace.capabilityVersion,
       cacheHits: contextTrace.cacheHits,
