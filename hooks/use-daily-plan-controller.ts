@@ -1,12 +1,7 @@
 "use client";
 import { useState, useCallback, useMemo } from "react";
 import { Action, DailyPlanItem } from "@/lib/model";
-import {
-  buildDailyPlanSession,
-  activeDailyPlan,
-  planDay,
-  estimatedMinutes,
-} from "@/lib/engine";
+import { activeDailyPlan, estimatedMinutes } from "@/lib/engine";
 import { durationToMinutes } from "@/components/duration-wheel";
 import { authFetch } from "@/lib/supabase-browser";
 import { useHousehold } from "@/lib/use-household";
@@ -18,11 +13,11 @@ import {
   startOfDateKey,
 } from "@/lib/time";
 import {
-  DAY_PART_ANCHORS,
   type DayPart,
   planForDate,
 } from "@/lib/domain/planning/schedule-day";
 import { openCommitmentCount } from "@/lib/domain/planning/plans";
+import { dayContextForDate } from "@/lib/domain/planning/day-context";
 
 type Household = ReturnType<typeof useHousehold>;
 
@@ -30,7 +25,7 @@ export function useDailyPlanController(
   h: Household,
   opts: {
     clock: Date;
-    /** Optional seed from today's planning constraint — not shared live with free-time. */
+    /** Optional seed from the selected day's stored context — not a live shared rank. */
     defaultEffort?: number;
     run: (actions: Action[], confirmed?: boolean) => Promise<void>;
     sendLock: { current: boolean };
@@ -41,7 +36,10 @@ export function useDailyPlanController(
   const { state, mode } = h;
   const timezone = state.profile.timezone;
   const todayKey = dayKey(opts.clock, timezone);
-  const seed = opts.defaultEffort ?? state.planning.today?.effort ?? 2;
+  const seed =
+    opts.defaultEffort ??
+    dayContextForDate(state, todayKey)?.effort ??
+    2;
   const [planMinutes, setPlanMinutes] = useState(120);
   const [planHours, setPlanHours] = useState(2);
   const [planMinsPart, setPlanMinsPart] = useState(0);
@@ -62,7 +60,6 @@ export function useDailyPlanController(
   );
   const selectedPlan = planForDate(state, selectedDate);
   const persistedPlan = activeDailyPlan(state, opts.clock);
-  const plan = planDay(state, planMinutes, planEffort, selectedClock);
 
   const onDuration = useCallback(
     ({ hours, minutes: m }: { hours: number; minutes: number }) => {
@@ -78,28 +75,84 @@ export function useDailyPlanController(
     setPlanPhase("result");
   }, []);
 
+  const sendPlanningTurn = useCallback(
+    async (input: {
+      scheduleIntent: "build" | "realign" | "changed-day";
+      message: string;
+    }) => {
+      if (planBusy || opts.sendLock.current) return;
+      if (mode !== "cloud") {
+        h.setError("כדי לבנות או להתאים לו״ז צריך חיבור לחשבון ולעזרה אישית.");
+        return;
+      }
+      if (!state.profile.aiConsent) {
+        h.setError("אפשר להפעיל עזרה אישית בהגדרות, ואז לבנות את הלו״ז.");
+        return;
+      }
+      setPlanBusy(true);
+      try {
+        const turnId = crypto.randomUUID();
+        const response = await authFetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: input.message,
+            idempotencyKey: turnId,
+            turnId,
+            surface: "planning",
+            selectedDate,
+            scheduleIntent: input.scheduleIntent,
+            availableMinutes: planMinutes,
+            effort: planEffort,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok)
+          throw new Error(
+            typeof data.error === "string"
+              ? data.error
+              : "לא הצלחתי לעדכן את הלו״ז.",
+          );
+        if (data.state && typeof data.revision === "number") {
+          h.adoptRemote(data.state, data.revision);
+        } else {
+          const actions = (data.explicitActions ?? data.actions ?? []) as Action[];
+          if (actions.length) await h.commit(actions);
+        }
+        const hasProposal = opts.onAgentPayload?.(data) ?? false;
+        if (hasProposal) opts.onOpenChat?.();
+        else if (planForDate(h.state, selectedDate) || data.state) markReady();
+      } catch (e) {
+        h.setError(
+          e instanceof Error
+            ? e.message
+            : "לא הצלחתי לעדכן את הלו״ז. אפשר לנסות שוב.",
+        );
+      } finally {
+        setPlanBusy(false);
+      }
+    },
+    [
+      planBusy,
+      opts,
+      mode,
+      h,
+      state.profile.aiConsent,
+      selectedDate,
+      planMinutes,
+      planEffort,
+      markReady,
+    ],
+  );
+
   const buildPlan = useCallback(async () => {
     const mins = durationToMinutes(planHours, planMinsPart);
     if (!mins) return;
-    const session = buildDailyPlanSession(
-      state,
-      mins,
-      planEffort as 1 | 2 | 3,
-      h.currentRevision(),
-      selectedClock,
-    );
-    await opts.run([{ type: "plan.set", plan: session }]);
-    markReady();
-  }, [
-    planHours,
-    planMinsPart,
-    planEffort,
-    state,
-    opts,
-    h,
-    selectedClock,
-    markReady,
-  ]);
+    await sendPlanningTurn({
+      scheduleIntent: "build",
+      message: "בנה לי לו״ז",
+    });
+  }, [planHours, planMinsPart, sendPlanningTurn]);
 
   const submitChangedDay = useCallback(async () => {
     if (planBusy || opts.sendLock.current) return;
@@ -125,6 +178,9 @@ export function useDailyPlanController(
           turnId,
           surface: "planning",
           selectedDate,
+          scheduleIntent: "changed-day",
+          availableMinutes: planMinutes,
+          effort: planEffort,
         }),
       });
       const data = await response.json();
@@ -161,6 +217,8 @@ export function useDailyPlanController(
     h,
     state.profile.aiConsent,
     selectedDate,
+    planMinutes,
+    planEffort,
     markReady,
   ]);
 
@@ -169,8 +227,11 @@ export function useDailyPlanController(
       await submitChangedDay();
       return;
     }
-    await buildPlan();
-  }, [changedDay, submitChangedDay, buildPlan]);
+    await sendPlanningTurn({
+      scheduleIntent: "realign",
+      message: "התאם מחדש את הלו״ז",
+    });
+  }, [changedDay, submitChangedDay, sendPlanningTurn]);
 
   const rebuild = useCallback(() => {
     void realignPlan();
@@ -230,11 +291,16 @@ export function useDailyPlanController(
 
   const moveItemDayPart = useCallback(
     async (taskId: string, part: Exclude<DayPart, "unscheduled">) => {
-      const anchor = DAY_PART_ANCHORS[part];
-      const hhmm = `${String(anchor.hour).padStart(2, "0")}:${String(anchor.minute).padStart(2, "0")}`;
-      await changeItemTime(taskId, hhmm);
+      await opts.run([
+        {
+          type: "schedule.set",
+          taskId,
+          date: selectedDate,
+          dayPart: part,
+        },
+      ]);
     },
-    [changeItemTime],
+    [opts, selectedDate],
   );
 
   const moveItemToDate = useCallback(
@@ -281,7 +347,7 @@ export function useDailyPlanController(
     setSelectedDate,
     goPrevDay,
     goNextDay,
-    plan,
+    plan: selectedPlan ?? null,
     onDuration,
     buildPlan,
     submitChangedDay,

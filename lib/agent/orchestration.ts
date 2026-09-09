@@ -19,6 +19,8 @@ import {
 import { RUNTIME_CAPABILITY_CONTRACT } from "@/lib/agent/runtime-contract";
 import { buildGroundedProposalSummary } from "@/lib/domain/agent-context";
 import { filterSafeDeferActions } from "@/lib/domain/tasks/deferrable";
+import { shouldCompactMemory } from "@/lib/domain/memory/compaction";
+import { buildTemporalContext } from "@/lib/domain/temporal-context";
 import {
   buildAgentRuntimeContext,
   toAgentModelInput,
@@ -187,6 +189,13 @@ export type ChatOrchestrationInput = {
   surface?: "chat" | "memory" | "planning";
   selectedDate?: string | null;
   manualPlacementTaskId?: string | null;
+  scheduleIntent?: "build" | "realign" | "changed-day" | null;
+  availableMinutes?: number | null;
+  effort?: number | null;
+  memoryContext?: {
+    requestedLifetime?: "stable" | "temporary";
+    expiresAt?: string | null;
+  } | null;
   householdId?: string;
   pendingProposal?: PendingProposalContext;
   dbFetches?: string[];
@@ -203,6 +212,8 @@ export type ChatOrchestrationResult = {
   affectsToday: boolean;
   workingMemoryUpdate: AgentDecision["workingMemoryUpdate"];
   requestedTodayCreateIndexes?: number[];
+  proposalDecision?: AgentDecision["proposalDecision"];
+  compactedMemoryUpdate?: AgentDecision["compactedMemoryUpdate"];
   rejectedActionCount: number;
   basedOnRevision: number;
   requestId: string;
@@ -246,6 +257,15 @@ export async function orchestrateChatTurn(
     surfaceContext: {
       selectedDate: input.selectedDate ?? null,
       manualPlacementTaskId: input.manualPlacementTaskId ?? null,
+      scheduleIntent: input.scheduleIntent ?? null,
+      availableMinutes: input.availableMinutes ?? null,
+      effort: input.effort ?? null,
+      memoryContext: input.memoryContext ?? null,
+      needsCompaction: shouldCompactMemory(state),
+      temporalContext: buildTemporalContext(state, {
+        now,
+        selectedDate: input.selectedDate ?? null,
+      }),
     },
     pendingProposal: input.pendingProposal ?? null,
     dbFetches: input.dbFetches ?? ["app_states"],
@@ -453,6 +473,8 @@ export async function orchestrateChatTurn(
     affectsToday: decision.affectsToday,
     workingMemoryUpdate: decision.workingMemoryUpdate ?? null,
     requestedTodayCreateIndexes: decision.requestedTodayCreateIndexes,
+    proposalDecision: decision.proposalDecision ?? null,
+    compactedMemoryUpdate: decision.compactedMemoryUpdate ?? null,
     rejectedActionCount: rejectedFromParse.length + rejectedApply.length,
     basedOnRevision: input.revision,
     requestId: input.requestId,

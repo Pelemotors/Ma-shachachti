@@ -1,10 +1,31 @@
 import { Bell } from "lucide-react";
 import { Action, AppState, Task } from "@/lib/model";
 import { followUps } from "@/lib/engine";
-import { getForgottenCandidates } from "@/lib/domain/forgotten";
 import { ViewHeader } from "@/components/view-header";
 import { TaskCard } from "@/components/task-card";
 import { Empty } from "@/components/empty-state";
+
+function overdueOrUnknownTasks(state: AppState, clock: Date): Task[] {
+  const nowMs = clock.getTime();
+  return state.tasks
+    .filter(
+      (t) =>
+        t.status === "open" ||
+        t.status === "unknown" ||
+        t.status === "in_progress",
+    )
+    .filter(
+      (t) =>
+        t.status === "unknown" ||
+        (Boolean(t.dueAt) && Date.parse(t.dueAt!) < nowMs),
+    )
+    .sort((a, b) => {
+      if (!a.dueAt && !b.dueAt) return 0;
+      if (!a.dueAt) return 1;
+      if (!b.dueAt) return -1;
+      return Date.parse(a.dueAt) - Date.parse(b.dueAt);
+    });
+}
 
 export function FocusView(props: {
   state: AppState;
@@ -16,7 +37,7 @@ export function FocusView(props: {
   onComplete: (t: Task) => void;
   onAction: (a: Action) => Promise<void>;
 }) {
-  const relevant = getForgottenCandidates(props.state, props.clock);
+  const relevant = overdueOrUnknownTasks(props.state, props.clock);
   const followup = followUps(props.state, props.clock);
   return (
     <>

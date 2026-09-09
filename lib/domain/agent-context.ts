@@ -2,6 +2,9 @@ import type { AppState, Task, HouseholdMember } from "@/lib/model";
 import { dayKey, formatTime } from "@/lib/time";
 import { activeFacts } from "@/lib/engine";
 import { planForDate, planningPlans } from "@/lib/domain/planning/plans";
+import { dayContextForDate } from "@/lib/domain/planning/day-context";
+import { routinesOccurringOn } from "@/lib/domain/planning/routine-projection";
+import { buildTemporalContext } from "@/lib/domain/temporal-context";
 import { sanitizeWorkingMemory } from "@/lib/domain/working-memory";
 import { buildAgentCapabilityContext } from "@/lib/agent/capabilities";
 import { toRuntimePersonalAgentGuide } from "@/lib/domain/agent-guide";
@@ -16,11 +19,20 @@ import {
   PERSONAL_CHECKLIST_INDEX_LIMIT,
 } from "@/lib/domain/checklists";
 
+export type MemorySurfaceContext = {
+  requestedLifetime?: "stable" | "temporary";
+  expiresAt?: string | null;
+};
+
 export type AgentSurfaceContext = {
-  memoryKind?: "stable" | "temporary";
-  memoryExpiresAt?: string | null;
   selectedDate?: string | null;
   manualPlacementTaskId?: string | null;
+  scheduleIntent?: "build" | "realign" | "changed-day" | null;
+  availableMinutes?: number | null;
+  effort?: number | null;
+  memoryContext?: MemorySurfaceContext | null;
+  needsCompaction?: boolean;
+  temporalContext?: ReturnType<typeof buildTemporalContext> | null;
 };
 
 function stampLocal(iso: string | null | undefined, timezone: string) {
@@ -139,6 +151,7 @@ export function buildAgentContext(
     priority: t.priority,
     dueAtUtc: t.dueAt,
     dueAtLocal: stampLocal(t.dueAt, tz),
+    deadline: t.deadline ?? null,
     preferredWindow: t.preferredWindow
       ? {
           startUtc: t.preferredWindow.start ?? null,
@@ -342,11 +355,19 @@ export function buildAgentContext(
     contextTaskId: opts.contextTaskId ?? null,
     history: state.messages.slice(-(opts.messageLimit ?? 20)),
     turnId: opts.turnId,
+    temporalContext: buildTemporalContext(state, {
+      now,
+      selectedDate,
+    }),
+    recentExecutionReceipts: (state.recentExecutionReceipts ?? []).slice(-12),
+    overlapEvidence: state.planning.overlapEvidence ?? [],
+    routinesOnSelectedDate: routinesOccurringOn(state, selectedDate),
     turn: {
       selectedDate,
       selectedDateIsToday: selectedDate === todayKey,
       manualPlacementTaskId: opts.surfaceContext?.manualPlacementTaskId ?? null,
       storedPlanDates: storedDates.slice(-21),
+      scheduleIntent: opts.surfaceContext?.scheduleIntent ?? null,
     },
     dailyPlan: selectedPlan
       ? {
@@ -377,7 +398,9 @@ export function buildAgentContext(
               plannedTaskIds: todayPlan.items.map((i) => i.taskId),
             }
           : null,
-    planningConstraint: state.planning.today,
+    planningConstraint: dayContextForDate(state, selectedDate),
+    dayContext: dayContextForDate(state, selectedDate),
+    routineProjection: routinesOccurringOn(state, selectedDate),
   };
 }
 

@@ -1,7 +1,8 @@
 "use client";
-import { useState, useCallback } from "react";
-import { opportunities, freeTimeV2 } from "@/lib/engine";
+import { useState, useCallback, useMemo } from "react";
+import { estimatedMinutes } from "@/lib/engine";
 import { durationToMinutes } from "@/components/duration-wheel";
+import { isActiveVisibleTask } from "@/lib/domain/tasks/visibility";
 import { AppState } from "@/lib/model";
 
 export function useFreeTimeController(opts: { state: AppState; clock: Date }) {
@@ -19,13 +20,17 @@ export function useFreeTimeController(opts: { state: AppState; clock: Date }) {
     [],
   );
 
-  const free = freeTimeV2(
-    opts.state,
-    durationToMinutes(freeHours, freeMinsPart) || minutes,
-    effort,
-    opts.clock,
+  const available = durationToMinutes(freeHours, freeMinsPart) || minutes;
+  const matching = useMemo(
+    () =>
+      opts.state.tasks.filter(
+        (task) =>
+          task.status === "open" &&
+          isActiveVisibleTask(task, opts.clock) &&
+          estimatedMinutes(task, opts.state) <= available,
+      ),
+    [opts.state, opts.clock, available],
   );
-  const legacyFree = opportunities(opts.state, minutes, effort, opts.clock);
 
   return {
     minutes,
@@ -34,8 +39,8 @@ export function useFreeTimeController(opts: { state: AppState; clock: Date }) {
     freeHours,
     freeMinsPart,
     onDuration,
-    free,
-    legacyFree,
+    free: { closeFirst: matching, outsidePlan: [] },
+    legacyFree: { important: [] as { title: string }[] },
   };
 }
 

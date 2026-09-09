@@ -19,12 +19,19 @@ import {
   completeChatReceipt,
 } from "@/lib/server/chat-receipts";
 import {
+  approvePendingProposal,
   createPendingProposal,
+  declinePendingProposal,
   getLatestPendingProposal,
   revalidateProposalActions,
 } from "@/lib/server/proposals";
 import { summarizeContextTrace } from "@/lib/agent/context-instrumentation";
 import { syncDailyPlanAfterActions } from "@/lib/domain/planning/sync-daily-plan";
+import {
+  appendExecutionReceipt,
+  buildExecutionReceipt,
+} from "@/lib/domain/execution-receipts";
+import { lastCompactedCursor } from "@/lib/domain/memory/compaction";
 import {
   resolveRequestedTodayTaskIds,
   stampScheduleCreateRefs,
@@ -69,6 +76,20 @@ async function saveTurnState(
     revision: input.revision,
   });
   working = synced.state;
+  const persisted = input.actions.filter(
+    (action) =>
+      action.type !== "message.add" && action.type !== "operation.record",
+  );
+  if (persisted.length) {
+    working = appendExecutionReceipt(
+      working,
+      buildExecutionReceipt({
+        turnId: input.idempotencyKey,
+        resolvedAt: new Date().toISOString(),
+        actions: persisted,
+      }),
+    );
+  }
 
   const { data: saved, error: saveError } = await db.rpc(
     "idempotent_save_app_state",
@@ -106,6 +127,16 @@ async function saveTurnState(
         revision: latest.revision,
       });
       retryState = retrySync.state;
+      if (persisted.length) {
+        retryState = appendExecutionReceipt(
+          retryState,
+          buildExecutionReceipt({
+            turnId: input.idempotencyKey,
+            resolvedAt: new Date().toISOString(),
+            actions: persisted,
+          }),
+        );
+      }
       const { data: saved2, error: saveError2 } = await db.rpc(
         "idempotent_save_app_state",
         {
@@ -180,7 +211,7 @@ export async function POST(req: Request) {
 
     const body = z
       .object({
-        message: z.string().trim().min(1).max(6000),
+        message: z.string().trim().max(6000).optional().default(""),
         contextTaskId: z.string().uuid().nullable().optional(),
         idempotencyKey: z.string().uuid(),
         turnId: z.string().uuid().optional(),
@@ -190,7 +221,27 @@ export async function POST(req: Request) {
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .optional(),
         manualPlacementTaskId: z.string().uuid().optional(),
+        scheduleIntent: z.enum(["build", "realign", "changed-day"]).optional(),
+        availableMinutes: z.number().int().min(1).max(24 * 60).optional(),
+        effort: z.number().int().min(1).max(3).optional(),
+        memoryContext: z
+          .object({
+            requestedLifetime: z.enum(["stable", "temporary"]).optional(),
+            expiresAt: z
+              .string()
+              .datetime({ offset: true })
+              .nullable()
+              .optional(),
+          })
+          .optional(),
       })
+      .refine(
+        (value) =>
+          Boolean(value.message) ||
+          Boolean(value.scheduleIntent) ||
+          value.surface === "memory",
+        { message: "message_or_surface_required" },
+      )
       .parse(await jsonBody(req, 20_000));
     turnId = body.turnId ?? body.idempotencyKey;
     idempotencyKey = body.idempotencyKey;
@@ -203,6 +254,10 @@ export async function POST(req: Request) {
           surface: body.surface ?? "chat",
           selectedDate: body.selectedDate ?? null,
           manualPlacementTaskId: body.manualPlacementTaskId ?? null,
+          scheduleIntent: body.scheduleIntent ?? null,
+          availableMinutes: body.availableMinutes ?? null,
+          effort: body.effort ?? null,
+          memoryContext: body.memoryContext ?? null,
         }),
       )
       .digest("hex");
@@ -259,6 +314,10 @@ export async function POST(req: Request) {
       surface: body.surface ?? "chat",
       selectedDate: body.selectedDate ?? null,
       manualPlacementTaskId: body.manualPlacementTaskId ?? null,
+      scheduleIntent: body.scheduleIntent ?? null,
+      availableMinutes: body.availableMinutes ?? null,
+      effort: body.effort ?? null,
+      memoryContext: body.memoryContext ?? null,
       householdId: userId,
       pendingProposal: pending
         ? {
@@ -295,13 +354,53 @@ export async function POST(req: Request) {
       });
     }
 
+    const typedDecision = result.proposalDecision;
+    let workingState = state;
+    let workingRevision = revision;
+    if (
+      typedDecision &&
+      pending &&
+      typedDecision.proposalId === pending.id
+    ) {
+      stage = "proposal_decision";
+      if (typedDecision.decision === "approve") {
+        const approved = await approvePendingProposal(db, {
+          userId,
+          proposalId: pending.id,
+          idempotencyKey: crypto.randomUUID(),
+        });
+        workingState = approved.state;
+        workingRevision = approved.revision;
+      } else if (typedDecision.decision === "reject") {
+        await declinePendingProposal(db, userId, pending.id);
+      }
+    }
+
+    const compactionActions: Action[] = [];
+    const compactSource = result.compactedMemoryUpdate;
+    if (compactSource) {
+      const cursor = lastCompactedCursor(workingState);
+      compactionActions.push({
+        type: "memory.compact",
+        facts: compactSource.facts,
+        preferences: compactSource.preferences,
+        patterns: compactSource.patterns,
+        compactedThroughMessageId: cursor.compactedThroughMessageId,
+        compactedThroughCreatedAt: cursor.compactedThroughCreatedAt,
+      });
+    }
+
     const turnActions: Action[] = [
-      {
-        type: "message.add",
-        role: "user",
-        text: body.message,
-        turnId,
-      },
+      ...(body.message
+        ? ([
+            {
+              type: "message.add",
+              role: "user",
+              text: body.message,
+              turnId,
+            },
+          ] as Action[])
+        : []),
       {
         type: "message.add",
         role: "assistant",
@@ -310,6 +409,7 @@ export async function POST(req: Request) {
       },
       ...(result.explicitActions ?? []),
       ...memoryActions,
+      ...compactionActions,
       {
         type: "operation.record",
         turnId,
@@ -324,8 +424,8 @@ export async function POST(req: Request) {
     stage = "state_save";
     const saved = await saveTurnState(db, {
       userId,
-      state,
-      revision,
+      state: workingState,
+      revision: workingRevision,
       actions: turnActions,
       affectsToday: Boolean(result.affectsToday),
       idempotencyKey: body.idempotencyKey,

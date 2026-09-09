@@ -13,6 +13,7 @@ import {
   stampTaskCreateIds,
 } from "../lib/domain/planning/plan-intent";
 import { isActiveVisibleTask } from "../lib/domain/tasks/visibility";
+import { dayKey } from "../lib/time";
 
 const NOW = new Date("2026-09-08T10:00:00+03:00"); // Tuesday
 
@@ -94,15 +95,18 @@ test("PlanIntent: requested creates land in plan and Home under capacity pressur
   for (const c of creates) {
     if (c.type === "task.create") c.task.priority = 1;
   }
-  s = applyActions(s, creates, NOW, true);
-  s = syncDailyPlanAfterActions({
-    state: s,
-    actions: creates,
-    affectsToday: true,
-    requestedTodayTaskIds: ids,
-    now: NOW,
-    revision: 2,
-  }).state;
+  const date = dayKey(NOW, s.profile.timezone);
+  s = applyActions(
+    s,
+    [
+      ...creates,
+      ...ids.map(
+        (taskId): Action => ({ type: "schedule.set", taskId, date }),
+      ),
+    ],
+    NOW,
+    true,
+  );
 
   const plan = activeDailyPlan(s, NOW);
   assert.ok(plan);
@@ -122,15 +126,19 @@ test("PlanIntent: requested creates land in plan and Home under capacity pressur
 test("task.create without today intent does not replan existing plan", () => {
   let s = emptyState();
   const keepId = crypto.randomUUID();
-  s = applyActions(s, [createTask("בלוז", keepId)], NOW, true);
-  s = syncDailyPlanAfterActions({
-    state: s,
-    actions: [createTask("בלוז", keepId)],
-    affectsToday: true,
-    requestedTodayTaskIds: [keepId],
-    now: NOW,
-    revision: 1,
-  }).state;
+  s = applyActions(
+    s,
+    [
+      createTask("בלוז", keepId),
+      {
+        type: "schedule.set",
+        taskId: keepId,
+        date: dayKey(NOW, s.profile.timezone),
+      },
+    ],
+    NOW,
+    true,
+  );
   const before = activeDailyPlan(s, NOW)!;
   const future = createTask("ביטוח בחודש הבא", crypto.randomUUID());
   if (future.type === "task.create") {
@@ -149,11 +157,7 @@ test("task.create without today intent does not replan existing plan", () => {
   assert.equal(afterSync.planSynced, false);
   assert.equal(activeDailyPlan(afterSync.state, NOW)?.id, before.id);
   assert.ok(
-    !actionAffectsDailyPlan(future, {
-      requestedTodayTaskIds: new Set(),
-      timezone: "Asia/Jerusalem",
-      now: NOW,
-    }),
+    !actionAffectsDailyPlan(future),
   );
 });
 
@@ -194,15 +198,18 @@ test("acceptance: create → plan sync → home → defer → replan hides defer
     createTask("משימה ג", ids[2]),
     createTask("משימה ד", ids[3]),
   ];
-  s = applyActions(s, creates, NOW, true);
-  s = syncDailyPlanAfterActions({
-    state: s,
-    actions: creates,
-    affectsToday: true,
-    requestedTodayTaskIds: ids,
-    now: NOW,
-    revision: 2,
-  }).state;
+  const date = dayKey(NOW, s.profile.timezone);
+  s = applyActions(
+    s,
+    [
+      ...creates,
+      ...ids.map(
+        (taskId): Action => ({ type: "schedule.set", taskId, date }),
+      ),
+    ],
+    NOW,
+    true,
+  );
 
   const before = getHomeTodayTasks(s, NOW);
   assert.equal(before.source, "daily_plan");

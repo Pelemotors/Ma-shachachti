@@ -1,5 +1,6 @@
 import type { AppState, Routine } from "@/lib/model";
 import { dayKey } from "@/lib/time";
+import { deadlineFromDueAt } from "@/lib/domain/tasks/deadline";
 
 function dateParts(key: string) {
   const [year, month, day] = key.split("-").map(Number);
@@ -214,6 +215,9 @@ export function materializeDueRoutinesInPlace(
         createdAt: stamp,
         updatedAt: stamp,
         dueAt: timing.dueAt,
+        deadline: timing.dueAt
+          ? deadlineFromDueAt(timing.dueAt, timezone)
+          : null,
         preferredWindow: timing.preferredWindow,
         hiddenUntil: null,
         startedAt: null,

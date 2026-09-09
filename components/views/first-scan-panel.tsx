@@ -3,14 +3,11 @@ import { useRef, useState } from "react";
 import type { Action, AppState } from "@/lib/model";
 import type { FirstScanAnalysis } from "@/lib/domain/first-scan/analyze";
 import { buildScanApproveActions } from "@/lib/domain/first-scan/approve";
-import { DurationWheel, durationToMinutes } from "@/components/duration-wheel";
-import {
-  activeDailyPlan,
-  buildDailyPlanSession,
-  replanDailyPlan,
-} from "@/lib/engine";
+import { DurationWheel } from "@/components/duration-wheel";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { messageForCode } from "@/lib/errors";
+import { dayKey } from "@/lib/time";
+import { dayContextForDate } from "@/lib/domain/planning/day-context";
 
 const SCAN_ANALYSIS_FAIL_HE = messageForCode("scan_analysis_failed");
 
@@ -104,7 +101,10 @@ export function FirstScanPanel(props: {
     (session?.draftAnalysis as FirstScanAnalysis | null) ?? null,
   );
   const defaultEffort =
-    (props.state.planning.today?.effort as 1 | 2 | 3 | null) ?? 2;
+    (dayContextForDate(
+      props.state,
+      dayKey(props.clock, props.state.profile.timezone),
+    )?.effort as 1 | 2 | 3 | null) ?? 2;
   const [hours, setHours] = useState(1);
   const [minsPart, setMinsPart] = useState(0);
   const [effort, setEffort] = useState<1 | 2 | 3>(defaultEffort);
@@ -378,56 +378,13 @@ export function FirstScanPanel(props: {
     });
   }
 
-  async function buildReset(force = false) {
-    const available = durationToMinutes(hours, minsPart) || 60;
-    const existing = activeDailyPlan(props.state, props.clock);
-    if (existing && !force && !planConfirm) {
-      const preview = replanDailyPlan(props.state, props.clock);
-      if (preview.requiresProposal || preview.shiftedTaskIds.length > 0) {
-        setPlanConfirm(true);
-        setLocalError(
-          "מצאתי עוד כמה דברים. כדי להכניס אותם אצטרך להזיז חלק מהתוכנית. לעדכן?",
-        );
-        return;
-      }
-    }
-
-    if (existing && (force || planConfirm)) {
-      const result = replanDailyPlan(props.state, props.clock);
-      if (result.plan) {
-        await props.run([{ type: "plan.set", plan: result.plan }], true);
-        setPlanSummary({
-          fitted: result.plan.items.length,
-          remaining: Math.max(
-            0,
-            props.state.tasks.filter((t) => t.status === "open").length -
-              result.plan.items.length,
-          ),
-        });
-        setPlanConfirm(false);
-        setLocalError("");
-        await markScanCompleted();
-        return;
-      }
-    }
-
-    const sessionPlan = buildDailyPlanSession(
-      props.state,
-      available,
-      effort,
-      props.revision,
-      props.clock,
-    );
-    await props.run([{ type: "plan.set", plan: sessionPlan }], true);
-    const openCount = props.state.tasks.filter(
-      (t) => t.status === "open",
-    ).length;
-    setPlanSummary({
-      fitted: sessionPlan.items.length,
-      remaining: Math.max(0, openCount - sessionPlan.items.length),
-    });
+  async function buildReset(_force = false) {
     setPlanConfirm(false);
     setLocalError("");
+    setPlanSummary({
+      fitted: 0,
+      remaining: props.state.tasks.filter((t) => t.status === "open").length,
+    });
     await markScanCompleted();
   }
 

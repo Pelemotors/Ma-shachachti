@@ -215,6 +215,9 @@ test("changed-day UI talks to the same chat agent with selectedDate", async () =
   );
   assert.match(controller, /surface: "planning"/);
   assert.match(controller, /selectedDate/);
+  assert.match(controller, /scheduleIntent: "build"/);
+  assert.match(controller, /scheduleIntent: "realign"/);
+  assert.doesNotMatch(controller, /buildDailyPlanSession/);
   assert.doesNotMatch(
     controller,
     /Functional contract: changedDay always reaches planning constraint/,

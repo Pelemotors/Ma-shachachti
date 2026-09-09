@@ -1,6 +1,7 @@
 import type { AppState, DailyPlanSession, Task } from "../model";
 import { activeFacts, blocked, estimatedMinutes } from "../engine";
 import { planForDate } from "./planning/plans";
+import { dayContextForDate } from "./planning/day-context";
 import { dayKey } from "../time";
 import { isActiveVisibleTask } from "./tasks/visibility";
 import { isLifeAdminTask } from "./notifications/life-admin";
@@ -83,9 +84,11 @@ export function buildSharedDecisionContext(
   state: AppState,
   now: Date = new Date(),
 ): SharedDecisionContext {
-  const plan = planForDate(state, dayKey(now, state.profile.timezone));
+  const dateKey = dayKey(now, state.profile.timezone);
+  const plan = planForDate(state, dateKey);
   const availableMinutes = plan?.availableMinutes ?? null;
-  const effort = plan?.effort ?? state.planning.today?.effort ?? null;
+  const effort =
+    plan?.effort ?? dayContextForDate(state, dateKey)?.effort ?? null;
 
   const tasks: SharedDecisionTaskView[] = state.tasks
     .filter((t) => t.kind === "task")

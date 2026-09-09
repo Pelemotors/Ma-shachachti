@@ -9,6 +9,10 @@ import {
 } from "@/lib/domain/tasks/dedupe";
 import { syncDailyPlanAfterActions } from "@/lib/domain/planning/sync-daily-plan";
 import {
+  appendExecutionReceipt,
+  buildExecutionReceipt,
+} from "@/lib/domain/execution-receipts";
+import {
   buildApproveTaskNotice,
   countPlannedCreates,
   resolveRequestedTodayTaskIds,
@@ -111,6 +115,7 @@ export async function getLatestPendingProposal(
   sourceRevision: number;
   turnId: string | null;
   expiresAt: string | null;
+  proposedActions: Action[];
 } | null> {
   const { data, error } = await db
     .from("pending_proposals")
@@ -134,7 +139,27 @@ export async function getLatestPendingProposal(
     sourceRevision: Number(data.source_revision) || 0,
     turnId: (data.turn_id as string | null) ?? null,
     expiresAt: (data.expires_at as string | null) ?? null,
+    proposedActions: payload.proposedActions,
   };
+}
+
+export async function resolvePendingProposalStatus(
+  db: SupabaseClient,
+  userId: string,
+  proposalId: string,
+  status: "accepted" | "partial" | "declined" | "expired",
+) {
+  const { data, error } = await db
+    .from("pending_proposals")
+    .update({ status })
+    .eq("id", proposalId)
+    .eq("owner_id", userId)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
+  if (error)
+    throw new ApiError(503, "לא ניתן לעדכן הצעה.", "proposals_update_failed");
+  return data;
 }
 
 export function revalidateProposalActions(
@@ -269,7 +294,15 @@ export async function approvePendingProposal(
     now: new Date(),
     revision,
   });
-  const next = synced.state;
+  const next = appendExecutionReceipt(
+    synced.state,
+    buildExecutionReceipt({
+      proposalId: input.proposalId,
+      turnId: (prop.turn_id as string | null) ?? null,
+      resolvedAt: new Date().toISOString(),
+      actions: applicable,
+    }),
+  );
   const requestHash = createHash("sha256")
     .update(
       JSON.stringify({

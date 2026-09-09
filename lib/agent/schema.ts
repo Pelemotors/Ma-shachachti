@@ -32,6 +32,7 @@ const INTERNAL_AGENT_ACTION_TYPES = new Set([
   "plan.set",
   "plan.clear",
   "plan.itemUpdate",
+  "memory.compact",
   "suggestion.record",
   "memory.lifeAdmin",
   "pendingIntent.set",
@@ -125,6 +126,21 @@ export const AgentDecisionSchema = z.object({
   requestedTodayCreateIndexes: z
     .array(z.number().int().min(0).max(19))
     .max(20)
+    .optional(),
+  proposalDecision: z
+    .object({
+      proposalId: z.string().uuid(),
+      decision: z.enum(["approve", "reject", "revise"]),
+    })
+    .nullable()
+    .optional(),
+  compactedMemoryUpdate: z
+    .object({
+      facts: z.array(z.string().max(500)).max(100),
+      preferences: z.array(z.string().max(500)).max(100),
+      patterns: z.array(z.string().max(500)).max(100),
+    })
+    .nullable()
     .optional(),
 });
 
@@ -377,6 +393,7 @@ export function glueTaskScheduleActions(auto: Action[], proposal: Action[]) {
   const sticky = (action: Action) =>
     action.type === "schedule.set" ||
     action.type === "schedule.remove" ||
+    action.type === "schedule.replaceDay" ||
     action.type === "planning.set" ||
     action.type === "planning.clear";
   return {
@@ -533,6 +550,31 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       warnings.push("deep_access_requests_invalid");
   }
 
+  let proposalDecision: AgentDecision["proposalDecision"] = null;
+  if (obj.proposalDecision != null) {
+    const parsed = z
+      .object({
+        proposalId: z.string().uuid(),
+        decision: z.enum(["approve", "reject", "revise"]),
+      })
+      .safeParse(obj.proposalDecision);
+    if (parsed.success) proposalDecision = parsed.data;
+    else warnings.push("proposal_decision_invalid");
+  }
+
+  let compactedMemoryUpdate: AgentDecision["compactedMemoryUpdate"] = null;
+  if (obj.compactedMemoryUpdate != null) {
+    const parsed = z
+      .object({
+        facts: z.array(z.string().max(500)).max(100),
+        preferences: z.array(z.string().max(500)).max(100),
+        patterns: z.array(z.string().max(500)).max(100),
+      })
+      .safeParse(obj.compactedMemoryUpdate);
+    if (parsed.success) compactedMemoryUpdate = parsed.data;
+    else warnings.push("compacted_memory_update_invalid");
+  }
+
   return {
     decision: {
       reply,
@@ -544,6 +586,8 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       deepAccessRequests,
       workingMemoryUpdate,
       requestedTodayCreateIndexes,
+      proposalDecision,
+      compactedMemoryUpdate,
     },
     rejectedActions: rejected,
     parseWarnings: warnings,
@@ -976,6 +1020,46 @@ export function agentDecisionJsonSchema() {
                 },
               },
             },
+          },
+        ],
+      },
+      proposalDecision: {
+        anyOf: [
+          { type: "null" },
+          {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              proposalId: { type: "string" },
+              decision: {
+                type: "string",
+                enum: ["approve", "reject", "revise"],
+              },
+            },
+            required: ["proposalId", "decision"],
+          },
+        ],
+      },
+      compactedMemoryUpdate: {
+        anyOf: [
+          { type: "null" },
+          {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              facts: { type: "array", maxItems: 100, items: { type: "string" } },
+              preferences: {
+                type: "array",
+                maxItems: 100,
+                items: { type: "string" },
+              },
+              patterns: {
+                type: "array",
+                maxItems: 100,
+                items: { type: "string" },
+              },
+            },
+            required: ["facts", "preferences", "patterns"],
           },
         ],
       },

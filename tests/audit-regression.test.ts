@@ -18,7 +18,11 @@ test("legacy states receive an empty planning model without data loss", () => {
     applyActions(emptyState(), [create("כביסה")], now).tasks[0],
   );
   const parsed = StateSchema.parse(legacy);
-  assert.deepEqual(parsed.planning, { today: null, plans: {} });
+  assert.deepEqual(parsed.planning, {
+    plans: {},
+    dayContexts: {},
+    overlapEvidence: [],
+  });
   assert.equal(parsed.tasks[0].title, "כביסה");
 });
 
@@ -131,7 +135,10 @@ test("planning clear returns the day to normal", () => {
     now,
   );
   s = applyActions(s, [{ type: "planning.clear" }], now);
-  assert.equal(s.planning.today, null);
+  assert.equal(
+    Object.keys(s.planning.dayContexts).length,
+    0,
+  );
 });
 
 test("memory can be corrected without creating a duplicate or losing provenance", () => {
