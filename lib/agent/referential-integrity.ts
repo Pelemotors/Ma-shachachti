@@ -8,6 +8,7 @@ import type { AgentDecision } from "@/lib/agent/schema";
  */
 export function filterReferentialActions(state: AppState, actions: Action[]) {
   const taskIds = new Set(state.tasks.map((t) => t.id));
+  const routineIds = new Set(state.routines.map((r) => r.id));
   const shoppingIds = new Set(state.shopping.map((s) => s.id));
   const factIds = new Set(state.facts.map((f) => f.id));
   const reminderIds = new Set(state.reminders.map((r) => r.id));
@@ -29,6 +30,19 @@ export function filterReferentialActions(state: AppState, actions: Action[]) {
     ) {
       valid = taskIds.has(action.id);
     } else if (
+      action.type === "routine.update" ||
+      action.type === "routine.pause" ||
+      action.type === "routine.remove"
+    ) {
+      valid = routineIds.has(action.id);
+      if (
+        valid &&
+        action.type === "routine.update" &&
+        action.patch.sourceFactId &&
+        !factIds.has(action.patch.sourceFactId)
+      )
+        valid = false;
+    } else if (
       action.type === "shopping.remove" ||
       action.type === "shopping.check"
     ) {
@@ -44,6 +58,12 @@ export function filterReferentialActions(state: AppState, actions: Action[]) {
       valid = memberIds.has(action.id);
     } else if (action.type === "homeArea.remove") {
       valid = homeAreaIds.has(action.id);
+    } else if (
+      action.type === "routine.create" &&
+      action.routine.sourceFactId &&
+      !factIds.has(action.routine.sourceFactId)
+    ) {
+      valid = false;
     }
 
     if (!valid) {
@@ -52,6 +72,10 @@ export function filterReferentialActions(state: AppState, actions: Action[]) {
     }
 
     if (action.type === "task.create") {
+      if (action.task.routineId && !routineIds.has(action.task.routineId)) {
+        rejected.push(action);
+        continue;
+      }
       const relatedMemberIds = (action.task.relatedMemberIds ?? []).filter((id) =>
         memberIds.has(id),
       );
@@ -71,12 +95,52 @@ export function filterReferentialActions(state: AppState, actions: Action[]) {
       continue;
     }
 
-    if (action.type === "member.upsert" && action.member.id) {
+    if (action.type === "routine.create") {
+      const normalized: Action = {
+        ...action,
+        routine: {
+          ...action.routine,
+          relatedMemberIds: (action.routine.relatedMemberIds ?? []).filter((id) =>
+            memberIds.has(id),
+          ),
+          homeAreaIds: (action.routine.homeAreaIds ?? []).filter((id) =>
+            homeAreaIds.has(id),
+          ),
+        },
+      };
+      kept.push(normalized);
+      if (action.routine.id) routineIds.add(action.routine.id);
+      continue;
+    }
+
+    if (action.type === "routine.update") {
+      kept.push({
+        ...action,
+        patch: {
+          ...action.patch,
+          ...(action.patch.relatedMemberIds
+            ? {
+                relatedMemberIds: action.patch.relatedMemberIds.filter((id) =>
+                  memberIds.has(id),
+                ),
+              }
+            : {}),
+          ...(action.patch.homeAreaIds
+            ? {
+                homeAreaIds: action.patch.homeAreaIds.filter((id) =>
+                  homeAreaIds.has(id),
+                ),
+              }
+            : {}),
+        },
+      });
+      continue;
+    }
+
+    if (action.type === "member.upsert" && action.member.id)
       memberIds.add(action.member.id);
-    }
-    if (action.type === "homeArea.upsert" && action.area.id) {
+    if (action.type === "homeArea.upsert" && action.area.id)
       homeAreaIds.add(action.area.id);
-    }
 
     kept.push(action);
   }
