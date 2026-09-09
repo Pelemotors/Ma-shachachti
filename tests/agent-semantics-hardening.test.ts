@@ -225,7 +225,7 @@ test("T17 AgentContext includes members and working memory", () => {
   const ctx = buildAgentContext(s, { now: NOW });
   assert.equal(ctx.members[0]?.aliases[0], "ניקולאס");
   assert.equal(ctx.workingMemory?.lastAgentQuestion, "מתי?");
-  assert.ok(ctx.personalAgentPolicy || ctx.agentPolicy);
+  assert.ok(ctx.personalAgentGuide);
   assert.ok(ctx.userKnowledge);
   assert.ok(ctx.nowLocal);
   assert.equal(ctx.timezone, s.profile.timezone);
