@@ -209,7 +209,12 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
   if (a.type === "reminder.add" && typeof a.at === "string" && a.dueAt == null)
     a.dueAt = a.at;
 
-  if (a.type === "profile.update") a.patch = safeProfilePatch(a.patch);
+  if (a.type === "profile.update") {
+    const safePatch = safeProfilePatch(a.patch);
+    // Protected settings are not agent capabilities.
+    if (Object.keys(safePatch).length === 0) a.patch = null;
+    else a.patch = safePatch;
+  }
 
   if (a.type === "task.create") {
     const task =

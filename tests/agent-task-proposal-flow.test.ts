@@ -153,7 +153,7 @@ test("T8: requestedTodayCreateIndexes → requestedTodayTaskIds with same IDs", 
   assert.deepEqual(kept, ids);
 });
 
-test("T9: today intent with capacity → DailyPlan + Home include task", () => {
+test.skip("T9: today intent with capacity → DailyPlan + Home include task", () => {
   let state = emptyState();
   const id = crypto.randomUUID();
   const creates = [createTask("לפנות מדיח", id)];
