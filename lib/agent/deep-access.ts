@@ -9,10 +9,12 @@ import {
   shoppingFactualEvents,
   shoppingPurchaseHistory,
 } from "@/lib/domain/factual-history";
+import { retrieveTasks, type TaskRetrievalQuery } from "@/lib/agent/task-retrieval";
 
 export const DEEP_ACCESS_TOOLS = [
   "state.get_entity",
   "state.list_tasks",
+  "state.search_tasks",
   "state.get_history",
   "state.get_behavior_events",
   "state.get_scan_history",
@@ -27,11 +29,7 @@ export type DeepAccessTool = (typeof DEEP_ACCESS_TOOLS)[number];
 export type DeepAccessRequest = {
   tool: DeepAccessTool;
   entityId?: string;
-  query?: {
-    status?: string[];
-    limit?: number;
-    since?: string;
-  };
+  query?: TaskRetrievalQuery;
 };
 
 export type DeepAccessResult = {
@@ -100,25 +98,23 @@ export function executeDeepAccess(
           error: hit ? undefined : "not_found",
         };
       }
-      case "state.list_tasks": {
-        const statuses = req.query?.status;
-        let tasks = state.tasks;
-        if (statuses?.length)
-          tasks = tasks.filter((t) => statuses.includes(t.status));
+      case "state.list_tasks":
+      case "state.search_tasks": {
+        const query = { ...(req.query ?? {}), limit };
+        if (req.tool === "state.search_tasks" && !query.text?.trim()) {
+          return {
+            tool: req.tool,
+            ok: false,
+            fromCoreHint: false,
+            data: null,
+            error: "text required",
+          };
+        }
         return {
           tool: req.tool,
           ok: true,
           fromCoreHint: false,
-          data: tasks.slice(-limit).map((t) => ({
-            id: t.id,
-            title: t.title,
-            status: t.status,
-            dueAt: t.dueAt,
-            priority: t.priority,
-            categoryId: t.categoryId,
-            completedAt: t.completedAt,
-            updatedAt: t.updatedAt,
-          })),
+          data: retrieveTasks(state, query),
         };
       }
       case "state.get_history": {

@@ -148,8 +148,8 @@ export function HomeView(props: {
         <button className="kit-invite" onClick={() => props.onNavigate("kit")}>
           <Leaf size={21} />
           <span>
-            <strong>נכיר קצת את השגרה?</strong>
-            <small>כמה הצעות שמתאימות לבית שלכם</small>
+            <strong>רעיונות מהקטלוג</strong>
+            <small>פעולות כלליות לפי סוג הבית</small>
           </span>
           <ChevronLeft size={18} />
         </button>

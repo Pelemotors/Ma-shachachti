@@ -12,7 +12,12 @@ const OPEN_TASK = new Set(["open", "unknown", "in_progress"]);
 
 export type AgentEntityIndex = {
   localDateKey: string;
-  tasks: { total: number; open: number; openIds: string[] };
+  tasks: {
+    total: number;
+    open: number;
+    openIds: string[];
+    hasMoreOpen: boolean;
+  };
   reminders: { total: number; pending: number; pendingIds: string[] };
   routines: { total: number; active: number; activeIds: string[] };
   shopping: { total: number; open: number; purchased: number };
@@ -66,6 +71,7 @@ export function buildEntityIndex(
       total: state.tasks.length,
       open: openTasks.length,
       openIds: openTasks.slice(0, 80).map((t) => t.id),
+      hasMoreOpen: openTasks.length > 80,
     },
     reminders: {
       total: state.reminders.length,

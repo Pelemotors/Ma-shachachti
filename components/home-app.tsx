@@ -30,6 +30,7 @@ import { useChatController } from "@/hooks/use-chat-controller";
 import { useTaskController } from "@/hooks/use-task-controller";
 import { useDailyPlanController } from "@/hooks/use-daily-plan-controller";
 import { useFreeTimeController } from "@/hooks/use-free-time-controller";
+import { useFocusController } from "@/hooks/use-focus-controller";
 import { useShoppingController } from "@/hooks/use-shopping-controller";
 import { useChecklistController } from "@/hooks/use-checklist-controller";
 import { useReminderController } from "@/hooks/use-reminder-controller";
@@ -54,7 +55,17 @@ export function HomeApp() {
     onRestored: () => setView("chat"),
   });
   const chat = useChatController(h, proposal);
-  const free = useFreeTimeController({ state, clock });
+  const free = useFreeTimeController({
+    household: h,
+    persistServerProposal: chat.persistServerProposal,
+    sendLock: chat.sendLock,
+  });
+  const focus = useFocusController({
+    household: h,
+    persistServerProposal: chat.persistServerProposal,
+    sendLock: chat.sendLock,
+    active: view === "focus",
+  });
   const plan = useDailyPlanController(h, {
     clock,
     defaultEffort:
@@ -284,6 +295,7 @@ export function HomeApp() {
             tasks={tasks}
             chat={chat}
             free={free}
+            focus={focus}
             plan={plan}
             shopping={shopping}
             checklists={checklists}

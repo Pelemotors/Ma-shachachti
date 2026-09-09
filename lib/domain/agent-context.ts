@@ -18,6 +18,15 @@ import {
   PERSONAL_CHECKLIST_FULL_CONTEXT_LIMIT,
   PERSONAL_CHECKLIST_INDEX_LIMIT,
 } from "@/lib/domain/checklists";
+import type { AgentSurface } from "@/lib/agent/surfaces";
+import type { ScanTextChunk } from "@/lib/domain/first-scan/chunks";
+
+export type AgentScanInput = {
+  phase?: "single" | "chunk" | "synthesize";
+  chunks?: ScanTextChunk[];
+  chunkId?: string | null;
+  evidence?: unknown[];
+};
 
 export type MemorySurfaceContext = {
   requestedLifetime?: "stable" | "temporary";
@@ -33,6 +42,7 @@ export type AgentSurfaceContext = {
   memoryContext?: MemorySurfaceContext | null;
   needsCompaction?: boolean;
   temporalContext?: ReturnType<typeof buildTemporalContext> | null;
+  scanInput?: AgentScanInput | null;
 };
 
 function stampLocal(iso: string | null | undefined, timezone: string) {
@@ -123,7 +133,7 @@ export function buildAgentContext(
     contextTaskId?: string | null;
     turnId?: string;
     messageLimit?: number;
-    surface?: "chat" | "memory" | "planning";
+    surface?: AgentSurface;
     surfaceContext?: AgentSurfaceContext | null;
   } = {},
 ) {

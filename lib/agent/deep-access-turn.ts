@@ -11,9 +11,9 @@ import {
   type DeepAccessTool,
 } from "@/lib/agent/deep-access";
 
-export const MAX_DEEP_ACCESS_ROUNDS = 2;
-export const MAX_DEEP_ACCESS_CALLS_PER_TURN = 4;
-export const MAX_DEEP_ACCESS_CALLS_PER_ROUND = 2;
+export const MAX_DEEP_ACCESS_ROUNDS = 3;
+export const MAX_DEEP_ACCESS_CALLS_PER_TURN = 6;
+export const MAX_DEEP_ACCESS_CALLS_PER_ROUND = 3;
 
 export type DeepAccessTurnHit = {
   round: number;
@@ -63,6 +63,21 @@ export function parseDeepAccessRequests(raw: unknown): DeepAccessRequest[] {
       }
       if (typeof q.since === "string") {
         request.query.since = q.since.slice(0, 40);
+      }
+      if (typeof q.cursor === "string" && q.cursor.trim()) {
+        request.query.cursor = q.cursor.trim().slice(0, 80);
+      }
+      if (typeof q.before === "string") {
+        request.query.before = q.before.slice(0, 40);
+      }
+      if (typeof q.after === "string") {
+        request.query.after = q.after.slice(0, 40);
+      }
+      if (typeof q.compact === "boolean") {
+        request.query.compact = q.compact;
+      }
+      if (typeof q.text === "string") {
+        request.query.text = q.text.slice(0, 200);
       }
     }
     out.push(request);

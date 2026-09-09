@@ -18,6 +18,10 @@ import {
 } from "@/lib/agent/instructions";
 import { RUNTIME_CAPABILITY_CONTRACT } from "@/lib/agent/runtime-contract";
 import { buildGroundedProposalSummary } from "@/lib/domain/agent-context";
+import type { AgentScanInput } from "@/lib/domain/agent-context";
+import type { AgentSurface } from "@/lib/agent/surfaces";
+import { sanitizePresentation } from "@/lib/domain/agent-presentation";
+import type { AgentPresentation } from "@/lib/domain/agent-presentation";
 import { filterSafeDeferActions } from "@/lib/domain/tasks/deferrable";
 import { shouldCompactMemory } from "@/lib/domain/memory/compaction";
 import { buildTemporalContext } from "@/lib/domain/temporal-context";
@@ -186,12 +190,13 @@ export type ChatOrchestrationInput = {
   contextTaskId: string | null;
   turnId: string;
   requestId: string;
-  surface?: "chat" | "memory" | "planning";
+  surface?: AgentSurface;
   selectedDate?: string | null;
   manualPlacementTaskId?: string | null;
   scheduleIntent?: "build" | "realign" | "changed-day" | null;
   availableMinutes?: number | null;
   effort?: number | null;
+  scanInput?: AgentScanInput | null;
   memoryContext?: {
     requestedLifetime?: "stable" | "temporary";
     expiresAt?: string | null;
@@ -214,6 +219,8 @@ export type ChatOrchestrationResult = {
   requestedTodayCreateIndexes?: number[];
   proposalDecision?: AgentDecision["proposalDecision"];
   compactedMemoryUpdate?: AgentDecision["compactedMemoryUpdate"];
+  presentation: AgentPresentation;
+  scanDraft: unknown;
   rejectedActionCount: number;
   basedOnRevision: number;
   requestId: string;
@@ -261,6 +268,7 @@ export async function orchestrateChatTurn(
       availableMinutes: input.availableMinutes ?? null,
       effort: input.effort ?? null,
       memoryContext: input.memoryContext ?? null,
+      scanInput: input.scanInput ?? null,
       needsCompaction: shouldCompactMemory(state),
       temporalContext: buildTemporalContext(state, {
         now,
@@ -475,6 +483,8 @@ export async function orchestrateChatTurn(
     requestedTodayCreateIndexes: decision.requestedTodayCreateIndexes,
     proposalDecision: decision.proposalDecision ?? null,
     compactedMemoryUpdate: decision.compactedMemoryUpdate ?? null,
+    presentation: sanitizePresentation(state, decision.presentation),
+    scanDraft: decision.scanDraft ?? null,
     rejectedActionCount: rejectedFromParse.length + rejectedApply.length,
     basedOnRevision: input.revision,
     requestId: input.requestId,

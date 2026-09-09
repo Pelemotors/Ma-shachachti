@@ -1,16 +1,15 @@
-import type { FirstScanAnalysis } from "./analyze";
+import type { AppState } from "@/lib/model";
 import {
-  parseSemanticScanResult,
-  SemanticScanResultSchema,
-} from "./semantic";
-
-type OpenAIResponse = {
-  status?: string;
-  output?: Array<{
-    type?: string;
-    content?: Array<{ type?: string; text?: string }>;
-  }>;
-};
+  orchestrateChatTurn,
+  type AgentModelCall,
+} from "@/lib/agent/orchestration";
+import type { FirstScanAnalysis } from "./analyze";
+import { parseSemanticScanResult } from "./semantic";
+import {
+  SCAN_SINGLE_PASS_CHARS,
+  chunkScanText,
+  type ScanTextChunk,
+} from "./chunks";
 
 export class ScanAnalysisError extends Error {
   code: "ai_not_configured" | "scan_analysis_failed";
@@ -24,94 +23,120 @@ export class ScanAnalysisError extends Error {
   }
 }
 
-function outputText(data: OpenAIResponse): string {
-  const texts: string[] = [];
-  for (const item of data.output ?? []) {
-    for (const c of item.content ?? []) {
-      if (c.type === "output_text" && c.text) texts.push(c.text);
-    }
-  }
-  return texts.join("\n").trim();
+function scanMessage(phase: "single" | "chunk" | "synthesize", index?: number) {
+  if (phase === "chunk")
+    return `סקירת בית ראשונה — חלק טכני ${typeof index === "number" ? index + 1 : ""}`.trim();
+  if (phase === "synthesize") return "סקירת בית ראשונה — איחוד כל החלקים";
+  return "סקירת בית ראשונה";
 }
 
-const SCAN_INSTRUCTIONS = `אתה מנתח סקירת בית ראשונה בעברית.
-החזר JSON מובנה בלבד לפי הסכמה.
-זהה רק מה שנאמר במפורש או משתמע בבירור מהתיאור.
-אל תמציא שגרה, תדירות, deadline, אחריות או משך.
-recurrenceDays ו-dueAt חייבים להיות null אלא אם המשתמשת אמרה במפורש.
-inventedRoutine/Deadline/Responsibility/Duration חייבים להיות false.
-אם חסר מידע קריטי — מלא clarification.question קצר.`;
+function parseDraft(
+  raw: unknown,
+  timezone: string,
+): FirstScanAnalysis | null {
+  if (raw == null) return null;
+  try {
+    return parseSemanticScanResult(raw, { timezone });
+  } catch {
+    return null;
+  }
+}
 
-/**
- * Semantic First Home Scan via LLM.
- * Fail closed — no heuristic fallback when AI is unavailable or invalid.
- */
-export async function analyzeFirstScanSemantic(
-  text: string,
-): Promise<{ analysis: FirstScanAnalysis; source: "semantic" }> {
-  const key = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL || process.env.OPENAI_FALLBACK_MODEL;
-  if (!key || !model) {
-    throw new ScanAnalysisError(
-      "ai_not_configured",
-      "ניתוח סקירה דורש חיבור לסוכן.",
-    );
+export async function analyzeFirstScanWithAgent(input: {
+  text: string;
+  state: AppState;
+  revision?: number;
+  turnId?: string;
+  requestId?: string;
+  householdId?: string;
+  modelCall?: AgentModelCall;
+}): Promise<{ analysis: FirstScanAnalysis; source: "agent"; chunks: ScanTextChunk[] }> {
+  const text = input.text;
+  const chunks = chunkScanText(text);
+  if (!chunks.length) {
+    throw new ScanAnalysisError("scan_analysis_failed", "ניתוח הסקירה נכשל.");
   }
 
-  try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
+  const timezone = input.state.profile.timezone;
+  const base = {
+    state: input.state,
+    revision: input.revision ?? 0,
+    contextTaskId: null,
+    requestId: input.requestId ?? crypto.randomUUID(),
+    householdId: input.householdId ?? "local",
+    surface: "first_scan" as const,
+    modelCall: input.modelCall,
+  };
+
+  const run = async (
+    phase: "single" | "chunk" | "synthesize",
+    payloadChunks: ScanTextChunk[],
+    evidence: unknown[],
+    chunk?: ScanTextChunk,
+  ) => {
+    const turnId = crypto.randomUUID();
+    return orchestrateChatTurn({
+      ...base,
+      message: scanMessage(phase, chunk?.index),
+      turnId: input.turnId ?? turnId,
+      requestId: `${base.requestId}:${phase}:${chunk?.index ?? "all"}`,
+      scanInput: {
+        phase,
+        chunks: payloadChunks,
+        chunkId: chunk?.id ?? null,
+        evidence,
       },
-      signal: AbortSignal.timeout(22_000),
-      body: JSON.stringify({
-        model,
-        store: false,
-        instructions: SCAN_INSTRUCTIONS,
-        input: [{ role: "user", content: text.slice(0, 8000) }],
-        text: {
-          format: {
-            type: "json_schema",
-            name: "first_home_scan",
-            strict: false,
-            schema: {
-              type: "object",
-              additionalProperties: true,
-            },
-          },
-        },
-        max_output_tokens: 2500,
-      }),
     });
-    if (!response.ok) {
-      throw new ScanAnalysisError(
-        "scan_analysis_failed",
-        "ניתוח הסקירה נכשל.",
+  };
+
+  try {
+    if (text.length <= SCAN_SINGLE_PASS_CHARS || chunks.length === 1) {
+      const result = await run("single", chunks, []);
+      const analysis = parseDraft(result.scanDraft, timezone);
+      if (!analysis) {
+        throw new ScanAnalysisError(
+          "scan_analysis_failed",
+          "פלט הסקירה לא תקין.",
+        );
+      }
+      return { analysis, source: "agent", chunks };
+    }
+
+    const evidence: unknown[] = [];
+    for (const chunk of chunks) {
+      const part = await run("chunk", [chunk], evidence, chunk);
+      const draft = parseDraft(part.scanDraft, timezone);
+      evidence.push(
+        draft ?? {
+          chunkId: chunk.id,
+          index: chunk.index,
+          offset: chunk.offset,
+          reply: part.reply,
+        },
       );
     }
-    const data = (await response.json()) as OpenAIResponse;
-    if (data.status !== "completed") {
-      throw new ScanAnalysisError(
-        "scan_analysis_failed",
-        "ניתוח הסקירה לא הושלם.",
-      );
-    }
-    const raw = outputText(data);
-    const parsed = JSON.parse(raw) as unknown;
-    if (!SemanticScanResultSchema.safeParse(parsed).success) {
+
+    const final = await run("synthesize", chunks, evidence);
+    const analysis = parseDraft(final.scanDraft, timezone);
+    if (!analysis) {
       throw new ScanAnalysisError(
         "scan_analysis_failed",
         "פלט הסקירה לא תקין.",
       );
     }
-    return { analysis: parseSemanticScanResult(parsed), source: "semantic" };
+    return { analysis, source: "agent", chunks };
   } catch (error) {
     if (error instanceof ScanAnalysisError) throw error;
-    throw new ScanAnalysisError(
-      "scan_analysis_failed",
-      "ניתוח הסקירה נכשל.",
-    );
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code?: string }).code)
+        : "";
+    if (code === "ai_not_configured" || code === "ai_consent_required") {
+      throw new ScanAnalysisError(
+        "ai_not_configured",
+        "ניתוח סקירה דורש חיבור לסוכן.",
+      );
+    }
+    throw new ScanAnalysisError("scan_analysis_failed", "ניתוח הסקירה נכשל.");
   }
 }

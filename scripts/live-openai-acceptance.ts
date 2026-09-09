@@ -8,7 +8,8 @@ import { resolve } from "node:path";
 import { emptyState } from "../lib/model";
 import { applyActions } from "../lib/engine";
 import { orchestrateChatTurn } from "../lib/agent/orchestration";
-import { analyzeFirstScanSemantic } from "../lib/domain/first-scan/ai";
+import { analyzeFirstScanWithAgent } from "../lib/domain/first-scan/ai";
+import { emptyState } from "../lib/model";
 
 function loadEnvLocal() {
   const path = resolve(process.cwd(), ".env.local");
@@ -230,7 +231,11 @@ async function main() {
   ].entries()) {
     const id = `first_scan_${i + 1}`;
     try {
-      const { analysis, source } = await analyzeFirstScanSemantic(text);
+      const seed = emptyState();
+      const { analysis, source } = await analyzeFirstScanWithAgent({
+        text,
+        state: { ...seed, profile: { ...seed.profile, aiConsent: true } },
+      });
       const invented = analysis.proposedTasks.some(
         (t) => t.recurrenceDays != null || t.dueAt != null,
       );

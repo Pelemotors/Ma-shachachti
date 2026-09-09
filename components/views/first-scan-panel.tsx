@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import type { Action, AppState } from "@/lib/model";
 import type { FirstScanAnalysis } from "@/lib/domain/first-scan/analyze";
 import { buildScanApproveActions } from "@/lib/domain/first-scan/approve";
+import { chunkScanText } from "@/lib/domain/first-scan/chunks";
 import { DurationWheel } from "@/components/duration-wheel";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { messageForCode } from "@/lib/errors";
@@ -126,17 +127,19 @@ export function FirstScanPanel(props: {
   }) {
     if (!session) return session;
     const stamp = new Date().toISOString();
-    const chunks = extra?.text.trim()
-      ? [
-          ...session.chunks,
-          {
-            id: crypto.randomUUID(),
-            text: extra.text.trim(),
-            createdAt: stamp,
-            source: extra.source,
-          },
-        ]
-      : session.chunks;
+    const remaining = Math.max(0, 40 - session.chunks.length);
+    const added =
+      extra?.text.trim() && remaining
+        ? chunkScanText(extra.text.trim(), { maxChunks: remaining }).map(
+            (chunk) => ({
+              id: chunk.id,
+              text: chunk.text,
+              createdAt: stamp,
+              source: extra.source,
+            }),
+          )
+        : [];
+    const chunks = [...session.chunks, ...added];
     const next = {
       ...session,
       chunks,

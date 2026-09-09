@@ -544,7 +544,7 @@ export const FirstScanStatusSchema = z.enum([
 
 export const ScanChunkSchema = z.object({
   id: z.string().uuid(),
-  text: z.string().max(12000),
+  text: z.string().max(20000),
   createdAt: Stamp,
   source: z.enum(["text", "voice"]),
 });

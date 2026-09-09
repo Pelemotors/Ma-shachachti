@@ -10,6 +10,7 @@ import {
   buildAgentContext,
   type AgentSurfaceContext,
 } from "@/lib/domain/agent-context";
+import type { AgentSurface } from "@/lib/agent/surfaces";
 import { buildLiveCapabilityContext } from "@/lib/agent/capability-registry";
 import {
   buildAgentContextSnapshot,
@@ -101,7 +102,7 @@ export function buildAgentRuntimeContext(input: {
    * Must not be confused with message-based domain picking.
    */
   contextTaskId?: string | null;
-  surface?: "chat" | "memory" | "planning";
+  surface?: AgentSurface;
   surfaceContext?: AgentSurfaceContext | null;
   pendingProposal?: PendingProposalContext;
   /** Labels for DB reads that produced this turn's inputs */
