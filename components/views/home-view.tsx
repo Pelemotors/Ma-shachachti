@@ -9,7 +9,10 @@ import {
   ListChecks,
 } from "lucide-react";
 import { AppState, Action, Task } from "@/lib/model";
-import { getHomeTodayTasks } from "@/lib/domain/planning/home-today";
+import {
+  foldHomeTodayTasks,
+  getHomeTodayTasks,
+} from "@/lib/domain/planning/home-today";
 import { suggestions } from "@/lib/catalog";
 import { TaskCard } from "@/components/task-card";
 import { Empty } from "@/components/empty-state";
@@ -34,8 +37,7 @@ export function HomeView(props: {
     props.state,
     props.clock,
   );
-  // Above-the-fold hint only for whatMatters fallback — never truncate DailyPlan.
-  const shown = source === "daily_plan" ? relevant : relevant.slice(0, 6);
+  const shown = foldHomeTodayTasks(relevant, source);
   return (
     <>
       <section className="greeting home-hero">
@@ -103,12 +105,18 @@ export function HomeView(props: {
       <section className="home-tasks">
         <div className="section-heading">
           <h2>עכשיו אצלך</h2>
-          <button
-            className="text-button"
-            onClick={() => props.onNavigate("tasks")}
-          >
-            לכל המשימות <ChevronLeft size={16} />
-          </button>
+          {source === "daily_plan" ? (
+            <button className="text-button" onClick={props.onOpenPlan}>
+              ללו״ז המלא <ChevronLeft size={16} />
+            </button>
+          ) : (
+            <button
+              className="text-button"
+              onClick={() => props.onNavigate("tasks")}
+            >
+              לכל המשימות <ChevronLeft size={16} />
+            </button>
+          )}
         </div>
         {shown.length ? (
           <div className="task-list compact">
