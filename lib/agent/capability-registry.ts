@@ -43,7 +43,7 @@ function deriveEntries(): CapabilityEntry[] {
     const destructive =
       c.type.includes("remove") ||
       c.type.includes("cancel") ||
-      c.policy === "proposal";
+      c.type.includes("delete");
     const approvalRequired =
       c.policy === "proposal" || c.policy === "auto_or_proposal";
     const entityAffected = c.type.split(/[./]/)[0] ?? "unknown";
@@ -107,6 +107,7 @@ export function buildLiveCapabilityContext() {
       entity: a.entityAffected,
       approvalRequired: a.approvalRequired,
       destructive: a.destructive,
+      notes: a.notes,
     })),
   };
 }

@@ -227,6 +227,28 @@ export function normalizeLooseAgentAction(raw: unknown): unknown {
   if (a.type === "reminder.add" && typeof a.at === "string" && a.dueAt == null)
     a.dueAt = a.at;
 
+  if (a.type === "agentGuide.update") {
+    const g =
+      a.guide !== null && typeof a.guide === "object" && !Array.isArray(a.guide)
+        ? (a.guide as Record<string, unknown>)
+        : null;
+    if (g) {
+      if (a.expectedRevision == null) a.expectedRevision = g.expectedRevision;
+      if (a.currentRevision == null && g.currentRevision != null)
+        a.currentRevision = g.currentRevision;
+      if (typeof a.text !== "string" && typeof g.text === "string")
+        a.text = g.text;
+    }
+    if (a.expectedRevision == null && a.currentRevision != null)
+      a.expectedRevision = a.currentRevision;
+    if (typeof a.expectedRevision === "string") {
+      const n = Number(a.expectedRevision);
+      if (Number.isInteger(n) && n >= 0) a.expectedRevision = n;
+    }
+    if (typeof a.text !== "string" && typeof a.title === "string")
+      a.text = a.title;
+  }
+
   if (a.type === "profile.update") {
     const safePatch = safeProfilePatch(a.patch);
     // Protected settings are not agent capabilities.
@@ -585,8 +607,47 @@ function actionJsonSchema() {
         enum: ["open", "done", "cancelled", "unknown", "in_progress"],
       },
       title: { type: "string" },
-      text: { type: "string" },
-      expectedRevision: { type: "integer", minimum: 0 },
+      text: {
+        type: "string",
+        description:
+          "For agentGuide.update: the full replacement Personal Agent Guide in the user's language.",
+      },
+      expectedRevision: {
+        type: "integer",
+        minimum: 0,
+        description:
+          "For agentGuide.update: the current Personal Agent Guide revision being replaced. Copy runtime.personalAgentGuide.update.expectedRevision as-is. Do not add 1. Use 0 when exists is false.",
+      },
+      currentRevision: {
+        type: "integer",
+        minimum: 0,
+        description:
+          "Alias for expectedRevision on agentGuide.update — current revision, not the next one.",
+      },
+      guide: {
+        type: "object",
+        additionalProperties: true,
+        description:
+          "Optional nested payload for agentGuide.update. Preferred when type is agentGuide.update.",
+        properties: {
+          expectedRevision: {
+            type: "integer",
+            minimum: 0,
+            description:
+              "Current revision being replaced. Copy as-is. Do not add 1.",
+          },
+          currentRevision: {
+            type: "integer",
+            minimum: 0,
+            description: "Alias for expectedRevision — current, not next.",
+          },
+          text: {
+            type: "string",
+            description: "Full replacement Personal Agent Guide text.",
+          },
+        },
+        required: ["expectedRevision", "text"],
+      },
       sourceTurnId: nullableString,
       proposalId: nullableString,
       quantity: { type: "string" },

@@ -69,6 +69,11 @@ test("C4: capability registry version stable across builds in-process", () => {
   const live = buildLiveCapabilityContext();
   assert.equal(live.capabilityVersion, a.capabilityVersion);
   assert.ok(live.doors.some((d) => d.id.includes("task.create")));
+  const guideDoor = live.doors.find((d) => d.id === "agentGuide.update");
+  assert.ok(guideDoor);
+  assert.equal(guideDoor.destructive, false);
+  assert.equal(guideDoor.policy, "proposal");
+  assert.ok(guideDoor.notes);
 });
 
 test("C1/C2: snapshot reuses unchanged slices; rebuilds after task change", () => {

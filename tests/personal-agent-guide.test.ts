@@ -7,15 +7,17 @@ import {
   listLegacyAgentPolicyLearning,
   toRuntimePersonalAgentGuide,
 } from "../lib/domain/agent-guide";
-import { classifyActionPolicy, agentDecisionJsonSchema } from "../lib/agent/schema";
+import { classifyActionPolicy, agentDecisionJsonSchema, parseAgentDecisionIsolated, partitionActionsByPolicy } from "../lib/agent/schema";
 import {
   buildAgentContextSnapshot,
   invalidateAgentContextCache,
 } from "../lib/agent/context-snapshot";
-import { buildAgentRuntimeContext } from "../lib/agent/runtime-context";
+import { buildAgentRuntimeContext, toAgentModelInput } from "../lib/agent/runtime-context";
+import { buildLiveCapabilityContext } from "../lib/agent/capability-registry";
 import { buildEntityIndex } from "../lib/agent/entity-index";
 import { buildAgentContext } from "../lib/domain/agent-context";
 import { AGENT_CAPABILITY_TYPES } from "../lib/agent/capabilities";
+import { filterRunnableActions } from "../lib/agent/action-validation";
 
 const NOW = new Date("2026-09-09T12:00:00Z");
 const TURN = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -312,6 +314,12 @@ test("PAG-T10: runtime receives the correct user guide", () => {
   });
   assert.equal(empty.personalAgentGuide.exists, false);
   assert.equal(empty.personalAgentGuide.revision, 0);
+  assert.deepEqual(empty.personalAgentGuide.update, {
+    actionId: "agentGuide.update",
+    expectedRevision: 0,
+    currentRevision: 0,
+    placement: "proposal.proposedActions",
+  });
 });
 
 test("PERSONAL-EVOLUTION-GATE mechanism: null → rev1 → rev2 replaces document", () => {
@@ -380,5 +388,110 @@ test("PERSONAL-EVOLUTION-GATE mechanism: null → rev1 → rev2 replaces documen
     now: NOW,
   });
   assert.equal(afterSecond.personalAgentGuide.revision, 2);
+  assert.equal(afterSecond.personalAgentGuide.update.expectedRevision, 2);
   assert.equal(state.personalAgentGuideHistory.length, 0);
+});
+
+test("agentGuide.update is presented to the model as a non-destructive proposal door", () => {
+  const live = buildLiveCapabilityContext();
+  const door = live.doors.find((d) => d.id === "agentGuide.update");
+  assert.ok(door);
+  assert.equal(door.policy, "proposal");
+  assert.equal(door.destructive, false);
+  assert.equal(door.approvalRequired, true);
+  assert.match(door.notes ?? "", /expectedRevision/);
+  assert.match(door.purpose, /Personal Agent Guide/);
+
+  const schema = JSON.stringify(agentDecisionJsonSchema());
+  assert.ok(schema.includes("agentGuide.update"));
+  assert.ok(schema.includes("expectedRevision"));
+
+  const parsed = parseAgentDecisionIsolated({
+    reply: "אציע לשמור את זה במדריך.",
+    initiative: "user_requested",
+    explicitActions: [],
+    clarification: null,
+    proposal: {
+      summary: "עדכון מדריך אישי",
+      reason: "other",
+      proposedActions: [
+        {
+          type: "agentGuide.update",
+          expectedRevision: "0",
+          text: "תשובות קצרות",
+        },
+      ],
+    },
+    affectsToday: false,
+    workingMemoryUpdate: null,
+  });
+  assert.equal(parsed.rejectedActions.length, 0);
+  assert.equal(parsed.decision.proposal?.proposedActions[0]?.type, "agentGuide.update");
+
+  const nested = parseAgentDecisionIsolated({
+    reply: "אציע להחליף את המדריך.",
+    initiative: "user_requested",
+    explicitActions: [
+      {
+        type: "agentGuide.update",
+        guide: { expectedRevision: 1, text: "קצר, בלי שאלות מיותרות" },
+      },
+    ],
+    clarification: null,
+    proposal: null,
+    affectsToday: false,
+    workingMemoryUpdate: null,
+  });
+  assert.equal(nested.rejectedActions.length, 0);
+  assert.equal(nested.decision.explicitActions[0]?.type, "agentGuide.update");
+  if (nested.decision.explicitActions[0]?.type === "agentGuide.update") {
+    assert.equal(nested.decision.explicitActions[0].expectedRevision, 1);
+    assert.equal(nested.decision.explicitActions[0].text, "קצר, בלי שאלות מיותרות");
+  }
+
+  const promoted = partitionActionsByPolicy(
+    [
+      {
+        type: "agentGuide.update",
+        expectedRevision: 0,
+        text: "תשובות קצרות",
+      },
+    ],
+    { initiative: "user_requested" },
+  );
+  assert.equal(promoted.proposal.length, 1);
+  assert.equal(promoted.auto.length, 0);
+
+  const runnable = filterRunnableActions(
+    emptyState(),
+    [
+      {
+        type: "agentGuide.update",
+        expectedRevision: 0,
+        text: "תשובות קצרות",
+      },
+    ],
+    NOW,
+  );
+  assert.equal(runnable.accepted.length, 1);
+  assert.equal(runnable.rejected.length, 0);
+
+  const modelInput = toAgentModelInput(
+    buildAgentRuntimeContext({
+      state: emptyState(),
+      stateRevision: 0,
+      householdId: "door-check",
+      turnId: TURN,
+      requestId: PROP,
+      now: NOW,
+    }),
+    "שמרי במדריך",
+  );
+  const modelDoor = modelInput.runtime.capabilityRegistry.doors.find(
+    (d) => d.id === "agentGuide.update",
+  );
+  assert.ok(modelDoor);
+  assert.equal(modelDoor.destructive, false);
+  assert.ok(modelDoor.notes);
+  assert.equal(modelInput.runtime.personalAgentGuide.update.expectedRevision, 0);
 });

@@ -40,7 +40,24 @@ export type RuntimePersonalAgentGuide = {
   revision: number;
   createdAt: string | null;
   updatedAt: string | null;
+  /** How to persist this document — not an interpretation of its text. */
+  update: {
+    actionId: "agentGuide.update";
+    /** Current document revision to replace — copy as-is, do not add 1. */
+    expectedRevision: number;
+    currentRevision: number;
+    placement: "proposal.proposedActions";
+  };
 };
+
+function guideUpdateContract(expectedRevision: number) {
+  return {
+    actionId: "agentGuide.update" as const,
+    expectedRevision,
+    currentRevision: expectedRevision,
+    placement: "proposal.proposedActions" as const,
+  };
+}
 
 export function emptyRuntimePersonalAgentGuide(): RuntimePersonalAgentGuide {
   return {
@@ -49,6 +66,7 @@ export function emptyRuntimePersonalAgentGuide(): RuntimePersonalAgentGuide {
     revision: 0,
     createdAt: null,
     updatedAt: null,
+    update: guideUpdateContract(0),
   };
 }
 
@@ -63,6 +81,7 @@ export function toRuntimePersonalAgentGuide(
     revision: g.revision,
     createdAt: g.createdAt,
     updatedAt: g.updatedAt,
+    update: guideUpdateContract(g.revision),
   };
 }
 

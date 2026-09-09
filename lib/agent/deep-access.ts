@@ -3,6 +3,7 @@
  * Never mutates. Never interprets natural language.
  */
 import type { AppState } from "@/lib/model";
+import { toRuntimePersonalAgentGuide } from "@/lib/domain/agent-guide";
 import {
   recentCompletedTasks,
   shoppingFactualEvents,
@@ -199,26 +200,11 @@ export function executeDeepAccess(
       }
       case "state.get_agent_guide": {
         // Active guide SoT only — never reads personal_agent_guide_revisions.
-        const g = state.personalAgentGuide;
         return {
           tool: req.tool,
           ok: true,
           fromCoreHint: false,
-          data: g
-            ? {
-                exists: true,
-                text: g.text,
-                revision: g.revision,
-                createdAt: g.createdAt,
-                updatedAt: g.updatedAt,
-              }
-            : {
-                exists: false,
-                text: "",
-                revision: 0,
-                createdAt: null,
-                updatedAt: null,
-              },
+          data: toRuntimePersonalAgentGuide(state),
         };
       }
       case "state.get_shopping_history": {

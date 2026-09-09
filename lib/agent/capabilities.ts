@@ -115,10 +115,10 @@ export const AGENT_CAPABILITY_CONTRACT = [
   {
     type: "fact.add/fact.update/fact.remove",
     purpose:
-      "Preserve user knowledge, temporary context, corrections and explicit facts.",
+      "Preserve household/life facts the user stated — not how you should work with them.",
     policy: "auto_or_proposal",
     notes:
-      "Store what is actually known. Semantic implications may trigger another capability, but do not invent life facts.",
+      "Store what is actually known. Lasting working-style belongs on agentGuide.update, not here. Do not invent life facts.",
   },
   {
     type: "reminder.add/reminder.update/reminder.cancel",
@@ -173,10 +173,10 @@ export const AGENT_CAPABILITY_CONTRACT = [
   {
     type: "agentGuide.update",
     purpose:
-      "Propose replacing the user's Personal Agent Guide document text (opaque to domain code).",
+      "Create or replace the Personal Agent Guide — the durable document of how you should work with this user (tone, pacing, what to ask, what not to ask). This is how a lasting working-style request is persisted. A conversational reply does not update the guide.",
     policy: "proposal",
     notes:
-      "Requires expectedRevision + text. No persistence before Approval. Domain validates size/revision only — never guide meaning.",
+      "Always a Proposal, including when a guide already exists — replace the whole document, do not skip the action. expectedRevision is the current document revision (copy runtime.personalAgentGuide.update.expectedRevision or currentRevision as-is). Do not add 1. 0 only when exists is false. text is the full replacement guide. You may send fields flat or inside guide{expectedRevision,text}. Put the action in proposal.proposedActions. Domain does not interpret the text.",
   },
 ] as const;
 
