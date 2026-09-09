@@ -7,13 +7,14 @@ import {
   partitionActionsByPolicy,
 } from "@/lib/agent/schema";
 import { filterRunnableActions } from "@/lib/agent/action-validation";
-import { enforceReferentialIntegrity } from "@/lib/agent/semantic";
+import { enforceReferentialIntegrity } from "@/lib/agent/referential-integrity";
 import { outputText, type OpenAIResponse } from "@/lib/agent/client";
 import type { AppState } from "@/lib/model";
 import {
   AGENT_INSTRUCTIONS,
   AGENT_CONTRACT_VERSION,
 } from "@/lib/agent/instructions";
+import { PERSONAL_AGENT_RUNTIME_GUIDANCE } from "@/lib/agent/runtime-guidance";
 import {
   buildAgentContext,
   buildGroundedProposalSummary,
@@ -132,6 +133,7 @@ async function callAgent(
       "הסוכן לא החזיר תשובה. לא בוצעו שינויים.",
       "ai_empty",
     );
+
   try {
     const isolated = parseAgentDecisionText(text);
     const decision = AgentDecisionSchema.parse(isolated.decision);
@@ -160,6 +162,7 @@ export type ChatOrchestrationInput = {
   contextTaskId: string | null;
   turnId: string;
   requestId: string;
+  surface?: "chat" | "memory" | "planning";
 };
 
 export type ChatOrchestrationResult = {
@@ -196,9 +199,8 @@ export async function orchestrateChatTurn(
       "ai_not_configured",
     );
 
-  // One personal agent, one model call per attempt. Personal behavior is
-  // supplied as context/policy, not delegated to sub-agents.
-  const instructions = `${AGENT_INSTRUCTIONS}${PERSONAL_AGENT_POLICY_INSTRUCTIONS}`;
+  // One personal agent. Fallback is the same contract on an alternate model.
+  const instructions = `${AGENT_INSTRUCTIONS}${PERSONAL_AGENT_POLICY_INSTRUCTIONS}${PERSONAL_AGENT_RUNTIME_GUIDANCE}`;
   const now = new Date();
   const state = input.state;
   const deferral = filterSafeDeferActions(state, [], now);
@@ -207,8 +209,9 @@ export async function orchestrateChatTurn(
       now,
       contextTaskId: input.contextTaskId,
       turnId: input.turnId,
+      surface: input.surface ?? "chat",
     }),
-    deferrableCandidates: deferral.candidates.slice(0, 40),
+    deferrableCandidates: deferral.candidates.slice(0, 60),
     protectedFromDefer: deferral.protected.slice(0, 40),
   };
   const models = Array.from(
@@ -249,7 +252,10 @@ export async function orchestrateChatTurn(
       lastError ?? new ApiError(502, "הסוכן לא הצליח לענות כרגע.", "ai_failed")
     );
 
+  // Domain checks references; it does not reinterpret what the user meant.
   decision = enforceReferentialIntegrity(state, decision);
+
+  // Validate ordered lists against evolving temporary state.
   const explicitFiltered = filterRunnableActions(
     state,
     decision.explicitActions,
@@ -270,6 +276,7 @@ export async function orchestrateChatTurn(
     ...deferGate.rejected,
     ...proposalFiltered.rejected,
   ];
+
   decision = {
     ...decision,
     explicitActions: deferGate.accepted as typeof decision.explicitActions,
@@ -281,14 +288,20 @@ export async function orchestrateChatTurn(
       : null,
   };
 
+  // Policy may promote explicit actions to a proposal. Never demote an action
+  // the model intentionally kept inside a composed proposal: doing so can split
+  // task.create + dependent reminder/update into an invalid half-executed turn.
   const { auto, proposal: policyProposal } = partitionActionsByPolicy(
     decision.explicitActions,
   );
   const fromModel = decision.proposal?.proposedActions ?? [];
-  const { auto: modelAuto, proposal: modelProposal } =
-    partitionActionsByPolicy(fromModel);
-  const allProposal = [...policyProposal, ...modelProposal].slice(0, 20);
-  const stillAuto = [...auto, ...modelAuto].filter(
+  const allProposal = [...policyProposal, ...fromModel]
+    .filter(
+      (a, i, arr) =>
+        arr.findIndex((x) => JSON.stringify(x) === JSON.stringify(a)) === i,
+    )
+    .slice(0, 20);
+  const stillAuto = auto.filter(
     (a, i, arr) =>
       arr.findIndex((x) => JSON.stringify(x) === JSON.stringify(a)) === i,
   );

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { test, expect } from "@playwright/test";
 import {
   buildLocalState,
@@ -7,17 +8,28 @@ import {
 
 test.describe("P72 מה שכחתי?", () => {
   test("routine household excluded; life-admin included", async ({ page }) => {
-    const state = buildLocalState([
-      {
-        title: "לפנות מדיח E2E",
-        categoryId: "kitchen_dishes",
-      },
-      {
-        title: "לבדוק ביטוח רכב E2E",
-        categoryId: "documents_admin",
-        priority: 2,
-      },
-    ]);
+    const routineId = randomUUID();
+    const state = buildLocalState(
+      [
+        {
+          title: "לפנות מדיח E2E",
+          categoryId: "kitchen_dishes",
+          routineId,
+        },
+        {
+          title: "לבדוק ביטוח רכב E2E",
+          categoryId: "documents_admin",
+          priority: 2,
+        },
+      ],
+      [
+        {
+          id: routineId,
+          title: "לפנות מדיח E2E",
+          categoryId: "kitchen_dishes",
+        },
+      ],
+    );
 
     await openLocalDemo(page, state);
     await openForgotten(page);

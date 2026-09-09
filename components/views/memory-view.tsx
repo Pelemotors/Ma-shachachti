@@ -14,12 +14,14 @@ export function MemoryView(props: {
   clock: Date;
   run: (actions: Action[], confirmed?: boolean) => Promise<void>;
   act: (a: Action) => Promise<void>;
+  onRemember: (text: string) => Promise<string>;
   onEditTask: (t: Task) => void;
   onNotice: (msg: string) => void;
 }) {
   const [factText, setFactText] = useState("");
   const [factKind, setFactKind] = useState<"stable" | "temporary">("stable");
   const [factExpiry, setFactExpiry] = useState("");
+  const [saving, setSaving] = useState(false);
 
   return (
     <>
@@ -31,11 +33,15 @@ export function MemoryView(props: {
         className="panel stack"
         onSubmit={async (e) => {
           e.preventDefault();
+          if (saving) return;
+          const text = factText.trim();
+          if (!text) return;
+          setSaving(true);
           try {
             await props.run([
               {
                 type: "fact.add",
-                text: factText,
+                text,
                 kind: factKind,
                 expiresAt:
                   factKind === "temporary"
@@ -44,7 +50,15 @@ export function MemoryView(props: {
               },
             ]);
             setFactText("");
-          } catch {}
+            try {
+              const reply = await props.onRemember(text);
+              if (reply) props.onNotice(reply);
+            } catch {
+              props.onNotice("המידע נשמר. העיבוד החכם לא הושלם כרגע.");
+            }
+          } finally {
+            setSaving(false);
+          }
         }}
       >
         <label>
@@ -78,7 +92,7 @@ export function MemoryView(props: {
             />
           </label>
         )}
-        <button className="secondary" disabled={props.busy}>
+        <button className="secondary" disabled={props.busy || saving}>
           שמירה בזיכרון
         </button>
       </form>

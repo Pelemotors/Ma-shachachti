@@ -67,11 +67,11 @@ test("P03 forgotten excludes routine includes life admin", () => {
     s,
     [
       {
-        type: "task.create",
-        task: {
+        type: "routine.create",
+        routine: {
           title: "לפנות מדיח",
-          kind: "task",
           categoryId: "kitchen_dishes",
+          schedule: { frequency: "daily", interval: 1 },
         },
       },
       {
@@ -97,11 +97,11 @@ test("P08 routine household does not notify", () => {
     s,
     [
       {
-        type: "task.create",
-        task: {
+        type: "routine.create",
+        routine: {
           title: "סידור סלון",
-          kind: "task",
           categoryId: "living_spaces",
+          schedule: { frequency: "daily", interval: 1 },
           priority: 1,
         },
       },

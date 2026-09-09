@@ -42,34 +42,40 @@ export function ShoppingView(props: {
           הוספה
         </button>
       </form>
-      <div className="shopping-list">
-        {props.items.map((item) => {
-          const done = Boolean(item.purchasedAt);
-          return (
-            <div
-              className={"shopping-item" + (done ? " is-done" : "")}
-              key={item.id}
-            >
-              <label className="check-line">
-                <input
-                  type="checkbox"
-                  checked={done}
-                  onChange={(e) => props.onToggle(item.id, e.target.checked)}
-                />
+      <div className="shopping-list" role="list">
+        {props.items.map((item) => (
+          <div
+            className={"shopping-item" + (item.purchasedAt ? " is-done" : "")}
+            key={item.id}
+            role="listitem"
+          >
+            <label className="shopping-item-main">
+              <input
+                type="checkbox"
+                checked={Boolean(item.purchasedAt)}
+                onChange={(e) => props.onToggle(item.id, e.target.checked)}
+                aria-label={item.title}
+              />
+              <span className="shopping-item-text">
                 <span className="shopping-item-title">{item.title}</span>
                 {item.quantity ? (
-                  <small className="shopping-item-qty">{item.quantity}</small>
+                  <small className="shopping-item-qty">
+                    {" "}
+                    · {item.quantity}
+                  </small>
                 ) : null}
-              </label>
-              <button
-                className="text-button"
-                onClick={() => props.onRemove(item.id)}
-              >
-                הסרה
-              </button>
-            </div>
-          );
-        })}
+              </span>
+            </label>
+            <button
+              type="button"
+              className="text-button shopping-item-remove"
+              aria-label={`הסרת ${item.title}`}
+              onClick={() => props.onRemove(item.id)}
+            >
+              ×
+            </button>
+          </div>
+        ))}
       </div>
       {props.empty && <Empty text="הרשימה מחכה לדברים שחסרים בבית." />}
       <button className="secondary" onClick={() => window.print()}>

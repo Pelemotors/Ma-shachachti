@@ -3,6 +3,12 @@ import { dayKey, formatTime } from "@/lib/time";
 import { activeFacts, whatMatters } from "@/lib/engine";
 import { resolvePersonalAgentPolicy } from "@/lib/domain/agent-policy";
 import { sanitizeWorkingMemory } from "@/lib/domain/working-memory";
+import { buildAgentCapabilityContext } from "@/lib/agent/capabilities";
+
+export type AgentSurfaceContext = {
+  memoryKind?: "stable" | "temporary";
+  memoryExpiresAt?: string | null;
+};
 
 function stampLocal(iso: string | null | undefined, timezone: string) {
   if (!iso) return null;
@@ -13,7 +19,7 @@ function stampLocal(iso: string | null | undefined, timezone: string) {
   }
 }
 
-function firstScanSummary(state: AppState) {
+function firstScanKnowledge(state: AppState) {
   const session = state.firstScan?.session;
   if (!session) return null;
   if (
@@ -22,36 +28,69 @@ function firstScanSummary(state: AppState) {
     state.firstScan.status !== "completed"
   )
     return null;
+
   const draft = session.draftAnalysis as
     | {
         summary?: string;
+        detectedAreas?: unknown[];
         areas?: unknown[];
         members?: unknown[];
         observations?: unknown[];
+        profileFacts?: unknown[];
+        proposedTasks?: unknown[];
+        clarification?: unknown;
       }
     | null
     | undefined;
+
   if (!draft || typeof draft !== "object") {
     return {
       status: state.firstScan.status,
       sessionStatus: session.status,
       chunkCount: session.chunks.length,
+      sourceChunks: session.chunks.slice(-12).map((c) => ({
+        text: c.text.slice(0, 1000),
+        source: c.source,
+        createdAt: c.createdAt,
+      })),
     };
   }
+
+  const detectedAreas = Array.isArray(draft.detectedAreas)
+    ? draft.detectedAreas
+    : Array.isArray(draft.areas)
+      ? draft.areas
+      : [];
+
   return {
     status: state.firstScan.status,
     sessionStatus: session.status,
     summary:
-      typeof draft.summary === "string" ? draft.summary.slice(0, 400) : null,
-    areaCount: Array.isArray(draft.areas) ? draft.areas.length : 0,
-    memberHints: Array.isArray(draft.members) ? draft.members.slice(0, 12) : [],
-    observationCount: Array.isArray(draft.observations)
-      ? draft.observations.length
-      : 0,
+      typeof draft.summary === "string" ? draft.summary.slice(0, 800) : null,
+    detectedAreas: detectedAreas.slice(0, 30),
+    members: Array.isArray(draft.members) ? draft.members.slice(0, 20) : [],
+    observations: Array.isArray(draft.observations)
+      ? draft.observations.slice(0, 30)
+      : [],
+    profileFacts: Array.isArray(draft.profileFacts)
+      ? draft.profileFacts.slice(0, 30)
+      : [],
+    proposedTasks: Array.isArray(draft.proposedTasks)
+      ? draft.proposedTasks.slice(0, 30)
+      : [],
+    sourceChunks: session.chunks.slice(-12).map((c) => ({
+      text: c.text.slice(0, 1000),
+      source: c.source,
+      createdAt: c.createdAt,
+    })),
   };
 }
 
-/** Bounded One-Brain context for the single personal agent. */
+/**
+ * Bounded One-Brain context for the single personal agent.
+ * It contains what the application knows and what it can execute. It does not
+ * contain an intent taxonomy or keyword rules for understanding the user.
+ */
 export function buildAgentContext(
   state: AppState,
   opts: {
@@ -59,6 +98,8 @@ export function buildAgentContext(
     contextTaskId?: string | null;
     turnId?: string;
     messageLimit?: number;
+    surface?: "chat" | "memory" | "planning";
+    surfaceContext?: AgentSurfaceContext | null;
   } = {},
 ) {
   const now = opts.now ?? new Date();
@@ -69,23 +110,7 @@ export function buildAgentContext(
       t.status === "unknown" ||
       t.status === "in_progress",
   );
-  const plan =
-    "plan" in state.planning
-      ? (
-          state.planning as {
-            plan?: {
-              date: string;
-              availableMinutes: number;
-              effort: number;
-              items: {
-                taskId: string;
-                locked: boolean;
-                planStatus: string;
-              }[];
-            } | null;
-          }
-        ).plan
-      : null;
+  const plan = state.planning.plan ?? null;
 
   const mapTask = (t: Task) => ({
     id: t.id,
@@ -93,6 +118,7 @@ export function buildAgentContext(
     categoryId: t.categoryId,
     detailTypeId: t.detailTypeId,
     status: t.status,
+    kind: t.kind,
     priority: t.priority,
     dueAtUtc: t.dueAt,
     dueAtLocal: stampLocal(t.dueAt, tz),
@@ -109,7 +135,14 @@ export function buildAgentContext(
     homeAreaIds: t.homeAreaIds,
     workMinutes: t.workMinutes,
     waitMinutes: t.waitMinutes,
+    effort: t.effort,
     classification: t.classification,
+    recurrenceDays: t.recurrenceDays,
+    occurrenceOf: t.occurrenceOf,
+    routineId: t.routineId,
+    dependsOn: t.dependsOn,
+    steps: t.steps.slice(0, 20),
+    notes: t.notes.slice(0, 800),
   });
 
   const members: Pick<HouseholdMember, "id" | "name" | "type" | "aliases">[] =
@@ -120,14 +153,78 @@ export function buildAgentContext(
       aliases: m.aliases,
     }));
 
-  const facts = activeFacts(state)
-    .slice(-40)
+  const facts = activeFacts(state, now)
+    .slice(-60)
     .map((f) => ({
       id: f.id,
       text: f.text,
       kind: f.kind,
       expiresAt: f.expiresAt,
+      source: f.source,
     }));
+
+  const routines = state.routines.slice(-80).map((r) => ({
+    id: r.id,
+    title: r.title,
+    status: r.status,
+    categoryId: r.categoryId,
+    detailTypeId: r.detailTypeId,
+    schedule: r.schedule,
+    timeOfDay: r.timeOfDay,
+    atTime: r.atTime,
+    workMinutes: r.workMinutes,
+    effort: r.effort,
+    priority: r.priority,
+    notes: r.notes.slice(0, 800),
+    sourceFactId: r.sourceFactId,
+    relatedMemberIds: r.relatedMemberIds,
+    homeAreaIds: r.homeAreaIds,
+    lastMaterializedDate: r.lastMaterializedDate,
+  }));
+
+  const profileKnowledge = {
+    name: state.profile.name,
+    addressAs: state.profile.addressAs,
+    timezone: tz,
+    rooms: state.profile.rooms,
+    bathrooms: state.profile.bathrooms,
+    children: state.profile.children,
+    garden: state.profile.garden,
+    pets: state.profile.pets,
+    car: state.profile.car,
+    dishwasher: state.profile.dishwasher,
+    dryer: state.profile.dryer,
+    cleaner: state.profile.cleaner,
+    householdRoutines: state.profile.householdRoutines,
+  };
+
+  const homeAreas = state.homeAreas.slice(0, 60).map((a) => ({
+    id: a.id,
+    name: a.name,
+    type: a.type,
+    aliases: a.aliases,
+    parentAreaId: a.parentAreaId,
+    source: a.source,
+  }));
+
+  const learning = state.learning.slice(-30).map((l) => ({
+    id: l.id,
+    kind: l.kind,
+    key: l.key,
+    payload: l.payload,
+    confidence: l.confidence,
+    samples: l.samples,
+    lastObservedAt: l.lastObservedAt,
+  }));
+
+  const compactedMemory = {
+    facts: state.compactedMemory.facts.slice(-30),
+    preferences: state.compactedMemory.preferences.slice(-30),
+    patterns: state.compactedMemory.patterns.slice(-30),
+    lifeAdminWindow: state.compactedMemory.lifeAdminWindow,
+  };
+
+  const firstScan = firstScanKnowledge(state);
 
   return {
     nowUtc: now.toISOString(),
@@ -138,77 +235,32 @@ export function buildAgentContext(
     }).format(now),
     localDateKey: dayKey(now, tz),
     timezone: tz,
-    /** Short-term open conversation state — primary continuity signal. */
+    surface: opts.surface ?? "chat",
+    surfaceContext: opts.surfaceContext ?? null,
     workingMemory: sanitizeWorkingMemory(state.agentWorkingMemory, now),
-    /** HOW to work with this user — not household facts. */
     personalAgentPolicy: resolvePersonalAgentPolicy(state),
     /** @deprecated alias — prefer personalAgentPolicy */
     agentPolicy: resolvePersonalAgentPolicy(state),
-    /** WHAT we know about the user's life (bounded). */
+    capabilityContract: buildAgentCapabilityContext(),
     userKnowledge: {
-      profile: {
-        name: state.profile.name,
-        addressAs: state.profile.addressAs,
-        timezone: tz,
-        quietStart: state.profile.quietStart,
-        quietEnd: state.profile.quietEnd,
-        aiConsent: state.profile.aiConsent,
-        autoApply: state.profile.autoApply,
-        cleaner: state.profile.cleaner,
-        householdRoutines: state.profile.householdRoutines,
-        rooms: state.profile.rooms,
-        children: state.profile.children,
-        pets: state.profile.pets,
-      },
+      profile: profileKnowledge,
       members,
-      homeAreas: state.homeAreas.slice(0, 40).map((a) => ({
-        id: a.id,
-        name: a.name,
-        type: a.type,
-        parentAreaId: a.parentAreaId,
-      })),
+      homeAreas,
       facts,
-      compactedMemory: {
-        facts: state.compactedMemory.facts.slice(-20),
-        preferences: state.compactedMemory.preferences.slice(-20),
-        patterns: state.compactedMemory.patterns.slice(-20),
-        lifeAdminWindow: state.compactedMemory.lifeAdminWindow,
-      },
-      learning: state.learning.slice(-20).map((l) => ({
-        id: l.id,
-        kind: l.kind,
-        key: l.key,
-        confidence: l.confidence,
-        samples: l.samples,
-      })),
-      firstScan: firstScanSummary(state),
+      routines,
+      compactedMemory,
+      learning,
+      firstScan,
     },
-    profile: {
-      name: state.profile.name,
-      addressAs: state.profile.addressAs,
-      timezone: tz,
-      quietStart: state.profile.quietStart,
-      quietEnd: state.profile.quietEnd,
-      aiConsent: state.profile.aiConsent,
-      autoApply: state.profile.autoApply,
-      cleaner: state.profile.cleaner,
-      householdRoutines: state.profile.householdRoutines,
-      rooms: state.profile.rooms,
-      children: state.profile.children,
-      pets: state.profile.pets,
-    },
+    profile: profileKnowledge,
     members,
-    homeAreas: state.homeAreas.slice(0, 40).map((a) => ({
-      id: a.id,
-      name: a.name,
-      type: a.type,
-      parentAreaId: a.parentAreaId,
-    })),
-    tasks: activeTasks.slice(-80).map(mapTask),
-    shopping: state.shopping.filter((x) => !x.purchasedAt).slice(-60),
+    homeAreas,
+    routines,
+    tasks: activeTasks.slice(-100).map(mapTask),
+    shopping: state.shopping.filter((x) => !x.purchasedAt).slice(-80),
     reminders: state.reminders
       .filter((r) => r.status === "pending")
-      .slice(-60)
+      .slice(-80)
       .map((r) => ({
         id: r.id,
         title: r.title,
@@ -216,25 +268,15 @@ export function buildAgentContext(
         dueAtLocal: stampLocal(r.dueAt, tz),
         taskId: r.taskId,
         urgency: r.urgency ?? "medium",
+        createdAt: r.createdAt ?? null,
       })),
     facts,
-    compactedMemory: {
-      facts: state.compactedMemory.facts.slice(-20),
-      preferences: state.compactedMemory.preferences.slice(-20),
-      patterns: state.compactedMemory.patterns.slice(-20),
-      lifeAdminWindow: state.compactedMemory.lifeAdminWindow,
-    },
-    learning: state.learning.slice(-20).map((l) => ({
-      id: l.id,
-      kind: l.kind,
-      key: l.key,
-      confidence: l.confidence,
-      samples: l.samples,
-    })),
-    firstScan: firstScanSummary(state),
-    important: whatMatters(state).map((t) => t.id),
+    compactedMemory,
+    learning,
+    firstScan,
+    important: whatMatters(state, now).map((t) => t.id),
     contextTaskId: opts.contextTaskId ?? null,
-    history: state.messages.slice(-(opts.messageLimit ?? 16)),
+    history: state.messages.slice(-(opts.messageLimit ?? 20)),
     turnId: opts.turnId,
     dailyPlan: plan
       ? {
@@ -261,6 +303,8 @@ export function buildGroundedProposalSummary(actions: { type: string }[]) {
     return `זיהיתי ${creates} משימות. להוסיף אותן לרשימת המשימות?`;
   if (actions.some((a) => a.type === "reminder.add"))
     return "יש תזכורת שדורשת אישור לפני שמירה.";
+  if (actions.some((a) => a.type === "routine.remove"))
+    return "יש הסרת שגרה שדורשת אישור לפני ביצוע.";
   if (actions.length) return "יש פעולות שדורשות אישור לפני ביצוע.";
   return "אין פעולות לאישור.";
 }

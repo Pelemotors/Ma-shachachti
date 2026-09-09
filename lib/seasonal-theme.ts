@@ -12,7 +12,9 @@ export type ResolveActiveThemeInput = {
 };
 
 /** Resolve UI theme from profile preference + local calendar month in profile timezone. */
-export function resolveActiveTheme(input: ResolveActiveThemeInput): SeasonTheme {
+export function resolveActiveTheme(
+  input: ResolveActiveThemeInput,
+): SeasonTheme {
   if (input.mode === "fixed") return input.fixed;
 
   const monthParts = new Intl.DateTimeFormat("en-US", {

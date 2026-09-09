@@ -74,7 +74,11 @@ export function emojiForTask(
   const normalized = title.trim().toLocaleLowerCase("he");
   if (normalized) {
     for (const rule of TITLE_KEYWORD_RULES) {
-      if (rule.keywords.some((kw) => normalized.includes(kw.toLocaleLowerCase("he")))) {
+      if (
+        rule.keywords.some((kw) =>
+          normalized.includes(kw.toLocaleLowerCase("he")),
+        )
+      ) {
         return rule.emoji;
       }
     }

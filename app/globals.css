@@ -1083,7 +1083,8 @@ details .stack {
 }
 .theme-mode-option.is-selected {
   border-color: var(--theme-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-primary) 22%, transparent);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--theme-primary) 22%, transparent);
   background: color-mix(in srgb, var(--theme-accent-soft) 55%, #fff);
 }
 .theme-season-grid {
@@ -1107,14 +1108,20 @@ details .stack {
 }
 .theme-season-card.is-selected {
   border-color: var(--season-primary, var(--theme-primary));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--season-primary, var(--theme-primary)) 28%, transparent);
+  box-shadow: 0 0 0 2px
+    color-mix(
+      in srgb,
+      var(--season-primary, var(--theme-primary)) 28%,
+      transparent
+    );
 }
 .theme-season-preview {
   display: block;
   height: 52px;
   border-radius: 10px;
   background-color: color-mix(in srgb, var(--season-primary, #ccc) 18%, #fff);
-  background-image: linear-gradient(
+  background-image:
+    linear-gradient(
       180deg,
       rgba(255, 255, 255, 0.55),
       rgba(255, 255, 255, 0.2)
@@ -1257,7 +1264,8 @@ details .stack {
 }
 .composer:focus-within {
   border-color: var(--theme-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-primary) 18%, transparent);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--theme-primary) 18%, transparent);
 }
 .app-shell.home-active .composer:focus-within {
   border-color: color-mix(in srgb, var(--home-primary) 32%, #fff);
@@ -1374,12 +1382,12 @@ details .stack {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  min-height: 40px;
-  border-radius: 13px;
-  background: transparent;
-  color: var(--theme-primary);
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border-radius: 14px;
+  background: var(--theme-primary);
+  color: #fff;
   flex-shrink: 0;
 }
 .app-shell.home-active .send {
@@ -1389,6 +1397,15 @@ details .stack {
   border-radius: 50%;
   background: color-mix(in srgb, var(--home-primary) 82%, #fff);
   color: #fff;
+}
+.send:disabled {
+  opacity: 0.45;
+}
+.send:not(:disabled):hover {
+  filter: brightness(1.05);
+}
+.send:not(:disabled):active {
+  filter: brightness(0.95);
 }
 .composer-wrap > small {
   display: block;
@@ -1518,65 +1535,97 @@ details .stack {
   max-width: 90px;
 }
 .shopping-list {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid var(--theme-border);
-  border-radius: 16px;
-  overflow: hidden;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
   margin-bottom: 20px;
 }
 .shopping-list:empty {
   display: none;
 }
 .shopping-item {
-  min-height: 46px;
-  padding: 8px 10px;
+  padding: 8px 4px;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
-  border-bottom: 1px solid var(--theme-border);
+  border-bottom: 1px solid var(--line);
   background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  margin: 0;
 }
 .shopping-item:last-child {
-  border-bottom: 0;
+  border-bottom: 1px solid var(--line);
 }
-.shopping-item label,
-.shopping-item .check-line {
+.shopping-item-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+.shopping-item-main input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--theme-primary);
+}
+.shopping-item-text {
   flex: 1;
   min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.shopping-item-title {
+  font-weight: 500;
+  color: var(--theme-text);
+}
+.shopping-item-qty {
+  color: var(--muted);
+  font-weight: 400;
+}
+.shopping-item-remove {
+  flex-shrink: 0;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+}
+.shopping-item.is-done .shopping-item-text {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.shopping-item label {
+  flex: 1;
+}
+.shopping-item label span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.shopping-item small {
+  color: var(--muted);
+}
+.message-retry-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0;
-  text-align: right;
+  margin-top: 6px;
 }
-.shopping-item .check-line input {
-  width: 18px;
-  height: 18px;
-  min-height: 18px;
-  accent-color: var(--theme-primary);
+.message-send-failed {
+  outline: 1px solid var(--line);
 }
-.shopping-item-title {
-  flex: 1;
-  min-width: 0;
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--theme-text);
-  overflow-wrap: anywhere;
+.approval-actions {
+  flex-wrap: wrap;
 }
-.shopping-item-qty {
-  font-size: 13px;
-  color: var(--theme-muted);
-  flex-shrink: 0;
+.approval-actions .primary {
+  flex: 1 1 140px;
 }
-.shopping-item .text-button {
-  font-size: 13px;
-  color: var(--theme-muted);
-  min-height: 32px;
-  padding: 0 4px;
-}
-.shopping-item.is-done .shopping-item-title {
-  text-decoration: line-through;
-  color: var(--theme-muted);
+.approval-actions .secondary {
+  flex: 1 1 120px;
 }
 .chat-page {
   padding-top: 20px;
@@ -1744,10 +1793,11 @@ details .stack {
 }
 .save-notice {
   position: fixed;
-  bottom: 24px;
-  left: 24px;
+  top: calc(16px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 30;
-  max-width: calc(100vw - 48px);
+  max-width: min(360px, calc(100vw - 32px));
   background: var(--ink);
   color: white;
   border-radius: 14px;
@@ -2079,9 +2129,11 @@ dialog::backdrop {
     padding-top: 25px;
   }
   .save-notice {
-    bottom: calc(166px + env(safe-area-inset-bottom));
-    left: 16px;
-    max-width: calc(100vw - 32px);
+    top: calc(12px + env(safe-area-inset-top));
+    bottom: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: min(360px, calc(100vw - 32px));
     font-size: 13px;
   }
   .panel {
@@ -2124,7 +2176,7 @@ dialog::backdrop {
     min-width: 44px;
   }
   .shopping-item {
-    padding: 10px 12px;
+    padding: 8px 4px;
   }
   .list-row.panel {
     padding: 16px;

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Action, emptyState } from "../lib/model";
 import { applyActions, followUps, shouldAskWorkTime } from "../lib/engine";
-import { AgentOutput } from "../lib/agent/schema";
+import { AgentOutput, parseAgentDecisionIsolated } from "../lib/agent/schema";
 
 const now = new Date("2026-09-07T10:00:00Z");
 const create = (title: string, extra = {}) =>
@@ -50,15 +50,15 @@ test("agent contract accepts urgency but still rejects permission changes", () =
       affectsToday: false,
     }),
   );
-  assert.throws(() =>
-    AgentOutput.parse({
-      reply: "לא.",
-      explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],
-      clarification: null,
-      proposal: null,
-      affectsToday: false,
-    }),
-  );
+  const protectedOnly = parseAgentDecisionIsolated({
+    reply: "לא.",
+    explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],
+    clarification: null,
+    proposal: null,
+    affectsToday: false,
+  });
+  assert.equal(protectedOnly.decision.explicitActions.length, 0);
+  assert.ok(protectedOnly.rejectedActions.length >= 1);
 });
 
 test("gentle follow-up candidates are unknown or overdue, never completed", () => {

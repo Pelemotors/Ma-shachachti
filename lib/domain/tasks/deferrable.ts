@@ -8,6 +8,7 @@ export type DeferrableCandidate = {
   title: string;
   priority: number;
   reason: string;
+  caution?: "overdue" | "urgent_deadline" | null;
 };
 
 export type ProtectedTask = {
@@ -17,8 +18,11 @@ export type ProtectedTask = {
 };
 
 /**
- * Deterministic deferral candidates. LLM may rank among allowed;
- * Domain rejects unsafe choices.
+ * Domain separates legality from judgment.
+ *
+ * In-progress and locked plan items are hard-protected because deferring them
+ * would violate active execution state. Deadlines/priority remain context for
+ * the personal agent, not a deterministic veto on explicit user intent.
  */
 export function getDeferrableCandidates(
   state: AppState,
@@ -37,13 +41,9 @@ export function getDeferrableCandidates(
 
   for (const t of state.tasks) {
     if (!isActiveVisibleTask(t, now)) continue;
-    const block = protectedReason(t, { locked, now });
+    const block = protectedReason(t, locked);
     if (block) {
-      protectedTasks.push({
-        taskId: t.id,
-        title: t.title,
-        reason: block,
-      });
+      protectedTasks.push({ taskId: t.id, title: t.title, reason: block });
       continue;
     }
     candidates.push({
@@ -51,22 +51,29 @@ export function getDeferrableCandidates(
       title: t.title,
       priority: t.priority,
       reason: deferReason(t, requestedToday.has(t.id)),
+      caution: deadlineCaution(t, now),
     });
   }
 
+  // Stable presentation only. The LLM decides human relevance among legal options.
   candidates.sort((a, b) => a.priority - b.priority);
   return { candidates, protected: protectedTasks };
 }
 
-function protectedReason(
-  t: Task,
-  opts: { locked: Set<string>; now: Date },
-): string | null {
+function protectedReason(t: Task, locked: Set<string>): string | null {
   if (t.status === "in_progress") return "in_progress";
-  if (opts.locked.has(t.id)) return "locked";
-  if (t.priority >= 3 && t.dueAt && msUntil(t.dueAt, opts.now) < 36 * 3600000)
+  if (locked.has(t.id)) return "locked";
+  return null;
+}
+
+function deadlineCaution(
+  t: Task,
+  now: Date,
+): "overdue" | "urgent_deadline" | null {
+  if (!t.dueAt) return null;
+  if (Date.parse(t.dueAt) < now.getTime()) return "overdue";
+  if (t.priority >= 3 && msUntil(t.dueAt, now) < 36 * 3600000)
     return "urgent_deadline";
-  if (t.dueAt && Date.parse(t.dueAt) < opts.now.getTime()) return "overdue";
   return null;
 }
 
@@ -77,7 +84,7 @@ function deferReason(t: Task, inPlan: boolean): string {
   return "flexible";
 }
 
-/** Domain gate: only allow defer of IDs present in candidates. */
+/** Domain gate: reject only truly protected defer actions. */
 export function filterSafeDeferActions(
   state: AppState,
   actions: { type: string; id?: string }[],
@@ -98,10 +105,7 @@ export function filterSafeDeferActions(
     const id = a.id;
     if (!id || !allowed.has(id)) {
       const prot = protectedTasks.find((p) => p.taskId === id);
-      rejected.push({
-        action: a,
-        reason: prot?.reason ?? "not_deferrable",
-      });
+      rejected.push({ action: a, reason: prot?.reason ?? "not_deferrable" });
       continue;
     }
     accepted.push(a);
