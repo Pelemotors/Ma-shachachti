@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AgentOutput } from "../lib/agent/schema";
+import { AgentOutput, parseAgentDecisionIsolated } from "../lib/agent/schema";
 import { Action, StateSchema, emptyState } from "../lib/model";
 import { applyActions, planDay } from "../lib/engine";
 import { dayKey } from "../lib/time";
@@ -213,15 +213,15 @@ test("agent contract allows explicit planning and memory correction", () => {
 });
 
 test("agent contract still blocks profile and permission changes", () => {
-  assert.throws(() =>
-    AgentOutput.parse({
-      reply: "אין שינוי.",
-      explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],
-      clarification: null,
-      proposal: null,
-      affectsToday: false,
-    }),
-  );
+  const protectedOnly = parseAgentDecisionIsolated({
+    reply: "אין שינוי.",
+    explicitActions: [{ type: "profile.update", patch: { aiConsent: true } }],
+    clarification: null,
+    proposal: null,
+    affectsToday: false,
+  });
+  assert.equal(protectedOnly.decision.explicitActions.length, 0);
+  assert.ok(protectedOnly.rejectedActions.length >= 1);
 });
 
 test("completed work with a former wait period never re-enters the plan", () => {

@@ -44,9 +44,7 @@ export function ShoppingView(props: {
       <div className="shopping-list" role="list">
         {props.items.map((item) => (
           <div
-            className={
-              "shopping-item" + (item.purchasedAt ? " is-done" : "")
-            }
+            className={"shopping-item" + (item.purchasedAt ? " is-done" : "")}
             key={item.id}
             role="listitem"
           >
@@ -60,7 +58,10 @@ export function ShoppingView(props: {
               <span className="shopping-item-text">
                 <span className="shopping-item-title">{item.title}</span>
                 {item.quantity ? (
-                  <small className="shopping-item-qty"> · {item.quantity}</small>
+                  <small className="shopping-item-qty">
+                    {" "}
+                    · {item.quantity}
+                  </small>
                 ) : null}
               </span>
             </label>

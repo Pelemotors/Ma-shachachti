@@ -255,6 +255,7 @@ export function AppViewRouter(props: {
         clock={clock}
         run={tasks.run}
         act={tasks.act}
+        onRemember={chat.processMemory}
         onEditTask={tasks.setEditor}
         onNotice={props.onNotice}
       />

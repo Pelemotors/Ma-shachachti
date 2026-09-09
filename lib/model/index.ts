@@ -111,6 +111,58 @@ export type AgentWorkingMemoryPatch = z.infer<
   typeof AgentWorkingMemoryPatchSchema
 >;
 
+/**
+ * Typed recurring responsibility. Whether something is a routine is a semantic
+ * conclusion of the personal LLM; this schema only stores the executable result.
+ */
+export const RoutineScheduleSchema = z.discriminatedUnion("frequency", [
+  z.object({
+    frequency: z.literal("daily"),
+    interval: z.number().int().min(1).max(30).default(1),
+  }),
+  z.object({
+    frequency: z.literal("weekly"),
+    interval: z.number().int().min(1).max(12).default(1),
+    weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7),
+  }),
+  z.object({
+    frequency: z.literal("monthly"),
+    interval: z.number().int().min(1).max(12).default(1),
+    dayOfMonth: z.number().int().min(1).max(31),
+  }),
+  z.object({
+    frequency: z.literal("interval_days"),
+    everyDays: z.number().int().min(1).max(366),
+  }),
+]);
+export type RoutineSchedule = z.infer<typeof RoutineScheduleSchema>;
+
+export const RoutineSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().min(1).max(200),
+  status: z.enum(["active", "paused"]),
+  categoryId: CategorySchema.default("unclassified"),
+  detailTypeId: z.string().max(80).nullable().default(null),
+  schedule: RoutineScheduleSchema,
+  timeOfDay: z.enum(["any", "morning", "afternoon", "evening"]).default("any"),
+  atTime: z
+    .string()
+    .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/)
+    .nullable()
+    .default(null),
+  workMinutes: z.number().int().min(1).max(1440).default(20),
+  effort: z.number().int().min(1).max(3).default(2),
+  priority: z.number().int().min(0).max(3).default(2),
+  notes: z.string().max(2000).default(""),
+  sourceFactId: z.string().uuid().nullable().default(null),
+  relatedMemberIds: z.array(z.string().uuid()).max(20).default([]),
+  homeAreaIds: z.array(z.string().uuid()).max(20).default([]),
+  createdAt: Stamp,
+  updatedAt: Stamp,
+  lastMaterializedDate: DateKey.nullable().default(null),
+});
+export type Routine = z.infer<typeof RoutineSchema>;
+
 export const TaskSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1).max(200),
@@ -149,6 +201,7 @@ export const TaskSchema = z.object({
   templateId: z.string().nullable(),
   recurrenceDays: z.number().int().min(1).max(366).nullable(),
   occurrenceOf: z.string().uuid().nullable(),
+  routineId: z.string().uuid().nullable().default(null),
   notes: z.string().max(2000),
   completedAt: Stamp.nullable(),
   actualWorkMinutes: z.number().int().min(1).max(1440).nullable(),
@@ -422,6 +475,7 @@ export const StateV2Schema = z.object({
   schemaVersion: z.literal(2),
   profile: ProfileSchema,
   tasks: z.array(TaskSchema).max(2000),
+  routines: z.array(RoutineSchema).max(500).default([]),
   facts: z.array(FactSchema).max(300),
   shopping: z.array(ShoppingSchema).max(1000),
   reminders: z.array(ReminderSchema).max(500),
@@ -561,6 +615,7 @@ function migrateTask(raw: z.infer<typeof TaskV1Schema>): Task {
     templateId: raw.templateId,
     recurrenceDays: raw.recurrenceDays,
     occurrenceOf: raw.occurrenceOf,
+    routineId: null,
     notes: raw.notes,
     completedAt: raw.completedAt,
     actualWorkMinutes: raw.actualWorkMinutes,
@@ -577,6 +632,7 @@ export function migrateV1ToV2(v1: StateV1): AppState {
     schemaVersion: 2,
     profile: v1.profile,
     tasks: v1.tasks.map(migrateTask),
+    routines: [],
     facts: v1.facts,
     shopping: v1.shopping,
     reminders: v1.reminders,
@@ -626,12 +682,13 @@ function hydrateWorkingMemoryFromLegacy(
   obj: Record<string, unknown>,
 ): Record<string, unknown> {
   const next = { ...obj };
+  if (next.routines === undefined) next.routines = [];
+
   if (next.agentWorkingMemory == null && next.pendingAgentIntent != null) {
     const pending = PendingAgentIntentValueSchema.safeParse(
       next.pendingAgentIntent,
     );
     if (pending.success) {
-      // Lazy import avoided — inline human migration (not workflow type).
       const p = pending.data;
       const ids: string[] = [];
       if (p.contextTaskId) ids.push(p.contextTaskId);
@@ -666,9 +723,11 @@ function hydrateWorkingMemoryFromLegacy(
     next.tasks = next.tasks.map((raw) => {
       if (!raw || typeof raw !== "object") return raw;
       const t = raw as Record<string, unknown>;
-      if (t.durationFeedbackAskedAt === undefined)
-        return { ...t, durationFeedbackAskedAt: null };
-      return t;
+      return {
+        ...t,
+        durationFeedbackAskedAt: t.durationFeedbackAskedAt ?? null,
+        routineId: t.routineId ?? null,
+      };
     });
   }
 
@@ -679,8 +738,8 @@ function hydrateWorkingMemoryFromLegacy(
       const id =
         typeof row.id === "string"
           ? row.id
-          : globalThis.crypto?.randomUUID?.() ??
-            `00000000-0000-4000-8000-${String(Math.random()).slice(2, 14).padEnd(12, "0")}`;
+          : (globalThis.crypto?.randomUUID?.() ??
+            `00000000-0000-4000-8000-${String(Math.random()).slice(2, 14).padEnd(12, "0")}`);
       const suggestionKey =
         typeof row.suggestionKey === "string"
           ? row.suggestionKey
@@ -728,11 +787,9 @@ export function migrateState(raw: unknown): AppState {
       throw new Error("unsupported_schema_version:invalid");
     }
 
-    // V1 or legacy without version / missing planning
     const candidate = { ...obj, schemaVersion: 1 as const };
     const v1 = StateV1Schema.safeParse(candidate);
     if (v1.success) return StateV2Schema.parse(migrateV1ToV2(v1.data));
-    // Soft repair: empty planning
     const repaired = {
       ...candidate,
       planning: (obj as { planning?: unknown }).planning ?? { today: null },
@@ -775,6 +832,7 @@ export function emptyState(): AppState {
       cleaner: { enabled: false, visitsPerWeek: 0, days: [] },
     },
     tasks: [],
+    routines: [],
     facts: [],
     shopping: [],
     reminders: [],
@@ -837,10 +895,45 @@ export const TaskCreateInputSchema = z.object({
     .optional(),
   templateId: z.string().nullable().optional(),
   recurrenceDays: z.number().int().min(1).max(366).nullable().optional(),
+  routineId: z.string().uuid().nullable().optional(),
   notes: z.string().max(2000).optional(),
   relatedMemberIds: z.array(z.string().uuid()).max(20).optional(),
   homeAreaIds: z.array(z.string().uuid()).max(20).optional(),
 });
+
+export const RoutineCreateInputSchema = RoutineSchema.pick({
+  title: true,
+  categoryId: true,
+  detailTypeId: true,
+  schedule: true,
+  timeOfDay: true,
+  atTime: true,
+  workMinutes: true,
+  effort: true,
+  priority: true,
+  notes: true,
+  sourceFactId: true,
+  relatedMemberIds: true,
+  homeAreaIds: true,
+})
+  .partial({
+    categoryId: true,
+    detailTypeId: true,
+    timeOfDay: true,
+    atTime: true,
+    workMinutes: true,
+    effort: true,
+    priority: true,
+    notes: true,
+    sourceFactId: true,
+    relatedMemberIds: true,
+    homeAreaIds: true,
+  })
+  .extend({
+    id: z.string().uuid().optional(),
+    title: z.string().min(1).max(200),
+    schedule: RoutineScheduleSchema,
+  });
 
 /** @deprecated Prefer TaskCreateInputSchema — kept as alias during transition. */
 export const TaskInput = TaskCreateInputSchema;
@@ -867,6 +960,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
       steps: true,
       dependsOn: true,
       recurrenceDays: true,
+      routineId: true,
       relatedMemberIds: true,
       homeAreaIds: true,
       durationFeedbackAskedAt: true,
@@ -891,6 +985,35 @@ export const ActionSchema = z.discriminatedUnion("type", [
     stepId: z.string().uuid(),
     done: z.boolean(),
   }),
+  z.object({
+    type: z.literal("routine.create"),
+    routine: RoutineCreateInputSchema,
+  }),
+  z.object({
+    type: z.literal("routine.update"),
+    id: z.string().uuid(),
+    patch: RoutineSchema.pick({
+      title: true,
+      categoryId: true,
+      detailTypeId: true,
+      schedule: true,
+      timeOfDay: true,
+      atTime: true,
+      workMinutes: true,
+      effort: true,
+      priority: true,
+      notes: true,
+      sourceFactId: true,
+      relatedMemberIds: true,
+      homeAreaIds: true,
+    }).partial(),
+  }),
+  z.object({
+    type: z.literal("routine.pause"),
+    id: z.string().uuid(),
+    paused: z.boolean(),
+  }),
+  z.object({ type: z.literal("routine.remove"), id: z.string().uuid() }),
   z.object({
     type: z.literal("shopping.add"),
     title: z.string().min(1).max(150),
@@ -952,10 +1075,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
     constraint: PlanningConstraintSchema,
   }),
   z.object({ type: z.literal("planning.clear") }),
-  z.object({
-    type: z.literal("plan.set"),
-    plan: DailyPlanSessionSchema,
-  }),
+  z.object({ type: z.literal("plan.set"), plan: DailyPlanSessionSchema }),
   z.object({ type: z.literal("plan.clear") }),
   z.object({
     type: z.literal("plan.itemUpdate"),
@@ -1010,9 +1130,9 @@ export const ActionSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("homeArea.upsert"),
-    area: HomeAreaSchema.partial({
-      id: true,
-    }).extend({ name: z.string().min(1).max(80) }),
+    area: HomeAreaSchema.partial({ id: true }).extend({
+      name: z.string().min(1).max(80),
+    }),
   }),
   z.object({ type: z.literal("homeArea.remove"), id: z.string().uuid() }),
   z.object({
