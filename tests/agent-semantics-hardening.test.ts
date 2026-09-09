@@ -278,7 +278,8 @@ test("TaskCreateInputSchema does not inject migration defaults", () => {
 });
 
 test("instructions include constitution learning and runtime working memory", () => {
-  assert.match(GLOBAL_AGENT_CONSTITUTION, /מדריך האישי/);
+  assert.match(GLOBAL_AGENT_CONSTITUTION, /דרך העבודה האישית/);
+  assert.match(GLOBAL_AGENT_CONSTITUTION, /זיכרון ולמידה לאורך זמן/);
   assert.match(RUNTIME_CAPABILITY_CONTRACT, /Working Memory/);
   assert.match(RUNTIME_CAPABILITY_CONTRACT, /Personal Agent Guide/);
 });

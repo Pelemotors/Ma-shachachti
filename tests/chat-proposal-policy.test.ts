@@ -169,7 +169,7 @@ test("P1: revision-unrelated state still revalidates proposal actions", () => {
 test("P1: agent instructions are bundled — no runtime readFile dependency marker", () => {
   assert.ok(GLOBAL_AGENT_CONSTITUTION.length > 500);
   assert.ok(RUNTIME_CAPABILITY_CONTRACT.length > 500);
-  assert.ok(GLOBAL_AGENT_CONSTITUTION.includes("מדריך האישי"));
+  assert.ok(GLOBAL_AGENT_CONSTITUTION.includes("דרך העבודה האישית"));
   assert.ok(RUNTIME_CAPABILITY_CONTRACT.includes("Personal Agent Guide"));
   assert.ok(AGENT_CONTRACT_VERSION.length > 0);
   const orch = readFileSync(
@@ -200,8 +200,8 @@ test("P1: instructions.ts stays synced with INSTRUCTIONS.he.md", () => {
   );
   assert.ok(md.includes("Global Agent Constitution"));
   assert.ok(GLOBAL_AGENT_CONSTITUTION.includes("Global Agent Constitution"));
-  assert.ok(md.includes("מדריך האישי"));
-  assert.ok(GLOBAL_AGENT_CONSTITUTION.includes("מדריך האישי"));
+  assert.ok(md.includes("דרך העבודה האישית"));
+  assert.ok(GLOBAL_AGENT_CONSTITUTION.includes("דרך העבודה האישית"));
   assert.ok(contractMd.includes("Runtime / Capability Contract"));
   assert.ok(
     RUNTIME_CAPABILITY_CONTRACT.includes("Runtime / Capability Contract"),

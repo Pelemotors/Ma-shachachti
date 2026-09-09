@@ -227,7 +227,7 @@ test("T11: success notice claims plan only when exact taskId in plan.items", () 
 test("global constitution and runtime contract cover proposal and working memory", () => {
   assert.match(RUNTIME_CAPABILITY_CONTRACT, /Proposal/);
   assert.match(RUNTIME_CAPABILITY_CONTRACT, /Working Memory/);
-  assert.match(GLOBAL_AGENT_CONSTITUTION, /מדריך האישי/);
+  assert.match(GLOBAL_AGENT_CONSTITUTION, /דרך העבודה האישית/);
   assert.equal(GLOBAL_AGENT_CONSTITUTION.includes("שמרתי"), false);
   assert.equal(RUNTIME_CAPABILITY_CONTRACT.includes("שמרתי"), false);
 });
