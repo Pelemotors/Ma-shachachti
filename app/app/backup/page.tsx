@@ -41,9 +41,7 @@ export default function BackupPage() {
         <main className="welcome">
           <p className="eyebrow">מה שכחתי?</p>
           <h1>שחזור גיבוי</h1>
-          <p>
-            יש להתחבר לחשבון או לפתוח את ההדגמה המקומית שאליה רוצים לשחזר.
-          </p>
+          <p>יש להתחבר לחשבון או לפתוח את ההדגמה המקומית שאליה רוצים לשחזר.</p>
           <a
             className="primary"
             href={`/login?returnTo=${encodeURIComponent("/app/backup")}`}

@@ -10,8 +10,7 @@ export function SeasonalPublicShell(props: {
   return (
     <div
       className={
-        "seasonal-public-shell" +
-        (props.className ? ` ${props.className}` : "")
+        "seasonal-public-shell" + (props.className ? ` ${props.className}` : "")
       }
       data-theme={props.theme ?? "spring"}
     >

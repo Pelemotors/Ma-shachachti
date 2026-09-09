@@ -796,7 +796,8 @@ details .stack {
     color-mix(in srgb, var(--home-primary) 84%, #fff) 100%
   );
   border: 0;
-  box-shadow: 0 10px 26px color-mix(in srgb, var(--home-primary) 18%, transparent);
+  box-shadow: 0 10px 26px
+    color-mix(in srgb, var(--home-primary) 18%, transparent);
 }
 .main-engine .engine-icon {
   width: 48px;
@@ -1289,7 +1290,8 @@ details .stack {
   height: 58px;
   min-height: 58px;
   background: var(--home-strong);
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--home-primary) 26%, transparent);
+  box-shadow: 0 8px 20px
+    color-mix(in srgb, var(--home-primary) 26%, transparent);
 }
 .voice.recording {
   color: var(--theme-on-primary);
@@ -2288,7 +2290,8 @@ dialog::backdrop {
   gap: 8px;
 }
 .duration-picker__chip {
-  border: 1px solid color-mix(in srgb, var(--theme-primary) 12%, var(--theme-border));
+  border: 1px solid
+    color-mix(in srgb, var(--theme-primary) 12%, var(--theme-border));
   border-radius: 16px;
   padding: 12px 10px;
   min-height: 52px;
@@ -2307,10 +2310,12 @@ dialog::backdrop {
   border-color: color-mix(in srgb, var(--theme-primary) 34%, transparent);
   color: var(--theme-icon-color);
   font-weight: 700;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--theme-primary) 14%, transparent);
+  box-shadow: 0 6px 18px
+    color-mix(in srgb, var(--theme-primary) 14%, transparent);
 }
 .duration-picker__custom {
-  border: 1px solid color-mix(in srgb, var(--theme-primary) 12%, var(--theme-border));
+  border: 1px solid
+    color-mix(in srgb, var(--theme-primary) 12%, var(--theme-border));
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.94);
   padding: 0;
@@ -2342,7 +2347,8 @@ dialog::backdrop {
 .duration-picker__custom-body {
   margin: 0;
   padding: 4px 14px 14px;
-  border-top: 1px solid color-mix(in srgb, var(--theme-primary) 10%, var(--theme-border));
+  border-top: 1px solid
+    color-mix(in srgb, var(--theme-primary) 10%, var(--theme-border));
 }
 .duration-picker__chips .duration-picker__chip {
   flex: 1 1 calc(14.28% - 8px);

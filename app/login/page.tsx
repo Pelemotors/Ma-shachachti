@@ -62,63 +62,63 @@ export default function LoginPage() {
   return (
     <SeasonalPublicShell>
       <main className="welcome">
-      <div className="brand-mark">מ׳</div>
-      <p className="eyebrow">מה שכחתי?</p>
-      <h1>{signup ? "יצירת חשבון" : "כניסה לאזור האישי"}</h1>
-      <form className="panel stack" onSubmit={submit}>
-        <label>
-          אימייל
-          <input
-            type="email"
-            dir="ltr"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-        <label>
-          סיסמה
-          <input
-            type="password"
-            dir="ltr"
-            autoComplete={signup ? "new-password" : "current-password"}
-            minLength={6}
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        <button className="primary" disabled={busy}>
-          {busy ? "רגע…" : signup ? "יצירת חשבון" : "כניסה"}
-        </button>
-      </form>
-      {!signup && (
-        <button className="text-button" disabled={busy} onClick={reset}>
-          שכחתי סיסמה
-        </button>
-      )}
-      <button
-        className="text-button"
-        onClick={() => {
-          setSignup(!signup);
-          setMessage("");
-        }}
-      >
-        {signup ? "כבר יש לי חשבון — כניסה" : "אין לי חשבון — הרשמה"}
-      </button>
-      {message && (
-        <p
-          className={
-            message.includes("נוצר") || message.includes("שלחנו")
-              ? "muted"
-              : "error"
-          }
+        <div className="brand-mark">מ׳</div>
+        <p className="eyebrow">מה שכחתי?</p>
+        <h1>{signup ? "יצירת חשבון" : "כניסה לאזור האישי"}</h1>
+        <form className="panel stack" onSubmit={submit}>
+          <label>
+            אימייל
+            <input
+              type="email"
+              dir="ltr"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
+          <label>
+            סיסמה
+            <input
+              type="password"
+              dir="ltr"
+              autoComplete={signup ? "new-password" : "current-password"}
+              minLength={6}
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
+          <button className="primary" disabled={busy}>
+            {busy ? "רגע…" : signup ? "יצירת חשבון" : "כניסה"}
+          </button>
+        </form>
+        {!signup && (
+          <button className="text-button" disabled={busy} onClick={reset}>
+            שכחתי סיסמה
+          </button>
+        )}
+        <button
+          className="text-button"
+          onClick={() => {
+            setSignup(!signup);
+            setMessage("");
+          }}
         >
-          {message}
-        </p>
-      )}
-    </main>
+          {signup ? "כבר יש לי חשבון — כניסה" : "אין לי חשבון — הרשמה"}
+        </button>
+        {message && (
+          <p
+            className={
+              message.includes("נוצר") || message.includes("שלחנו")
+                ? "muted"
+                : "error"
+            }
+          >
+            {message}
+          </p>
+        )}
+      </main>
     </SeasonalPublicShell>
   );
 }

@@ -67,14 +67,19 @@ export function DurationWheel({
       <span className="duration-picker__label">{label}</span>
       <p
         className={
-          "duration-picker__summary" + (invalid ? " duration-picker__summary--empty" : "")
+          "duration-picker__summary" +
+          (invalid ? " duration-picker__summary--empty" : "")
         }
         aria-live="polite"
       >
         {formatDurationHebrew(hours, minutes)}
       </p>
 
-      <div className="duration-picker__presets" role="listbox" aria-label="משכים נפוצים">
+      <div
+        className="duration-picker__presets"
+        role="listbox"
+        aria-label="משכים נפוצים"
+      >
         {PRESETS.map((preset) => (
           <button
             key={preset.label}
@@ -100,7 +105,11 @@ export function DurationWheel({
         <div className="duration-picker__custom-body stack gap">
           <div className="stack tight">
             <span className="muted">שעות</span>
-            <div className="duration-picker__chips" role="listbox" aria-label="שעות">
+            <div
+              className="duration-picker__chips"
+              role="listbox"
+              aria-label="שעות"
+            >
               {HOUR_OPTIONS.map((h) => (
                 <button
                   key={h.value}
@@ -121,7 +130,11 @@ export function DurationWheel({
           </div>
           <div className="stack tight">
             <span className="muted">דקות</span>
-            <div className="duration-picker__chips" role="listbox" aria-label="דקות">
+            <div
+              className="duration-picker__chips"
+              role="listbox"
+              aria-label="דקות"
+            >
               {MINUTE_OPTIONS.map((m) => (
                 <button
                   key={m}
