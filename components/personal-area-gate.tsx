@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { authFetch, supabase } from "@/lib/supabase-browser";
 import { HomeApp } from "./home-app";
+import { SeasonalPublicShell } from "./seasonal-public-shell";
 
 type GateState = "loading" | "ready" | "pending" | "error";
 
@@ -56,40 +57,46 @@ export function PersonalAreaGate() {
 
   if (state === "loading")
     return (
-      <main className="center" aria-busy="true">
-        <div className="brand-mark">מ׳</div>
-        <p>פותח את הבית שלך…</p>
-      </main>
+      <SeasonalPublicShell>
+        <main className="center" aria-busy="true">
+          <div className="brand-mark">מ׳</div>
+          <p>פותח את הבית שלך…</p>
+        </main>
+      </SeasonalPublicShell>
     );
 
   if (state === "pending")
     return (
-      <main className="welcome">
-        <div className="brand-mark">מ׳</div>
-        <p className="eyebrow">מה שכחתי?</p>
-        <h1>החשבון עדיין ממתין לאישור.</h1>
-        <p>המידע האישי לא נטען עד שהגישה מאושרת.</p>
-        <button
-          className="secondary"
-          onClick={() => void supabase?.auth.signOut()}
-        >
-          יציאה
-        </button>
-      </main>
+      <SeasonalPublicShell>
+        <main className="welcome">
+          <div className="brand-mark">מ׳</div>
+          <p className="eyebrow">מה שכחתי?</p>
+          <h1>החשבון עדיין ממתין לאישור.</h1>
+          <p>המידע האישי לא נטען עד שהגישה מאושרת.</p>
+          <button
+            className="secondary"
+            onClick={() => void supabase?.auth.signOut()}
+          >
+            יציאה
+          </button>
+        </main>
+      </SeasonalPublicShell>
     );
 
   if (state === "error")
     return (
-      <main className="welcome">
-        <div className="brand-mark">מ׳</div>
-        <h1>לא הצלחנו לפתוח את החשבון.</h1>
-        <p role="alert" className="error">
-          {message}
-        </p>
-        <button className="secondary" onClick={() => location.reload()}>
-          ניסיון נוסף
-        </button>
-      </main>
+      <SeasonalPublicShell>
+        <main className="welcome">
+          <div className="brand-mark">מ׳</div>
+          <h1>לא הצלחנו לפתוח את החשבון.</h1>
+          <p role="alert" className="error">
+            {message}
+          </p>
+          <button className="secondary" onClick={() => location.reload()}>
+            ניסיון נוסף
+          </button>
+        </main>
+      </SeasonalPublicShell>
     );
 
   return <HomeApp />;
