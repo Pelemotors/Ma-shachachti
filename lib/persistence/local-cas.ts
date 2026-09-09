@@ -1,4 +1,5 @@
 import { AppState, emptyState, migrateState } from "../model";
+import { materializeDueRoutinesInPlace } from "../domain/routines";
 
 export const LOCAL_STATE_KEY = "ma-shachachti:local:v1";
 
@@ -27,10 +28,11 @@ export function persistLocalState(state: AppState): void {
   localStorage.setItem(LOCAL_STATE_KEY, fingerprintState(state));
 }
 
-/** Load + migrate + rewrite so the next CAS check stays stable. */
+/** Load + migrate + materialize routines + rewrite so the next CAS stays stable. */
 export function loadAndReconcileLocalState(): AppState {
   const raw = localStorage.getItem(LOCAL_STATE_KEY);
   const state = raw ? migrateState(JSON.parse(raw)) : emptyState();
+  materializeDueRoutinesInPlace(state, new Date());
   persistLocalState(state);
   return state;
 }
