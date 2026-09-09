@@ -183,6 +183,7 @@ export function executeDeepAccess(
         };
       }
       case "state.get_agent_guide": {
+        // Active guide SoT only — never reads personal_agent_guide_revisions.
         const g = state.personalAgentGuide;
         return {
           tool: req.tool,

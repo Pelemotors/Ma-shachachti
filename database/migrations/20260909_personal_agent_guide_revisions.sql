@@ -1,7 +1,12 @@
--- Personal Agent Guide revision audit (durable).
--- Current guide document lives in app_states.data.personalAgentGuide (EXTEND).
--- This table stores successful approved revisions for audit/rollback.
--- Safe: create-only; does not alter save_app_state.
+-- AUDIT HISTORY ONLY for Personal Agent Guide revisions (append-oriented).
+--
+-- Source of Truth for the ACTIVE guide:
+--   app_states.data.personalAgentGuide
+--
+-- This table is NOT read by Runtime / Agent context as the current guide.
+-- Writes are best-effort mirrors after a successful AppState save.
+-- Do not treat this table as authoritative for rollback until writes are
+-- transactional with app_states (product decision pending).
 
 create table if not exists public.personal_agent_guide_revisions (
   id uuid primary key default gen_random_uuid(),

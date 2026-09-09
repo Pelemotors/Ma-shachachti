@@ -526,8 +526,10 @@ export const StateV2Schema = z.object({
   pendingAgentIntent: PendingAgentIntentSchema.default(null),
   agentWorkingMemory: AgentWorkingMemorySchema.nullable().default(null),
   /**
-   * Opaque Personal Agent Guide document. Code stores/reads only — never
-   * interprets personality meaning. null = guide does not exist yet.
+   * SOURCE OF TRUTH for the active Personal Agent Guide.
+   * Opaque document — code stores/reads only; never interprets meaning.
+   * null = guide does not exist yet.
+   * Runtime must never substitute history rows for this field.
    */
   personalAgentGuide: z
     .object({
@@ -538,7 +540,11 @@ export const StateV2Schema = z.object({
     })
     .nullable()
     .default(null),
-  /** In-state audit trail (capped). Durable table may mirror successful writes. */
+  /**
+   * Recent in-state AUDIT trail only (capped at 40). Not the active guide SoT.
+   * Not used by Runtime as the current guide. Older rows drop when over cap.
+   * Durable/complete audit lives (best-effort) in personal_agent_guide_revisions.
+   */
   personalAgentGuideHistory: z
     .array(
       z.object({

@@ -1,6 +1,15 @@
 /**
  * Personal Agent Guide — opaque per-user document.
  * Domain validates ownership/revision/size only; never interprets text meaning.
+ *
+ * ## Source of Truth (do not confuse with history)
+ *
+ * - **Current guide (SoT):** `AppState.personalAgentGuide` inside `app_states.data`.
+ *   Runtime / Agent context / deep access read ONLY this field.
+ * - **In-state recent audit:** `AppState.personalAgentGuideHistory` (capped).
+ *   Not SoT for the active guide. Not loaded into Runtime as the guide.
+ * - **Durable audit table:** `personal_agent_guide_revisions` (best-effort append).
+ *   Audit History only. NEVER read for Runtime or as current-guide SoT.
  */
 import type { AppState } from "@/lib/model";
 

@@ -327,7 +327,7 @@ export async function approvePendingProposal(
   const finalRevision = Number(saved.revision);
   rememberSavedState(input.userId, finalRevision, finalState);
 
-  // Durable guide audit — best-effort after AppState success (in-state history already written).
+  // Durable guide AUDIT only (best-effort). Active guide SoT remains app_states.
   if (!alreadyApplied) {
     const prevRev = state.personalAgentGuide?.revision ?? 0;
     const nextRev = finalState.personalAgentGuide?.revision ?? 0;
@@ -337,7 +337,7 @@ export async function approvePendingProposal(
         try {
           await appendPersonalAgentGuideRevision(db, input.userId, entry);
         } catch {
-          // Table may be missing until migration is applied; AppState history remains source of truth.
+          // Audit miss must not redefine SoT; in-state history + personalAgentGuide remain.
         }
       }
     }
