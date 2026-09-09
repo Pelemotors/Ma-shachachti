@@ -1,30 +1,15 @@
 import { Bell } from "lucide-react";
 import { Action, AppState, Task } from "@/lib/model";
-import { followUps } from "@/lib/engine";
 import { ViewHeader } from "@/components/view-header";
 import { TaskCard } from "@/components/task-card";
 import { Empty } from "@/components/empty-state";
+import type { FocusController } from "@/hooks/use-focus-controller";
 
-function overdueOrUnknownTasks(state: AppState, clock: Date): Task[] {
-  const nowMs = clock.getTime();
-  return state.tasks
-    .filter(
-      (t) =>
-        t.status === "open" ||
-        t.status === "unknown" ||
-        t.status === "in_progress",
-    )
-    .filter(
-      (t) =>
-        t.status === "unknown" ||
-        (Boolean(t.dueAt) && Date.parse(t.dueAt!) < nowMs),
-    )
-    .sort((a, b) => {
-      if (!a.dueAt && !b.dueAt) return 0;
-      if (!a.dueAt) return 1;
-      if (!b.dueAt) return -1;
-      return Date.parse(a.dueAt) - Date.parse(b.dueAt);
-    });
+function tasksByIds(state: AppState, ids: string[]): Task[] {
+  const byId = new Map(state.tasks.map((task) => [task.id, task]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((task): task is Task => Boolean(task));
 }
 
 export function FocusView(props: {
@@ -32,13 +17,16 @@ export function FocusView(props: {
   busy: boolean;
   clock: Date;
   detailed: boolean;
+  focus: FocusController;
   onEdit: (t: Task) => void;
   onChat: (t: Task) => void;
   onComplete: (t: Task) => void;
   onAction: (a: Action) => Promise<void>;
 }) {
-  const relevant = overdueOrUnknownTasks(props.state, props.clock);
-  const followup = followUps(props.state, props.clock);
+  const selected = tasksByIds(props.state, props.focus.taskIds);
+  const dueReminders = props.state.reminders.filter(
+    (r) => r.status === "pending" && new Date(r.dueAt) <= props.clock,
+  );
   return (
     <>
       <ViewHeader view="focus" />
@@ -46,17 +34,38 @@ export function FocusView(props: {
         מה עלול ליפול בין הכיסאות — לא רשימת ניקיון יומיומית. נבדוק בעדינות, בלי
         להניח שלא נעשה.
       </p>
-      {followup.length > 0 && (
-        <div className="callout">
+      {props.focus.status === "loading" && (
+        <p className="intro" role="status" aria-live="polite">
+          הסוכן בודק מה חשוב עכשיו…
+        </p>
+      )}
+      {props.focus.status === "error" && (
+        <div className="callout" role="alert">
           <Bell size={20} />
           <div>
-            <strong>יש משהו שכדאי לבדוק</strong>
-            <p>{followup.map((t) => t.title).join(" · ")}</p>
+            <strong>הסוכן לא זמין כרגע</strong>
+            <p>{props.focus.error || "אפשר לנסות שוב."}</p>
+            <button
+              type="button"
+              className="text-button"
+              onClick={props.focus.retry}
+            >
+              נסה שוב
+            </button>
           </div>
         </div>
       )}
+      {props.focus.status === "ready" && props.focus.reply ? (
+        <p className="intro">{props.focus.reply}</p>
+      ) : null}
+      {dueReminders.map((r) => (
+        <div className="callout" key={r.id}>
+          <Bell size={20} />
+          <span>{r.title} · הגיע הזמן לבדוק</span>
+        </div>
+      ))}
       <div className="task-list">
-        {relevant.map((t) => (
+        {selected.map((t) => (
           <TaskCard
             state={props.state}
             busy={props.busy}
@@ -68,25 +77,12 @@ export function FocusView(props: {
             onAction={props.onAction}
             key={t.id}
             task={t}
-            highlight={
-              t.priority >= 3 ? "urgent" : t.priority >= 2 ? "important" : null
-            }
           />
         ))}
       </div>
-      {!relevant.length && (
-        <Empty text="אין כרגע משהו נוסף שדורש את תשומת הלב שלך." />
+      {props.focus.status === "ready" && !selected.length && (
+        <Empty text="אין כרגע משהו נוסף שהסוכן רוצה להציף." />
       )}
-      {props.state.reminders
-        .filter(
-          (r) => r.status === "pending" && new Date(r.dueAt) <= props.clock,
-        )
-        .map((r) => (
-          <div className="callout" key={r.id}>
-            <Bell size={20} />
-            <span>{r.title} · הגיע הזמן לבדוק</span>
-          </div>
-        ))}
     </>
   );
 }

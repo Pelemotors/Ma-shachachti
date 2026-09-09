@@ -37,6 +37,11 @@ import {
   stampScheduleCreateRefs,
 } from "@/lib/domain/planning/plan-intent";
 import { buildGroundedProposalSummary } from "@/lib/domain/agent-context";
+import { AGENT_SURFACES } from "@/lib/agent/surfaces";
+import {
+  mergePresentedEntityIds,
+  sanitizePresentation,
+} from "@/lib/domain/agent-presentation";
 import { AGENT_CONTRACT_VERSION } from "@/lib/agent/instructions";
 import { composeAssistantText } from "@/lib/agent/execution-truth";
 import { CHAT_API_SUPPORTED, CHAT_API_VERSION } from "@/lib/version";
@@ -215,14 +220,19 @@ export async function POST(req: Request) {
         contextTaskId: z.string().uuid().nullable().optional(),
         idempotencyKey: z.string().uuid(),
         turnId: z.string().uuid().optional(),
-        surface: z.enum(["chat", "memory", "planning"]).optional(),
+        surface: z.enum(AGENT_SURFACES).optional(),
         selectedDate: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .optional(),
         manualPlacementTaskId: z.string().uuid().optional(),
         scheduleIntent: z.enum(["build", "realign", "changed-day"]).optional(),
-        availableMinutes: z.number().int().min(1).max(24 * 60).optional(),
+        availableMinutes: z
+          .number()
+          .int()
+          .min(1)
+          .max(24 * 60)
+          .optional(),
         effort: z.number().int().min(1).max(3).optional(),
         memoryContext: z
           .object({
@@ -239,7 +249,10 @@ export async function POST(req: Request) {
         (value) =>
           Boolean(value.message) ||
           Boolean(value.scheduleIntent) ||
-          value.surface === "memory",
+          value.surface === "memory" ||
+          value.surface === "focus" ||
+          value.surface === "free_time" ||
+          value.surface === "first_scan",
         { message: "message_or_surface_required" },
       )
       .parse(await jsonBody(req, 20_000));
@@ -343,25 +356,33 @@ export async function POST(req: Request) {
     });
     const assistantText = composed.text;
 
+    const presented = sanitizePresentation(state, result.presentation);
     const memoryActions: Action[] = [];
-    if (
+    const workingMemoryPatch =
       result.workingMemoryUpdate != null &&
       typeof result.workingMemoryUpdate === "object"
-    ) {
+        ? { ...result.workingMemoryUpdate }
+        : presented.taskIds.length
+          ? {}
+          : null;
+    if (workingMemoryPatch) {
+      if (presented.taskIds.length) {
+        workingMemoryPatch.relevantEntityIds = mergePresentedEntityIds(
+          workingMemoryPatch.relevantEntityIds ??
+            state.agentWorkingMemory?.relevantEntityIds,
+          presented.taskIds,
+        );
+      }
       memoryActions.push({
         type: "workingMemory.patch",
-        patch: result.workingMemoryUpdate,
+        patch: workingMemoryPatch,
       });
     }
 
     const typedDecision = result.proposalDecision;
     let workingState = state;
     let workingRevision = revision;
-    if (
-      typedDecision &&
-      pending &&
-      typedDecision.proposalId === pending.id
-    ) {
+    if (typedDecision && pending && typedDecision.proposalId === pending.id) {
       stage = "proposal_decision";
       if (typedDecision.decision === "approve") {
         const approved = await approvePendingProposal(db, {
@@ -518,6 +539,7 @@ export async function POST(req: Request) {
       planSyncFailed: saved.planSyncFailed,
       notice: saved.planNotice,
       contextTrace,
+      presentation: presented,
     };
 
     stage = "receipt_save";

@@ -223,7 +223,9 @@ export function buildScanApproveActions(
               ? [...new Set([...dup.relatedMemberIds, ...relatedMemberIds])]
               : dup.relatedMemberIds,
           recurrenceDays: proposed.recurrenceDays,
-          dueAt: proposed.dueAt,
+          dueAt:
+            proposed.deadline?.precision === "date" ? null : proposed.dueAt,
+          deadline: proposed.deadline ?? null,
         },
       });
       titleToTaskId.set(normalize(proposed.title), dup.id);
@@ -249,7 +251,8 @@ export function buildScanApproveActions(
         relatedMemberIds,
         dependsOn,
         recurrenceDays: proposed.recurrenceDays,
-        dueAt: proposed.dueAt,
+        dueAt: proposed.deadline?.precision === "date" ? null : proposed.dueAt,
+        deadline: proposed.deadline ?? null,
       },
     });
     titleToTaskId.set(normalize(proposed.title), id);

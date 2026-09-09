@@ -1,15 +1,25 @@
 "use client";
-import { useState, useCallback, useMemo } from "react";
-import { estimatedMinutes } from "@/lib/engine";
+import { useState, useCallback } from "react";
 import { durationToMinutes } from "@/components/duration-wheel";
-import { isActiveVisibleTask } from "@/lib/domain/tasks/visibility";
-import { AppState } from "@/lib/model";
+import type { useHousehold } from "@/lib/use-household";
+import { useAgentSurfaceTurn } from "./use-agent-surface-turn";
 
-export function useFreeTimeController(opts: { state: AppState; clock: Date }) {
+type Household = ReturnType<typeof useHousehold>;
+
+export function useFreeTimeController(opts: {
+  household: Household;
+  persistServerProposal?: (data: unknown) => boolean;
+  sendLock: { current: boolean };
+}) {
   const [minutes, setMinutes] = useState(30);
   const [effort, setEffort] = useState(2);
   const [freeHours, setFreeHours] = useState(0);
   const [freeMinsPart, setFreeMinsPart] = useState(30);
+  const turn = useAgentSurfaceTurn({
+    household: opts.household,
+    persistServerProposal: opts.persistServerProposal,
+    sendLock: opts.sendLock,
+  });
 
   const onDuration = useCallback(
     ({ hours, minutes: m }: { hours: number; minutes: number }) => {
@@ -21,16 +31,15 @@ export function useFreeTimeController(opts: { state: AppState; clock: Date }) {
   );
 
   const available = durationToMinutes(freeHours, freeMinsPart) || minutes;
-  const matching = useMemo(
-    () =>
-      opts.state.tasks.filter(
-        (task) =>
-          task.status === "open" &&
-          isActiveVisibleTask(task, opts.clock) &&
-          estimatedMinutes(task, opts.state) <= available,
-      ),
-    [opts.state, opts.clock, available],
-  );
+
+  const askAgent = useCallback(() => {
+    void turn.request({
+      surface: "free_time",
+      message: "יש לי זמן פנוי",
+      availableMinutes: available,
+      effort,
+    });
+  }, [turn, available, effort]);
 
   return {
     minutes,
@@ -39,8 +48,12 @@ export function useFreeTimeController(opts: { state: AppState; clock: Date }) {
     freeHours,
     freeMinsPart,
     onDuration,
-    free: { closeFirst: matching, outsidePlan: [] },
-    legacyFree: { important: [] as { title: string }[] },
+    availableMinutes: available,
+    status: turn.status,
+    reply: turn.reply,
+    taskIds: turn.taskIds,
+    error: turn.error,
+    askAgent,
   };
 }
 

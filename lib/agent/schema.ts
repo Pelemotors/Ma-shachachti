@@ -21,8 +21,17 @@ export const DeepAccessRequestSchema = z.object({
       status: z.array(z.string()).max(8).optional(),
       limit: z.number().int().min(1).max(100).optional(),
       since: z.string().max(40).optional(),
+      cursor: z.string().min(1).max(80).optional(),
+      before: z.string().max(40).optional(),
+      after: z.string().max(40).optional(),
+      compact: z.boolean().optional(),
+      text: z.string().max(200).optional(),
     })
     .optional(),
+});
+
+export const AgentPresentationSchema = z.object({
+  taskIds: z.array(z.string().min(1).max(80)).max(40),
 });
 
 const INTERNAL_AGENT_ACTION_TYPES = new Set([
@@ -119,7 +128,19 @@ export const AgentDecisionSchema = z.object({
    * must not persist actions; the server executes requests and continues
    * the same Turn.
    */
-  deepAccessRequests: z.array(DeepAccessRequestSchema).max(3).optional().nullable(),
+  deepAccessRequests: z
+    .array(DeepAccessRequestSchema)
+    .max(4)
+    .optional()
+    .nullable(),
+  /**
+   * Non-persistent display references. Not an Action, Proposal, or source of truth.
+   */
+  presentation: AgentPresentationSchema.nullable().optional(),
+  /**
+   * First Scan structured draft for the review screen. Output only — not persistence.
+   */
+  scanDraft: z.unknown().nullable().optional(),
   /** Patch only when there is genuinely open conversational state. */
   workingMemoryUpdate: AgentWorkingMemoryPatchSchema.nullable().optional(),
   /** Optional indexes into proposal.proposedActions task.create list (0-based). */
@@ -542,10 +563,8 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
   if (Array.isArray(obj.deepAccessRequests)) {
     const parsedReqs = obj.deepAccessRequests
       .map((item) => DeepAccessRequestSchema.safeParse(item))
-      .slice(0, 3);
-    deepAccessRequests = parsedReqs
-      .filter((p) => p.success)
-      .map((p) => p.data);
+      .slice(0, 4);
+    deepAccessRequests = parsedReqs.filter((p) => p.success).map((p) => p.data);
     if (parsedReqs.some((p) => !p.success))
       warnings.push("deep_access_requests_invalid");
   }
@@ -575,6 +594,18 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
     else warnings.push("compacted_memory_update_invalid");
   }
 
+  let presentation: AgentDecision["presentation"] = null;
+  if (obj.presentation != null && typeof obj.presentation === "object") {
+    const parsed = AgentPresentationSchema.safeParse(obj.presentation);
+    if (parsed.success) presentation = parsed.data;
+    else warnings.push("presentation_invalid");
+  }
+
+  let scanDraft: AgentDecision["scanDraft"] = null;
+  if (obj.scanDraft != null && typeof obj.scanDraft === "object") {
+    scanDraft = obj.scanDraft;
+  }
+
   return {
     decision: {
       reply,
@@ -584,6 +615,8 @@ export function parseAgentDecisionIsolated(raw: unknown): IsolatedDecision {
       affectsToday,
       initiative,
       deepAccessRequests,
+      presentation,
+      scanDraft,
       workingMemoryUpdate,
       requestedTodayCreateIndexes,
       proposalDecision,
@@ -960,7 +993,7 @@ export function agentDecisionJsonSchema() {
           { type: "null" },
           {
             type: "array",
-            maxItems: 3,
+            maxItems: 4,
             items: {
               type: "object",
               additionalProperties: false,
@@ -974,6 +1007,11 @@ export function agentDecisionJsonSchema() {
                     status: { type: "array", items: { type: "string" } },
                     limit: { type: "integer", minimum: 1, maximum: 100 },
                     since: { type: "string" },
+                    cursor: { type: "string" },
+                    before: { type: "string" },
+                    after: { type: "string" },
+                    compact: { type: "boolean" },
+                    text: { type: "string" },
                   },
                 },
               },
@@ -1040,6 +1078,29 @@ export function agentDecisionJsonSchema() {
           },
         ],
       },
+      presentation: {
+        anyOf: [
+          { type: "null" },
+          {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              taskIds: {
+                type: "array",
+                maxItems: 40,
+                items: { type: "string" },
+              },
+            },
+            required: ["taskIds"],
+          },
+        ],
+      },
+      scanDraft: {
+        anyOf: [
+          { type: "null" },
+          { type: "object", additionalProperties: true },
+        ],
+      },
       compactedMemoryUpdate: {
         anyOf: [
           { type: "null" },
@@ -1047,7 +1108,11 @@ export function agentDecisionJsonSchema() {
             type: "object",
             additionalProperties: false,
             properties: {
-              facts: { type: "array", maxItems: 100, items: { type: "string" } },
+              facts: {
+                type: "array",
+                maxItems: 100,
+                items: { type: "string" },
+              },
               preferences: {
                 type: "array",
                 maxItems: 100,

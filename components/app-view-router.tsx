@@ -19,6 +19,7 @@ import type { ChatController } from "@/hooks/use-chat-controller";
 import type { TaskController } from "@/hooks/use-task-controller";
 import type { DailyPlanController } from "@/hooks/use-daily-plan-controller";
 import type { FreeTimeController } from "@/hooks/use-free-time-controller";
+import type { FocusController } from "@/hooks/use-focus-controller";
 import type { ShoppingController } from "@/hooks/use-shopping-controller";
 import type { ChecklistController } from "@/hooks/use-checklist-controller";
 import type { ReminderController } from "@/hooks/use-reminder-controller";
@@ -41,6 +42,7 @@ export function AppViewRouter(props: {
   tasks: TaskController;
   chat: ChatController;
   free: FreeTimeController;
+  focus: FocusController;
   plan: DailyPlanController;
   shopping: ShoppingController;
   checklists: ChecklistController;
@@ -64,6 +66,7 @@ export function AppViewRouter(props: {
     tasks,
     chat,
     free,
+    focus,
     plan,
     shopping,
     reminders,
@@ -115,6 +118,7 @@ export function AppViewRouter(props: {
         busy={busy}
         clock={clock}
         detailed={tasks.detailed}
+        focus={focus}
         {...taskCardHandlers}
       />
     );
@@ -125,14 +129,7 @@ export function AppViewRouter(props: {
         busy={busy}
         clock={clock}
         detailed={tasks.detailed}
-        freeHours={free.freeHours}
-        freeMinsPart={free.freeMinsPart}
-        effort={free.effort}
-        closeFirst={free.free.closeFirst}
-        outsidePlan={free.free.outsidePlan}
-        importantTitles={free.legacyFree.important.map((t) => t.title)}
-        onDuration={free.onDuration}
-        onEffort={free.setEffort}
+        free={free}
         {...taskCardHandlers}
       />
     );

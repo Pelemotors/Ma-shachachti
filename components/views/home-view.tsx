@@ -87,11 +87,7 @@ export function HomeView(props: {
           </span>
           <ChevronLeft size={21} />
         </button>
-        <button
-          className="engine"
-          type="button"
-          onClick={props.onAskForecast}
-        >
+        <button className="engine" type="button" onClick={props.onAskForecast}>
           <span className="engine-icon">
             <ScanSearch size={23} />
           </span>
@@ -148,8 +144,8 @@ export function HomeView(props: {
         <button className="kit-invite" onClick={() => props.onNavigate("kit")}>
           <Leaf size={21} />
           <span>
-            <strong>נכיר קצת את השגרה?</strong>
-            <small>כמה הצעות שמתאימות לבית שלכם</small>
+            <strong>רעיונות מהקטלוג</strong>
+            <small>פעולות כלליות לפי סוג הבית</small>
           </span>
           <ChevronLeft size={18} />
         </button>

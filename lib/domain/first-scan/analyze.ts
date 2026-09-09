@@ -25,10 +25,17 @@ export type ProposedScanTask = {
   homeAreaNames: string[];
   dependsOnTitles: string[];
   relatedMemberNames: string[];
-  /** Always null unless the user explicitly stated a routine. */
+  /** Kept when the user explicitly stated a frequency. */
   recurrenceDays: number | null;
-  /** Always null unless the user explicitly stated a deadline. */
+  /** Exact datetime only — never an invented clock time for a date-only deadline. */
   dueAt: string | null;
+  /** Canonical deadline. Date-only uses precision "date" and leaves dueAt null. */
+  deadline?: {
+    date: string;
+    time: string | null;
+    timezone: string;
+    precision: "date" | "datetime";
+  } | null;
 };
 
 export type FirstScanAnalysis = {
