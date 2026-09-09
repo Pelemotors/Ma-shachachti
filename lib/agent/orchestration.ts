@@ -14,6 +14,7 @@ import {
   AGENT_INSTRUCTIONS,
   AGENT_CONTRACT_VERSION,
 } from "@/lib/agent/instructions";
+import { PERSONAL_AGENT_RUNTIME_GUIDANCE } from "@/lib/agent/runtime-guidance";
 import {
   buildAgentContext,
   buildGroundedProposalSummary,
@@ -101,10 +102,7 @@ async function callAgent(
 
   const raw = await response.text();
   if (!response.ok) {
-    console.error("OpenAI chat upstream error", {
-      model,
-      status: response.status,
-    });
+    console.error("OpenAI chat upstream error", { model, status: response.status });
     throw upstreamError(response.status, raw);
   }
 
@@ -198,9 +196,8 @@ export async function orchestrateChatTurn(
       "ai_not_configured",
     );
 
-  // One personal agent. Fallback is the same contract on an alternate model,
-  // never a second semantic brain.
-  const instructions = `${AGENT_INSTRUCTIONS}${PERSONAL_AGENT_POLICY_INSTRUCTIONS}`;
+  // One personal agent. Fallback is the same contract on an alternate model.
+  const instructions = `${AGENT_INSTRUCTIONS}${PERSONAL_AGENT_POLICY_INSTRUCTIONS}${PERSONAL_AGENT_RUNTIME_GUIDANCE}`;
   const now = new Date();
   const state = input.state;
   const deferral = filterSafeDeferActions(state, [], now);
@@ -216,9 +213,7 @@ export async function orchestrateChatTurn(
   };
   const models = Array.from(
     new Set(
-      [process.env.OPENAI_MODEL, process.env.OPENAI_FALLBACK_MODEL].filter(
-        Boolean,
-      ),
+      [process.env.OPENAI_MODEL, process.env.OPENAI_FALLBACK_MODEL].filter(Boolean),
     ),
   ) as string[];
 
@@ -252,12 +247,10 @@ export async function orchestrateChatTurn(
       lastError ?? new ApiError(502, "הסוכן לא הצליח לענות כרגע.", "ai_failed")
     );
 
-  // Domain integrity may reject bad references, but never replaces the LLM's
-  // semantic judgment with "the user probably did not mean that" heuristics.
+  // Domain checks references; it does not reinterpret what the user meant.
   decision = enforceReferentialIntegrity(state, decision);
 
-  // Validate ordered actions against an evolving temporary state, so composed
-  // capabilities in one turn remain composable.
+  // Validate ordered lists against evolving temporary state.
   const explicitFiltered = filterRunnableActions(
     state,
     decision.explicitActions,
@@ -290,14 +283,20 @@ export async function orchestrateChatTurn(
       : null,
   };
 
+  // Policy may promote explicit actions to a proposal. Never demote an action
+  // the model intentionally kept inside a composed proposal: doing so can split
+  // task.create + dependent reminder/update into an invalid half-executed turn.
   const { auto, proposal: policyProposal } = partitionActionsByPolicy(
     decision.explicitActions,
   );
   const fromModel = decision.proposal?.proposedActions ?? [];
-  const { auto: modelAuto, proposal: modelProposal } =
-    partitionActionsByPolicy(fromModel);
-  const allProposal = [...policyProposal, ...modelProposal].slice(0, 20);
-  const stillAuto = [...auto, ...modelAuto].filter(
+  const allProposal = [...policyProposal, ...fromModel]
+    .filter(
+      (a, i, arr) =>
+        arr.findIndex((x) => JSON.stringify(x) === JSON.stringify(a)) === i,
+    )
+    .slice(0, 20);
+  const stillAuto = auto.filter(
     (a, i, arr) =>
       arr.findIndex((x) => JSON.stringify(x) === JSON.stringify(a)) === i,
   );
