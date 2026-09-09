@@ -126,8 +126,9 @@ test("daily plan session persists via plan.set", () => {
   );
   const session = buildDailyPlanSession(s, 120, 2, 3, now);
   s = applyActions(s, [{ type: "plan.set", plan: session }], now);
-  assert.equal(s.planning.plan?.items.length, 1);
-  assert.equal(s.planning.plan?.generatedFromRevision, 3);
+  const saved = Object.values(s.planning.plans)[0];
+  assert.equal(saved?.items.length, 1);
+  assert.equal(saved?.generatedFromRevision, 3);
 });
 
 test("stable replan keeps locked and done items", () => {
@@ -192,5 +193,5 @@ test("StateSchema dual-read accepts missing planning", () => {
   (legacy as { schemaVersion: number }).schemaVersion = 1;
   const parsed = StateSchema.parse(legacy);
   assert.equal(parsed.schemaVersion, 2);
-  assert.deepEqual(parsed.planning, { today: null, plan: null });
+  assert.deepEqual(parsed.planning, { today: null, plans: {} });
 });

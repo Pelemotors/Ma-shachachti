@@ -345,6 +345,13 @@ export const PlanningConstraintSchema = z
   );
 export type PlanningConstraint = z.infer<typeof PlanningConstraintSchema>;
 
+export const DailyPlanDayPartSchema = z.enum([
+  "morning",
+  "afternoon",
+  "evening",
+]);
+export type DailyPlanDayPart = z.infer<typeof DailyPlanDayPartSchema>;
+
 export const DailyPlanItemSchema = z.object({
   taskId: z.string().uuid(),
   order: z.number().int().min(0),
@@ -352,6 +359,7 @@ export const DailyPlanItemSchema = z.object({
   plannedEnd: Stamp.nullable(),
   locked: z.boolean(),
   planStatus: z.enum(["planned", "in_progress", "done", "skipped"]),
+  dayPart: DailyPlanDayPartSchema.nullable().optional(),
 });
 export type DailyPlanItem = z.infer<typeof DailyPlanItemSchema>;
 
@@ -519,12 +527,36 @@ export const StateV2Schema = z.object({
   reminders: z.array(ReminderSchema).max(500),
   messages: z.array(MessageSchema).max(200),
   excludedTemplates: z.array(z.string()).max(500),
-  planning: z
-    .object({
-      today: PlanningConstraintSchema.nullable(),
-      plan: DailyPlanSessionSchema.nullable(),
-    })
-    .default({ today: null, plan: null }),
+  planning: z.preprocess(
+    (raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return { today: null, plans: {} };
+      }
+      const obj = raw as {
+        today?: unknown;
+        plan?: { date?: string } | null;
+        plans?: Record<string, unknown>;
+      };
+      const plans: Record<string, unknown> = {};
+      if (obj.plans && typeof obj.plans === "object" && !Array.isArray(obj.plans)) {
+        Object.assign(plans, obj.plans);
+      }
+      const legacy = obj.plan;
+      if (
+        legacy &&
+        typeof legacy === "object" &&
+        typeof legacy.date === "string" &&
+        !plans[legacy.date]
+      ) {
+        plans[legacy.date] = legacy;
+      }
+      return { today: obj.today ?? null, plans };
+    },
+    z.object({
+      today: PlanningConstraintSchema.nullable().default(null),
+      plans: z.record(DateKey, DailyPlanSessionSchema).default({}),
+    }),
+  ),
   events: z
     .array(
       z.object({
@@ -717,10 +749,12 @@ export function migrateV1ToV2(v1: StateV1): AppState {
       turnId: m.turnId ?? null,
     })),
     excludedTemplates: v1.excludedTemplates,
-    planning: {
-      today: v1.planning?.today ?? null,
-      plan: v1.planning?.plan ?? null,
-    },
+    planning: (() => {
+      const legacy = v1.planning?.plan ?? null;
+      const plans: Record<string, DailyPlanSession> = {};
+      if (legacy?.date) plans[legacy.date] = legacy;
+      return { today: v1.planning?.today ?? null, plans };
+    })(),
     events: (v1.events ?? []).map((e: any) => ({
       id: e.id,
       at: e.at,
@@ -917,7 +951,7 @@ export function emptyState(): AppState {
     reminders: [],
     messages: [],
     excludedTemplates: [],
-    planning: { today: null, plan: null },
+    planning: { today: null, plans: {} },
     events: [],
     members: [],
     suggestionHistory: [],
@@ -1203,11 +1237,34 @@ export const ActionSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("planning.clear") }),
   z.object({ type: z.literal("plan.set"), plan: DailyPlanSessionSchema }),
-  z.object({ type: z.literal("plan.clear") }),
+  z.object({
+    type: z.literal("plan.clear"),
+    date: DateKey.optional(),
+  }),
   z.object({
     type: z.literal("plan.itemUpdate"),
     taskId: z.string().uuid(),
+    date: DateKey.optional(),
     patch: DailyPlanItemSchema.partial(),
+  }),
+  z
+    .object({
+      type: z.literal("schedule.set"),
+      taskId: z.string().uuid().optional(),
+      createIndex: z.number().int().min(0).max(19).optional(),
+      date: DateKey,
+      plannedStart: Stamp.nullable().optional(),
+      plannedEnd: Stamp.nullable().optional(),
+      dayPart: DailyPlanDayPartSchema.nullable().optional(),
+    })
+    .refine(
+      (row) => Boolean(row.taskId) || row.createIndex !== undefined,
+      "schedule_set_needs_task",
+    ),
+  z.object({
+    type: z.literal("schedule.remove"),
+    taskId: z.string().uuid(),
+    date: DateKey,
   }),
   z.object({
     type: z.literal("profile.update"),

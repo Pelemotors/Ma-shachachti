@@ -41,9 +41,10 @@ let cached: CapabilityRegistrySnapshot | null = null;
 function deriveEntries(): CapabilityEntry[] {
   return AGENT_CAPABILITY_CONTRACT.map((c) => {
     const destructive =
-      c.type.includes("remove") ||
-      c.type.includes("cancel") ||
-      c.type.includes("delete");
+      (c.type.includes("remove") ||
+        c.type.includes("cancel") ||
+        c.type.includes("delete")) &&
+      !c.type.includes("schedule.remove");
     const approvalRequired =
       c.policy === "proposal" || c.policy === "auto_or_proposal";
     const entityAffected = c.type.split(/[./]/)[0] ?? "unknown";

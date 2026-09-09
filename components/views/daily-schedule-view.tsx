@@ -109,6 +109,7 @@ export function DailyScheduleView(props: {
         aiConsent={props.state.profile.aiConsent}
         onDuration={plan.onDuration}
         onEffort={plan.setPlanEffort}
+        selectedDateIsToday={plan.selectedDate === plan.todayKey}
         onChangedDay={plan.setChangedDay}
         onChangedDaySubmit={() => void plan.submitChangedDay()}
         onNeedConsent={props.onNeedConsent}
@@ -163,7 +164,13 @@ export function DailyScheduleView(props: {
         </>
       ) : (
         <div className="schedule-empty">
-          <Empty text="עדיין לא נבנה לו״ז ליום הזה." />
+          <Empty
+            text={
+              plan.openTaskCount > 0
+                ? `יש לך ${plan.openTaskCount} משימות פתוחות, אבל עדיין לא נבנה לו״ז ליום הזה.`
+                : "עדיין לא נבנה לו״ז ליום הזה."
+            }
+          />
           <button
             className="primary"
             type="button"

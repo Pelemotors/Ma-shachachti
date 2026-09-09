@@ -407,7 +407,7 @@ test("P83 planning duration cap and no silent overwrite", () => {
   s = applyActions(s, [{ type: "plan.set", plan: session }], now);
   assert.ok(activeDailyPlan(s, now));
 
-  const existingId = s.planning.plan!.id;
+  const existingId = Object.values(s.planning.plans)[0]!.id;
   const replan = replanDailyPlan(s, now);
   assert.ok(replan.plan);
   assert.equal(replan.plan!.id, existingId);

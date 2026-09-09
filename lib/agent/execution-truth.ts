@@ -88,6 +88,10 @@ export function buildExecutionReceipt(actions: Action[]): string {
     case "planning.set":
     case "planning.clear":
       return "השינוי להיום נשמר.";
+    case "schedule.set":
+      return "השיבוץ בלו״ז נשמר.";
+    case "schedule.remove":
+      return "המשימה הוסרה מהלו״ז.";
     case "template.exclude":
     case "template.restore":
       return "ההעדפה נשמרה.";

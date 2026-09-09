@@ -90,7 +90,7 @@ export function computeDomainRevisions(
         c.items.map((item) => [item.id, item.checked, item.order, item.text]),
       ]),
     ),
-    planRevision: hashSlice([state.planning.today, state.planning.plan]),
+    planRevision: hashSlice([state.planning.today, state.planning.plans]),
     processRevision: hashSlice(
       state.operations.map((o) => [o.turnId, o.summary, o.createdAt, o.actionTypes]),
     ),

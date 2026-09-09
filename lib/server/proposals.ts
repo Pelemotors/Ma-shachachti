@@ -12,7 +12,7 @@ import {
   buildApproveTaskNotice,
   countPlannedCreates,
   resolveRequestedTodayTaskIds,
-  stampTaskCreateIds,
+  stampScheduleCreateRefs,
 } from "@/lib/domain/planning/plan-intent";
 import { ApiError } from "./errors";
 import { readState, rememberSavedState } from "./state-store";
@@ -60,7 +60,7 @@ export async function createPendingProposal(
 ) {
   const payload = ProposalPayloadSchema.parse({
     ...input.payload,
-    proposedActions: stampTaskCreateIds(input.payload.proposedActions),
+    proposedActions: stampScheduleCreateRefs(input.payload.proposedActions),
   });
   const requestedTodayTaskIds = resolveRequestedTodayTaskIds({
     actions: payload.proposedActions,

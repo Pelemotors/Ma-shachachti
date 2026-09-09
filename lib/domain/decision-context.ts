@@ -1,5 +1,7 @@
 import type { AppState, DailyPlanSession, Task } from "../model";
 import { activeFacts, blocked, estimatedMinutes } from "../engine";
+import { planForDate } from "./planning/plans";
+import { dayKey } from "../time";
 import { isActiveVisibleTask } from "./tasks/visibility";
 import { isLifeAdminTask } from "./notifications/life-admin";
 import { isStampPast, msUntil, stampMs } from "../time";
@@ -81,7 +83,7 @@ export function buildSharedDecisionContext(
   state: AppState,
   now: Date = new Date(),
 ): SharedDecisionContext {
-  const plan = state.planning.plan ?? null;
+  const plan = planForDate(state, dayKey(now, state.profile.timezone));
   const availableMinutes = plan?.availableMinutes ?? null;
   const effort = plan?.effort ?? state.planning.today?.effort ?? null;
 

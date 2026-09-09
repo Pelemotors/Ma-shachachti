@@ -308,5 +308,5 @@ test("Gate2 V1 without optional fields does not crash", () => {
   };
   const v2 = StateSchema.parse(minimal);
   assert.equal(v2.schemaVersion, 2);
-  assert.deepEqual(v2.planning, { today: null, plan: null });
+  assert.deepEqual(v2.planning, { today: null, plans: {} });
 });

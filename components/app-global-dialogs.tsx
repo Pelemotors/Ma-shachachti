@@ -14,7 +14,10 @@ export function AppGlobalDialogs(props: {
   confirm: Action[] | null;
   lifeAdminPrompt: { completedAtMinutes: number } | null;
   onCloseEditor: () => void;
-  onSaveEditor: (a: Action) => Promise<void>;
+  onSaveEditor: (
+    actions: Action[],
+    meta?: { requestAgentPlacement?: { taskId: string; title: string } },
+  ) => Promise<void>;
   onCloseCompletion: () => void;
   onWorkActual: (v: string) => void;
   onSubmitCompletion: () => void;

@@ -21,7 +21,7 @@ const contractMd = readFileSync(
 );
 
 const constitutionOut = `/** Auto-synced from INSTRUCTIONS.he.md — run: node scripts/sync-agent-instructions.mjs */
-export const AGENT_CONTRACT_VERSION = "2026-09-09-agent-guide-capability-v1";
+export const AGENT_CONTRACT_VERSION = "2026-09-09-task-schedule-v1";
 export const GLOBAL_AGENT_CONSTITUTION = \`
 ${escapeTemplate(constitutionMd)}
 \`;

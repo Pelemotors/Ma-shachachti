@@ -1,5 +1,6 @@
 import { applyActions } from "../engine";
 import type { Action, AppState } from "../model";
+import { orderActionsForApply } from "../domain/planning/plan-intent";
 
 /**
  * Validate a composed action list against an evolving temporary state.
@@ -19,7 +20,7 @@ export function filterRunnableActions(
   const rejected: Action[] = [];
   let simulated = state;
 
-  for (const action of actions) {
+  for (const action of orderActionsForApply(actions)) {
     try {
       simulated = applyActions(simulated, [action], now, true);
       accepted.push(action);

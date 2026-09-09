@@ -11,6 +11,7 @@ export function PlanSetupView(props: {
   mode: string;
   aiConsent: boolean;
   compact?: boolean;
+  selectedDateIsToday?: boolean;
   onDuration: (v: { hours: number; minutes: number }) => void;
   onEffort: (v: number) => void;
   onChangedDay: (v: string) => void;
@@ -23,16 +24,20 @@ export function PlanSetupView(props: {
     <section
       className={props.compact ? "panel stack schedule-adjust" : "panel stack"}
     >
-      <h3 className="schedule-adjust-title">מה שונה היום?</h3>
+      <h3 className="schedule-adjust-title">
+        {props.selectedDateIsToday === false
+          ? "מה שונה ביום הזה?"
+          : "מה שונה היום?"}
+      </h3>
       <p className="muted schedule-adjust-hint">
-        עדכון קצר שעוזר להתאים את היום — בלי לבנות מחדש בלי סיבה.
+        אפשר לכתוב חופשי — זה אותו סוכן אישי, לא טופס תכנון בלבד.
       </p>
       <label>
-        מה השתנה
+        {props.selectedDateIsToday === false ? "מה השתנה ביום הזה" : "מה השתנה"}
         <textarea
           value={props.changedDay}
           onChange={(e) => props.onChangedDay(e.target.value)}
-          placeholder="למשל: היום אני יוצאת ב־16:00, אין לי כוח, הילדה בבית, יש לי רק שעה בבוקר..."
+          placeholder="למשל: אני יוצאת ב־16:00, אין לי כוח, הילדה בבית, יש לי רק שעה בבוקר..."
           rows={2}
         />
       </label>

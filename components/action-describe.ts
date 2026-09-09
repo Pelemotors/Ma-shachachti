@@ -46,6 +46,14 @@ export function describe(a: Action): string {
       return "התאמת התוכנית להיום";
     case "planning.clear":
       return "ניקוי ההתאמה הזמנית להיום";
+    case "schedule.set":
+      return a.plannedStart
+        ? `שיבוץ ללו״ז ב־${a.date}`
+        : a.dayPart
+          ? `שיבוץ ללו״ז ב־${a.date}`
+          : `שיבוץ ל־${a.date}`;
+    case "schedule.remove":
+      return "הסרה מהלו״ז בלי למחוק את המשימה";
     case "history.clear":
       return "מחיקת השיחות והיסטוריית הפעולות";
     case "memory.lifeAdmin":

@@ -26,6 +26,21 @@ import { applyWorkingMemoryPatch } from "./domain/working-memory";
 import { materializeDueRoutinesInPlace } from "./domain/routines";
 import { applyAgentGuideUpdate } from "./domain/agent-guide";
 import { applyChecklistAction } from "./domain/checklists";
+import {
+  orderActionsForApply,
+  stampScheduleCreateRefs,
+} from "./domain/planning/plan-intent";
+import {
+  createEmptyDailyPlan,
+  deleteDailyPlan,
+  ensurePlanningPlans,
+  findPlanDateForTask,
+  forEachPlanItem,
+  planForDate,
+  removeTaskFromDate,
+  removeTaskFromOtherDates,
+  writeDailyPlan,
+} from "./domain/planning/plans";
 
 /** Structured internal marker; the personal agent uses typed inventory.event. */
 const FORECAST_FACT_RE =
@@ -66,7 +81,9 @@ export function applyActions(
   now = new Date(),
   confirmed = false,
 ): AppState {
-  const actions = ActionBatch.parse(raw);
+  const actions = orderActionsForApply(
+    stampScheduleCreateRefs(ActionBatch.parse(raw)),
+  );
   if (requiresConfirmation(actions) && !confirmed)
     throw new Error("נדרש אישור לפעולה הזאת.");
   const s = StateSchema.parse(structuredClone(state));
@@ -204,14 +221,11 @@ export function applyActions(
         t.status = "in_progress";
         t.startedAt = stamp;
         t.updatedAt = stamp;
-        if (s.planning.plan) {
-          const item = s.planning.plan.items.find((i) => i.taskId === t.id);
-          if (item) {
-            item.planStatus = "in_progress";
-            item.locked = true;
-            s.planning.plan.updatedAt = stamp;
-          }
-        }
+        forEachPlanItem(s, t.id, (plan, item) => {
+          item.planStatus = "in_progress";
+          item.locked = true;
+          plan.updatedAt = stamp;
+        });
         break;
       }
       case "task.step": {
@@ -233,17 +247,14 @@ export function applyActions(
         if (action.status === "open") t.startedAt = null;
         t.actualWorkMinutes =
           action.status === "done" ? (action.actualWorkMinutes ?? null) : null;
-        if (s.planning.plan) {
-          const item = s.planning.plan.items.find((i) => i.taskId === t.id);
-          if (item) {
-            if (action.status === "done") item.planStatus = "done";
-            if (action.status === "in_progress") {
-              item.planStatus = "in_progress";
-              item.locked = true;
-            }
-            s.planning.plan.updatedAt = stamp;
+        forEachPlanItem(s, t.id, (plan, item) => {
+          if (action.status === "done") item.planStatus = "done";
+          if (action.status === "in_progress") {
+            item.planStatus = "in_progress";
+            item.locked = true;
           }
-        }
+          plan.updatedAt = stamp;
+        });
         if (action.status === "done" || action.status === "cancelled")
           s.reminders
             .filter((r) => r.taskId === t.id && r.status === "pending")
@@ -572,21 +583,74 @@ export function applyActions(
         s.planning.today = null;
         break;
       case "plan.set":
-        s.planning.plan = action.plan;
+        writeDailyPlan(s, action.plan);
         break;
       case "plan.clear":
-        s.planning.plan = null;
+        deleteDailyPlan(
+          s,
+          action.date ?? dayKey(now, s.profile.timezone),
+        );
         break;
       case "plan.itemUpdate": {
-        if (!s.planning.plan) throw new Error("אין תוכנית יום פעילה.");
-        const item = s.planning.plan.items.find(
-          (i) => i.taskId === action.taskId,
-        );
+        const date =
+          action.date ??
+          findPlanDateForTask(s, action.taskId) ??
+          dayKey(now, s.profile.timezone);
+        const plan = planForDate(s, date);
+        if (!plan) throw new Error("אין תוכנית יום פעילה.");
+        const item = plan.items.find((i) => i.taskId === action.taskId);
         if (!item) throw new Error("הפריט לא נמצא בתוכנית.");
         Object.assign(item, action.patch);
-        s.planning.plan.updatedAt = stamp;
+        plan.updatedAt = stamp;
         break;
       }
+      case "schedule.set": {
+        const taskId = action.taskId;
+        if (!taskId) throw new Error("חסר מזהה משימה לשיבוץ.");
+        task(taskId);
+        const existing = planForDate(s, action.date);
+        const plan =
+          existing ??
+          createEmptyDailyPlan(action.date, stamp, {
+            effort: s.planning.today?.effort ?? 2,
+            availableMinutes: 120,
+          });
+        ensurePlanningPlans(s)[action.date] = plan;
+        removeTaskFromOtherDates(s, taskId, action.date, stamp);
+        let item = plan.items.find((row) => row.taskId === taskId);
+        if (!item) {
+          item = {
+            taskId,
+            order: plan.items.length,
+            plannedStart: null,
+            plannedEnd: null,
+            locked: false,
+            planStatus: "planned",
+            dayPart: null,
+          };
+          plan.items.push(item);
+        }
+        if (action.plannedStart) {
+          item.plannedStart = action.plannedStart;
+          item.plannedEnd = action.plannedEnd ?? null;
+          item.dayPart = null;
+        } else if (action.dayPart) {
+          item.plannedStart = null;
+          item.plannedEnd = null;
+          item.dayPart = action.dayPart;
+        } else {
+          item.plannedStart = null;
+          item.plannedEnd = null;
+          item.dayPart = null;
+        }
+        item.planStatus = "planned";
+        plan.updatedAt = stamp;
+        writeDailyPlan(s, plan);
+        break;
+      }
+      case "schedule.remove":
+        removeTaskFromDate(s, action.taskId, action.date, stamp);
+        break;
       case "profile.update":
         Object.assign(s.profile, action.patch);
         break;
@@ -1088,10 +1152,7 @@ export function buildDailyPlanSession(
 }
 
 export function activeDailyPlan(s: AppState, now = new Date()) {
-  const plan = s.planning.plan;
-  if (!plan) return null;
-  if (plan.date !== dayKey(now, s.profile.timezone)) return null;
-  return plan;
+  return planForDate(s, dayKey(now, s.profile.timezone));
 }
 
 /** Stable replan: keep past/done/in_progress/locked; rebuild future unlocked. */
