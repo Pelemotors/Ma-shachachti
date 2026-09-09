@@ -5,6 +5,8 @@ import {
   ChevronLeft,
   Leaf,
   CheckCheck,
+  ScanSearch,
+  ListChecks,
 } from "lucide-react";
 import { AppState, Action, Task } from "@/lib/model";
 import { getHomeTodayTasks } from "@/lib/domain/planning/home-today";
@@ -21,6 +23,7 @@ export function HomeView(props: {
   greetingHour: string;
   onNavigate: (v: AppView) => void;
   onOpenPlan: () => void;
+  onAskForecast: () => void;
   onEdit: (t: Task) => void;
   onChat: (t: Task) => void;
   onComplete: (t: Task) => void;
@@ -82,6 +85,20 @@ export function HomeView(props: {
           </span>
           <ChevronLeft size={21} />
         </button>
+        <button
+          className="engine"
+          type="button"
+          onClick={props.onAskForecast}
+        >
+          <span className="engine-icon">
+            <ScanSearch size={23} />
+          </span>
+          <span>
+            <strong>מה אפשר לחזות לי?</strong>
+            <small>אותו סוכן, על ההיסטוריה שלך</small>
+          </span>
+          <ChevronLeft size={21} />
+        </button>
       </div>
       <section>
         <div className="section-heading">
@@ -129,6 +146,12 @@ export function HomeView(props: {
           <ChevronLeft size={18} />
         </button>
       )}
+      <button
+        className="quiet-link"
+        onClick={() => props.onNavigate("checklists")}
+      >
+        צ׳קליסטים <ListChecks size={16} />
+      </button>
       <button
         className="quiet-link"
         onClick={() => props.onNavigate("history")}

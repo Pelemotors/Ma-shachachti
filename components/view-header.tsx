@@ -9,6 +9,7 @@ export const VIEW_TITLES: Record<AppView, string> = {
   chat: "אני כאן איתך",
   tasks: "המשימות שלי",
   shopping: "רשימת קניות",
+  checklists: "צ׳קליסטים",
   memory: "מה אני זוכר",
   settings: "הבית וההעדפות",
   reminders: "תזכורות",

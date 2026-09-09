@@ -129,6 +129,10 @@ export function buildAgentRuntimeContext(input: {
     coreEntityIds.add(r.id);
   for (const r of knowledge.routines as { id: string }[])
     coreEntityIds.add(r.id);
+  const checklists = (
+    knowledge as { personalChecklists?: { full?: { id: string }[] } }
+  ).personalChecklists;
+  for (const c of checklists?.full ?? []) coreEntityIds.add(c.id);
   if (input.contextTaskId) coreEntityIds.add(input.contextTaskId);
 
   const referencedEntityIds = [
@@ -171,6 +175,7 @@ export function buildAgentRuntimeContext(input: {
     forecasts: knowledge.learning,
     processes: input.state.operations.slice(-40),
     shopping: knowledge.shopping,
+    personalChecklists: knowledge.personalChecklists,
     messages: knowledge.history,
     workingMemory: wm,
     entityIndex,

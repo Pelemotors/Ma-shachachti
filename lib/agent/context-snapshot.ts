@@ -19,6 +19,7 @@ export type DomainRevisions = {
   memoryRevision: string;
   messageRevision: string;
   shoppingRevision: string;
+  personalChecklistRevision: string;
   planRevision: string;
   processRevision: string;
   workingMemoryRevision: string;
@@ -81,6 +82,14 @@ export function computeDomainRevisions(
     shoppingRevision: hashSlice(
       state.shopping.map((s) => [s.id, s.title, s.purchasedAt]),
     ),
+    personalChecklistRevision: hashSlice(
+      state.checklists.map((c) => [
+        c.id,
+        c.title,
+        c.updatedAt,
+        c.items.map((item) => [item.id, item.checked, item.order, item.text]),
+      ]),
+    ),
     planRevision: hashSlice([state.planning.today, state.planning.plan]),
     processRevision: hashSlice(
       state.operations.map((o) => [o.turnId, o.summary, o.createdAt, o.actionTypes]),
@@ -103,6 +112,7 @@ export type SnapshotSlices = {
   forecasts: unknown;
   processes: unknown;
   shopping: unknown;
+  personalChecklists: unknown;
   messages: unknown;
   workingMemory: unknown;
   entityIndex: unknown;
@@ -171,6 +181,7 @@ export function buildAgentContextSnapshot(input: {
     { name: "forecasts", rev: "forecastRevision" },
     { name: "processes", rev: "processRevision" },
     { name: "shopping", rev: "shoppingRevision" },
+    { name: "personalChecklists", rev: "personalChecklistRevision" },
     { name: "messages", rev: "messageRevision" },
     { name: "workingMemory", rev: "workingMemoryRevision" },
     { name: "entityIndex", rev: "stateRevision" },
@@ -213,6 +224,11 @@ export function buildAgentContextSnapshot(input: {
         prev.domainRevisions,
         domainRevisions,
         "checklistRevision",
+      ) ||
+      sliceNeedsRebuild(
+        prev.domainRevisions,
+        domainRevisions,
+        "personalChecklistRevision",
       ) ||
       sliceNeedsRebuild(
         prev.domainRevisions,
@@ -281,6 +297,7 @@ export const STRUCTURAL_CONTEXT_DOMAINS = [
   "forecasts",
   "processes",
   "shopping",
+  "personalChecklists",
   "messages",
   "workingMemory",
   "entityIndex",

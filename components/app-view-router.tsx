@@ -6,6 +6,7 @@ import { HomeView } from "./views/home-view";
 import { ChatView } from "./views/chat-view";
 import { TasksView } from "./views/tasks-view";
 import { ShoppingView } from "./views/shopping-view";
+import { ChecklistsView, checklistViewProps } from "./views/checklists-view";
 import { PlanSetupView } from "./views/plan-setup-view";
 import { PlanResultView } from "./views/plan-result-view";
 import { FreeTimeView } from "./views/free-time-view";
@@ -20,6 +21,7 @@ import type { TaskController } from "@/hooks/use-task-controller";
 import type { DailyPlanController } from "@/hooks/use-daily-plan-controller";
 import type { FreeTimeController } from "@/hooks/use-free-time-controller";
 import type { ShoppingController } from "@/hooks/use-shopping-controller";
+import type { ChecklistController } from "@/hooks/use-checklist-controller";
 import type { ReminderController } from "@/hooks/use-reminder-controller";
 
 type TaskCardHandlers = {
@@ -42,6 +44,7 @@ export function AppViewRouter(props: {
   free: FreeTimeController;
   plan: DailyPlanController;
   shopping: ShoppingController;
+  checklists: ChecklistController;
   reminders: ReminderController;
   chatBottomRef: RefObject<HTMLDivElement | null>;
   taskCardHandlers: TaskCardHandlers;
@@ -50,6 +53,7 @@ export function AppViewRouter(props: {
   onError?: (msg: string) => void;
   onExport: () => void;
   onSignOut: () => void;
+  onAskForecast: () => void;
 }) {
   const {
     view,
@@ -82,6 +86,7 @@ export function AppViewRouter(props: {
           plan.resetForNavigation();
           navigate("plan");
         }}
+        onAskForecast={props.onAskForecast}
         onNewTask={() => tasks.setEditor("new")}
         {...taskCardHandlers}
       />
@@ -191,6 +196,8 @@ export function AppViewRouter(props: {
         onRemove={shopping.removeItem}
       />
     );
+  if (view === "checklists")
+    return <ChecklistsView {...checklistViewProps(props.checklists)} />;
   if (view === "chat")
     return (
       <ChatView

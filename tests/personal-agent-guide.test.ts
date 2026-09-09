@@ -34,6 +34,7 @@ function snapshotSlices(state: ReturnType<typeof emptyState>) {
     forecasts: state.learning,
     processes: state.operations,
     shopping: state.shopping,
+    personalChecklists: state.checklists,
     messages: state.messages,
     workingMemory: state.agentWorkingMemory,
     entityIndex: buildEntityIndex(state, NOW),

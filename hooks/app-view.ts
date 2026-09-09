@@ -3,6 +3,7 @@ export type AppView =
   | "chat"
   | "tasks"
   | "shopping"
+  | "checklists"
   | "memory"
   | "settings"
   | "reminders"

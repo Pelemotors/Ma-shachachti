@@ -229,6 +229,43 @@ export const ShoppingSchema = z.object({
   createdAt: Stamp,
 });
 
+/** Reusable personal checklist — opaque title/items, no type taxonomy. */
+export const ChecklistItemSchema = z.object({
+  id: z.string().uuid(),
+  text: z.string().min(1).max(200),
+  checked: z.boolean(),
+  order: z.number().int().min(0).max(80),
+  createdAt: Stamp,
+  updatedAt: Stamp,
+});
+export type ChecklistItem = z.infer<typeof ChecklistItemSchema>;
+
+export const ChecklistSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().min(1).max(120),
+  items: z.array(ChecklistItemSchema).max(80),
+  createdAt: Stamp,
+  updatedAt: Stamp,
+});
+export type Checklist = z.infer<typeof ChecklistSchema>;
+
+export const ChecklistItemInputSchema = z.object({
+  id: z.string().uuid().optional(),
+  text: z.string().min(1).max(200),
+  checked: z.boolean().optional(),
+  order: z.number().int().min(0).max(80).optional(),
+});
+
+/** Factual event payload only — no inferred frequency/score. */
+export const StateEventPayloadSchema = z
+  .object({
+    title: z.string().max(200).optional(),
+    quantity: z.string().max(60).optional(),
+    checked: z.boolean().optional(),
+    text: z.string().max(200).optional(),
+  })
+  .strict();
+
 export const ReminderSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1).max(200),
@@ -478,6 +515,7 @@ export const StateV2Schema = z.object({
   routines: z.array(RoutineSchema).max(500).default([]),
   facts: z.array(FactSchema).max(300),
   shopping: z.array(ShoppingSchema).max(1000),
+  checklists: z.array(ChecklistSchema).max(100).default([]),
   reminders: z.array(ReminderSchema).max(500),
   messages: z.array(MessageSchema).max(200),
   excludedTemplates: z.array(z.string()).max(500),
@@ -495,6 +533,8 @@ export const StateV2Schema = z.object({
         type: z.string(),
         summary: z.string(),
         turnId: z.string().uuid().nullable().optional(),
+        entityId: z.string().uuid().nullable().optional(),
+        payload: StateEventPayloadSchema.optional(),
       }),
     )
     .max(500),
@@ -667,6 +707,7 @@ export function migrateV1ToV2(v1: StateV1): AppState {
     routines: [],
     facts: v1.facts,
     shopping: v1.shopping,
+    checklists: [],
     reminders: v1.reminders,
     messages: v1.messages.map((m) => ({
       id: m.id!,
@@ -872,6 +913,7 @@ export function emptyState(): AppState {
     routines: [],
     facts: [],
     shopping: [],
+    checklists: [],
     reminders: [],
     messages: [],
     excludedTemplates: [],
@@ -1064,6 +1106,52 @@ export const ActionSchema = z.discriminatedUnion("type", [
     checked: z.boolean(),
   }),
   z.object({ type: z.literal("shopping.remove"), id: z.string().uuid() }),
+  z.object({
+    type: z.literal("checklist.create"),
+    id: z.string().uuid().optional(),
+    title: z.string().min(1).max(120),
+    items: z.array(ChecklistItemInputSchema).max(80).optional(),
+  }),
+  z.object({
+    type: z.literal("checklist.update"),
+    id: z.string().uuid(),
+    title: z.string().min(1).max(120),
+  }),
+  z.object({ type: z.literal("checklist.delete"), id: z.string().uuid() }),
+  z.object({
+    type: z.literal("checklist.item.add"),
+    checklistId: z.string().uuid(),
+    itemId: z.string().uuid().optional(),
+    text: z.string().min(1).max(200),
+    checked: z.boolean().optional(),
+    order: z.number().int().min(0).max(80).optional(),
+  }),
+  z.object({
+    type: z.literal("checklist.item.update"),
+    checklistId: z.string().uuid(),
+    itemId: z.string().uuid(),
+    text: z.string().min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("checklist.item.remove"),
+    checklistId: z.string().uuid(),
+    itemId: z.string().uuid(),
+  }),
+  z.object({
+    type: z.literal("checklist.item.reorder"),
+    checklistId: z.string().uuid(),
+    itemIds: z.array(z.string().uuid()).min(1).max(80),
+  }),
+  z.object({
+    type: z.literal("checklist.item.toggle"),
+    checklistId: z.string().uuid(),
+    itemId: z.string().uuid(),
+    checked: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("checklist.reset"),
+    id: z.string().uuid(),
+  }),
   z.object({
     type: z.literal("fact.add"),
     text: z.string().min(1).max(500),

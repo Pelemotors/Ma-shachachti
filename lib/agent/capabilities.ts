@@ -20,6 +20,15 @@ export const AGENT_CAPABILITY_TYPES = [
   "shopping.add",
   "shopping.check",
   "shopping.remove",
+  "checklist.create",
+  "checklist.update",
+  "checklist.delete",
+  "checklist.item.add",
+  "checklist.item.update",
+  "checklist.item.remove",
+  "checklist.item.reorder",
+  "checklist.item.toggle",
+  "checklist.reset",
   "fact.add",
   "fact.update",
   "fact.remove",
@@ -87,6 +96,21 @@ export const AGENT_CAPABILITY_CONTRACT = [
     policy: "auto_or_proposal",
     notes:
       "Removal requires proposal; checking/unchecking and adding are reversible.",
+  },
+  {
+    type: "checklist.create/checklist.update/checklist.delete/checklist.reset",
+    purpose:
+      "Create, rename, delete or reset a reusable personal checklist. Titles and items are free text with no checklist types.",
+    policy: "proposal",
+    notes:
+      "Use an existing checklist id from state when editing. Do not invent a taxonomy of checklist kinds. Creation and substantial change require approval. Reset unchecks all items so the same checklist can be reused.",
+  },
+  {
+    type: "checklist.item.add/checklist.item.update/checklist.item.remove/checklist.item.reorder/checklist.item.toggle",
+    purpose: "Change items on an existing personal checklist referenced by id.",
+    policy: "auto_or_proposal",
+    notes:
+      "Add/update/remove/reorder require proposal. Toggle of checked state is reversible. Never match a checklist by keywords; use the id from context, index or deep access.",
   },
   {
     type: "fact.add/fact.update/fact.remove",

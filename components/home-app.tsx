@@ -9,6 +9,7 @@ import {
   SlidersHorizontal,
   Bell,
   BookOpen,
+  ListChecks,
   Check,
   Undo2,
 } from "lucide-react";
@@ -30,8 +31,12 @@ import { useTaskController } from "@/hooks/use-task-controller";
 import { useDailyPlanController } from "@/hooks/use-daily-plan-controller";
 import { useFreeTimeController } from "@/hooks/use-free-time-controller";
 import { useShoppingController } from "@/hooks/use-shopping-controller";
+import { useChecklistController } from "@/hooks/use-checklist-controller";
 import { useReminderController } from "@/hooks/use-reminder-controller";
 import type { AppView } from "./view-header";
+import {
+  FORECAST_USER_INTENT,
+} from "@/lib/agent/forecast-intent";
 
 export function HomeApp() {
   const h = useHousehold();
@@ -56,6 +61,12 @@ export function HomeApp() {
   });
   const shopping = useShoppingController(
     state.shopping,
+    busy,
+    tasks.run,
+    tasks.act,
+  );
+  const checklists = useChecklistController(
+    state.checklists,
     busy,
     tasks.run,
     tasks.act,
@@ -170,6 +181,7 @@ export function HomeApp() {
               ["chat", MessageCircle, "שיחה"],
               ["tasks", CheckCheck, "משימות"],
               ["shopping", ShoppingBasket, "קניות"],
+              ["checklists", ListChecks, "צ׳קליסטים"],
               ["reminders", Bell, "תזכורות"],
               ["memory", BookOpen, "הזיכרון שלי"],
             ] as const
@@ -260,6 +272,7 @@ export function HomeApp() {
             free={free}
             plan={plan}
             shopping={shopping}
+            checklists={checklists}
             reminders={reminders}
             chatBottomRef={chatBottom}
             taskCardHandlers={taskCardHandlers}
@@ -268,6 +281,10 @@ export function HomeApp() {
             onError={h.setError}
             onExport={exportData}
             onSignOut={() => void h.signOut()}
+            onAskForecast={() => {
+              navigate("chat");
+              void chat.sendMessage(FORECAST_USER_INTENT);
+            }}
           />
         </main>
 

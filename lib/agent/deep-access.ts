@@ -4,6 +4,11 @@
  */
 import type { AppState } from "@/lib/model";
 import { activeFacts } from "@/lib/engine";
+import {
+  recentCompletedTasks,
+  shoppingFactualEvents,
+  shoppingPurchaseHistory,
+} from "@/lib/domain/factual-history";
 
 export const DEEP_ACCESS_TOOLS = [
   "state.get_entity",
@@ -13,6 +18,8 @@ export const DEEP_ACCESS_TOOLS = [
   "state.get_scan_history",
   "state.get_forecast_evidence",
   "state.get_agent_guide",
+  "state.get_shopping_history",
+  "state.get_checklist",
 ] as const;
 
 export type DeepAccessTool = (typeof DEEP_ACCESS_TOOLS)[number];
@@ -56,6 +63,8 @@ function findEntity(state: AppState, id: string) {
   if (area) return { kind: "homeArea", entity: area };
   const shopping = state.shopping.find((s) => s.id === id);
   if (shopping) return { kind: "shopping", entity: shopping };
+  const checklist = state.checklists.find((c) => c.id === id);
+  if (checklist) return { kind: "checklist", entity: checklist };
   return null;
 }
 
@@ -204,6 +213,36 @@ export function executeDeepAccess(
                 createdAt: null,
                 updatedAt: null,
               },
+        };
+      }
+      case "state.get_shopping_history": {
+        return {
+          tool: req.tool,
+          ok: true,
+          fromCoreHint: false,
+          data: {
+            purchased: shoppingPurchaseHistory(state, limit),
+            events: shoppingFactualEvents(state, limit),
+            completedTasks: recentCompletedTasks(state, limit),
+          },
+        };
+      }
+      case "state.get_checklist": {
+        if (!req.entityId)
+          return {
+            tool: req.tool,
+            ok: false,
+            fromCoreHint,
+            data: null,
+            error: "entityId required",
+          };
+        const row = state.checklists.find((c) => c.id === req.entityId);
+        return {
+          tool: req.tool,
+          ok: Boolean(row),
+          fromCoreHint,
+          data: row ?? null,
+          error: row ? undefined : "not_found",
         };
       }
       default:

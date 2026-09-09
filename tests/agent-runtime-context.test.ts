@@ -46,6 +46,7 @@ function baseSlices(state: AppState) {
     forecasts: state.learning,
     processes: state.operations,
     shopping: state.shopping,
+    personalChecklists: state.checklists,
     messages: state.messages,
     workingMemory: state.agentWorkingMemory,
     entityIndex: buildEntityIndex(state, NOW),

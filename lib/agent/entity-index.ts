@@ -5,6 +5,7 @@
 import type { AppState } from "@/lib/model";
 import { dayKey } from "@/lib/time";
 import { activeFacts } from "@/lib/engine";
+import { checklistIndexEntry } from "@/lib/domain/checklists";
 
 const OPEN_TASK = new Set(["open", "unknown", "in_progress"]);
 
@@ -13,12 +14,16 @@ export type AgentEntityIndex = {
   tasks: { total: number; open: number; openIds: string[] };
   reminders: { total: number; pending: number; pendingIds: string[] };
   routines: { total: number; active: number; activeIds: string[] };
-  shopping: { total: number; open: number };
+  shopping: { total: number; open: number; purchased: number };
   plans: { hasTodayPlan: boolean; plannedTaskCount: number };
   home: { areaCount: number; firstScanStatus: string | null };
   memory: { factCount: number; compactedFactCount: number };
   forecasts: { learningCount: number; forecastKindCount: number };
   checklists: { tasksWithSteps: number; openStepCount: number };
+  personalChecklists: {
+    total: number;
+    entries: { id: string; title: string; itemCount: number; updatedAt: string }[];
+  };
   processes: { operationCount: number };
   workingMemory: {
     present: boolean;
@@ -70,6 +75,7 @@ export function buildEntityIndex(
     shopping: {
       total: state.shopping.length,
       open: openShopping.length,
+      purchased: state.shopping.length - openShopping.length,
     },
     plans: {
       hasTodayPlan: Boolean(plan && plan.date === dayKey(now, tz)),
@@ -90,6 +96,14 @@ export function buildEntityIndex(
     checklists: {
       tasksWithSteps: tasksWithSteps.length,
       openStepCount,
+    },
+    personalChecklists: {
+      total: state.checklists.length,
+      entries: state.checklists
+        .slice()
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, 100)
+        .map(checklistIndexEntry),
     },
     processes: {
       operationCount: state.operations.length,

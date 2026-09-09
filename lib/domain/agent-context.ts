@@ -4,6 +4,16 @@ import { activeFacts } from "@/lib/engine";
 import { sanitizeWorkingMemory } from "@/lib/domain/working-memory";
 import { buildAgentCapabilityContext } from "@/lib/agent/capabilities";
 import { toRuntimePersonalAgentGuide } from "@/lib/domain/agent-guide";
+import {
+  recentCompletedTasks,
+  shoppingFactualEvents,
+  shoppingPurchaseHistory,
+} from "@/lib/domain/factual-history";
+import {
+  checklistIndexEntry,
+  PERSONAL_CHECKLIST_FULL_CONTEXT_LIMIT,
+  PERSONAL_CHECKLIST_INDEX_LIMIT,
+} from "@/lib/domain/checklists";
 
 export type AgentSurfaceContext = {
   memoryKind?: "stable" | "temporary";
@@ -225,6 +235,35 @@ export function buildAgentContext(
   };
 
   const firstScan = firstScanKnowledge(state);
+  const checklistIndex = state.checklists
+    .slice()
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, PERSONAL_CHECKLIST_INDEX_LIMIT)
+    .map(checklistIndexEntry);
+  const personalChecklists = {
+    presentation:
+      state.checklists.length <= PERSONAL_CHECKLIST_FULL_CONTEXT_LIMIT
+        ? ("full" as const)
+        : ("index" as const),
+    index: checklistIndex,
+    full:
+      state.checklists.length <= PERSONAL_CHECKLIST_FULL_CONTEXT_LIMIT
+        ? state.checklists.map((row) => ({
+            id: row.id,
+            title: row.title,
+            updatedAt: row.updatedAt,
+            items: row.items
+              .slice()
+              .sort((a, b) => a.order - b.order)
+              .map((item) => ({
+                id: item.id,
+                text: item.text,
+                checked: item.checked,
+                order: item.order,
+              })),
+          }))
+        : [],
+  };
 
   return {
     nowUtc: now.toISOString(),
@@ -257,6 +296,10 @@ export function buildAgentContext(
     routines,
     tasks: activeTasks.slice(-100).map(mapTask),
     shopping: state.shopping.filter((x) => !x.purchasedAt).slice(-80),
+    shoppingHistory: shoppingPurchaseHistory(state, 80),
+    shoppingEvents: shoppingFactualEvents(state, 80),
+    recentCompletions: recentCompletedTasks(state, 40),
+    personalChecklists,
     reminders: state.reminders
       .filter((r) => r.status === "pending")
       .slice(-80)
@@ -303,6 +346,15 @@ export function buildGroundedProposalSummary(actions: { type: string }[]) {
     return "יש תזכורת שדורשת אישור לפני שמירה.";
   if (actions.some((a) => a.type === "routine.remove"))
     return "יש הסרת שגרה שדורשת אישור לפני ביצוע.";
+  if (actions.some((a) => a.type === "checklist.create"))
+    return "יש צ׳קליסט שדורש אישור לפני יצירה.";
+  if (
+    actions.some(
+      (a) =>
+        a.type.startsWith("checklist.") && a.type !== "checklist.item.toggle",
+    )
+  )
+    return "יש שינוי בצ׳קליסט שדורש אישור לפני שמירה.";
   if (actions.length) return "יש פעולות שדורשות אישור לפני ביצוע.";
   return "אין פעולות לאישור.";
 }

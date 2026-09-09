@@ -10,10 +10,15 @@ export function filterReferentialActions(state: AppState, actions: Action[]) {
   const taskIds = new Set(state.tasks.map((t) => t.id));
   const routineIds = new Set(state.routines.map((r) => r.id));
   const shoppingIds = new Set(state.shopping.map((s) => s.id));
+  const checklistIds = new Set(state.checklists.map((c) => c.id));
   const factIds = new Set(state.facts.map((f) => f.id));
   const reminderIds = new Set(state.reminders.map((r) => r.id));
   const memberIds = new Set(state.members.map((m) => m.id));
   const homeAreaIds = new Set(state.homeAreas.map((a) => a.id));
+  for (const action of actions) {
+    if (action.type === "checklist.create" && action.id)
+      checklistIds.add(action.id);
+  }
   const kept: Action[] = [];
   const rejected: Action[] = [];
 
@@ -47,6 +52,20 @@ export function filterReferentialActions(state: AppState, actions: Action[]) {
       action.type === "shopping.check"
     ) {
       valid = shoppingIds.has(action.id);
+    } else if (
+      action.type === "checklist.update" ||
+      action.type === "checklist.delete" ||
+      action.type === "checklist.reset"
+    ) {
+      valid = checklistIds.has(action.id);
+    } else if (
+      action.type === "checklist.item.add" ||
+      action.type === "checklist.item.update" ||
+      action.type === "checklist.item.remove" ||
+      action.type === "checklist.item.reorder" ||
+      action.type === "checklist.item.toggle"
+    ) {
+      valid = checklistIds.has(action.checklistId);
     } else if (action.type === "fact.remove" || action.type === "fact.update") {
       valid = factIds.has(action.id);
     } else if (

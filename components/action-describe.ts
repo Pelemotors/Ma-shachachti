@@ -26,6 +26,22 @@ export function describe(a: Action): string {
       return "הסרת פרט מהזיכרון";
     case "shopping.remove":
       return "הסרת פריט קניות";
+    case "checklist.create":
+      return `צ׳קליסט: ${a.title}`;
+    case "checklist.update":
+      return `שינוי שם צ׳קליסט: ${a.title}`;
+    case "checklist.delete":
+      return "מחיקת צ׳קליסט";
+    case "checklist.item.add":
+      return `פריט לצ׳קליסט: ${a.text}`;
+    case "checklist.item.update":
+      return `עדכון פריט בצ׳קליסט: ${a.text}`;
+    case "checklist.item.remove":
+      return "הסרת פריט מצ׳קליסט";
+    case "checklist.item.reorder":
+      return "שינוי סדר פריטים בצ׳קליסט";
+    case "checklist.reset":
+      return "איפוס סימונים בצ׳קליסט";
     case "planning.set":
       return "התאמת התוכנית להיום";
     case "planning.clear":

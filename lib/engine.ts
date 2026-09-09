@@ -25,6 +25,7 @@ import {
 import { applyWorkingMemoryPatch } from "./domain/working-memory";
 import { materializeDueRoutinesInPlace } from "./domain/routines";
 import { applyAgentGuideUpdate } from "./domain/agent-guide";
+import { applyChecklistAction } from "./domain/checklists";
 
 /** Structured internal marker; the personal agent uses typed inventory.event. */
 const FORECAST_FACT_RE =
@@ -43,6 +44,14 @@ export function requiresConfirmation(actions: Action[]) {
           "homeArea.remove",
           "routine.remove",
           "agentGuide.update",
+          "checklist.create",
+          "checklist.update",
+          "checklist.delete",
+          "checklist.reset",
+          "checklist.item.add",
+          "checklist.item.update",
+          "checklist.item.remove",
+          "checklist.item.reorder",
         ].includes(a.type) ||
         (a.type === "task.status" && a.status === "cancelled") ||
         (a.type === "profile.update" &&
@@ -360,12 +369,21 @@ export function applyActions(
         if (existing) {
           if (action.quantity) existing.quantity = action.quantity;
         } else {
-          s.shopping.push({
+          const item = {
             id: crypto.randomUUID(),
             title: action.title.trim(),
             quantity: action.quantity ?? "",
             purchasedAt: null,
             createdAt: stamp,
+          };
+          s.shopping.push(item);
+          s.events.push({
+            id: crypto.randomUUID(),
+            at: stamp,
+            type: "shopping.item_added",
+            summary: "shopping.item_added",
+            entityId: item.id,
+            payload: { title: item.title, quantity: item.quantity },
           });
         }
         break;
@@ -374,10 +392,45 @@ export function applyActions(
         const item = s.shopping.find((x) => x.id === action.id);
         if (!item) throw new Error("הפריט לא נמצא.");
         item.purchasedAt = action.checked ? stamp : null;
+        s.events.push({
+          id: crypto.randomUUID(),
+          at: stamp,
+          type: "shopping.item_checked",
+          summary: "shopping.item_checked",
+          entityId: item.id,
+          payload: {
+            title: item.title,
+            quantity: item.quantity,
+            checked: action.checked,
+          },
+        });
         break;
       }
-      case "shopping.remove":
+      case "shopping.remove": {
+        const item = s.shopping.find((x) => x.id === action.id);
         s.shopping = s.shopping.filter((x) => x.id !== action.id);
+        if (item) {
+          s.events.push({
+            id: crypto.randomUUID(),
+            at: stamp,
+            type: "shopping.item_removed",
+            summary: "shopping.item_removed",
+            entityId: item.id,
+            payload: { title: item.title, quantity: item.quantity },
+          });
+        }
+        break;
+      }
+      case "checklist.create":
+      case "checklist.update":
+      case "checklist.delete":
+      case "checklist.item.add":
+      case "checklist.item.update":
+      case "checklist.item.remove":
+      case "checklist.item.reorder":
+      case "checklist.item.toggle":
+      case "checklist.reset":
+        applyChecklistAction(s, action, stamp);
         break;
       case "fact.add": {
         if (
@@ -692,7 +745,13 @@ export function applyActions(
       }
     }
 
-    if (action.type !== "message.add" && action.type !== "history.clear")
+    if (
+      action.type !== "message.add" &&
+      action.type !== "history.clear" &&
+      action.type !== "shopping.add" &&
+      action.type !== "shopping.check" &&
+      action.type !== "shopping.remove"
+    )
       s.events.push({
         id: crypto.randomUUID(),
         at: stamp,

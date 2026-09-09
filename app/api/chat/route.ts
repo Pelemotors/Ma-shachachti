@@ -64,6 +64,16 @@ function buildExecutionReceipt(actions: Action[]) {
     case "shopping.add":
     case "shopping.check":
       return "רשימת הקניות עודכנה.";
+    case "checklist.create":
+      return "הצ׳קליסט נוצר.";
+    case "checklist.update":
+    case "checklist.item.add":
+    case "checklist.item.update":
+    case "checklist.item.remove":
+    case "checklist.item.reorder":
+    case "checklist.item.toggle":
+    case "checklist.reset":
+      return "הצ׳קליסט עודכן.";
     case "fact.add":
       return "המידע נשמר.";
     case "fact.update":

@@ -269,6 +269,17 @@ export function classifyActionPolicy(
   if (action.type === "task.create") return "proposal";
   if (action.type === "agentGuide.update") return "proposal";
   if (
+    action.type === "checklist.create" ||
+    action.type === "checklist.update" ||
+    action.type === "checklist.delete" ||
+    action.type === "checklist.reset" ||
+    action.type === "checklist.item.add" ||
+    action.type === "checklist.item.update" ||
+    action.type === "checklist.item.remove" ||
+    action.type === "checklist.item.reorder"
+  )
+    return "proposal";
+  if (
     action.type === "task.status" &&
     (action.status === "cancelled" || action.status === "unknown")
   )
@@ -505,6 +516,25 @@ function actionJsonSchema() {
       proposalId: nullableString,
       quantity: { type: "string" },
       checked: { type: "boolean" },
+      checklistId: { type: "string" },
+      itemId: { type: "string" },
+      itemIds: stringArray,
+      order: { type: "integer", minimum: 0, maximum: 80 },
+      items: {
+        type: "array",
+        maxItems: 80,
+        items: {
+          type: "object",
+          additionalProperties: true,
+          properties: {
+            id: { type: "string" },
+            text: { type: "string" },
+            checked: { type: "boolean" },
+            order: { type: "integer", minimum: 0, maximum: 80 },
+          },
+          required: ["text"],
+        },
+      },
       dueAt: { type: "string" },
       hiddenUntil: { type: "string" },
       urgency: { type: "string", enum: ["urgent", "medium", "low"] },
