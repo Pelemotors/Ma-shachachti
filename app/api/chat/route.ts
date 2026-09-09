@@ -18,8 +18,10 @@ import {
 } from "@/lib/server/chat-receipts";
 import {
   createPendingProposal,
+  getLatestPendingProposal,
   revalidateProposalActions,
 } from "@/lib/server/proposals";
+import { summarizeContextTrace } from "@/lib/agent/context-instrumentation";
 import { syncDailyPlanAfterActions } from "@/lib/domain/planning/sync-daily-plan";
 import {
   resolveRequestedTodayTaskIds,
@@ -284,6 +286,11 @@ export async function POST(req: Request) {
     stage = "state_read";
     const { state, revision } = await readState(db, userId);
     stateRevision = revision;
+    const dbFetches = ["app_states"];
+
+    stage = "pending_proposal_read";
+    const pending = await getLatestPendingProposal(db, userId);
+    if (pending) dbFetches.push("pending_proposals");
 
     stage = "budget";
     await budget(userId, "chat", Number(process.env.AI_HOURLY_LIMIT) || 30);
@@ -297,6 +304,19 @@ export async function POST(req: Request) {
       turnId,
       requestId,
       surface: body.surface ?? "chat",
+      householdId: userId,
+      pendingProposal: pending
+        ? {
+            proposalId: pending.id,
+            summary: pending.summary,
+            actionTypes: pending.actionTypes,
+            actionCount: pending.actionCount,
+            sourceRevision: pending.sourceRevision,
+            turnId: pending.turnId,
+            expiresAt: pending.expiresAt,
+          }
+        : null,
+      dbFetches,
     });
     selectedModel = result.selectedModel;
 
@@ -413,8 +433,15 @@ export async function POST(req: Request) {
     const {
       selectedModel: _model,
       policySignals: _policySignals,
+      instrumentation: _instrumentation,
       ...orch
     } = result;
+    const contextTrace = summarizeContextTrace({
+      ...result.instrumentation,
+      stage: "completed",
+      model: selectedModel,
+      latencyMs: Date.now() - started,
+    });
     const payload = {
       ...orch,
       reply: assistantText,
@@ -439,6 +466,7 @@ export async function POST(req: Request) {
       requestId,
       planSyncFailed: saved.planSyncFailed,
       notice: saved.planNotice,
+      contextTrace,
     };
 
     stage = "receipt_save";
@@ -463,6 +491,13 @@ export async function POST(req: Request) {
       hasProposal: Boolean(proposalId),
       policySignalCount: result.policySignals.length,
       rejectedActionCount: result.rejectedActionCount,
+      capabilityVersion: contextTrace.capabilityVersion,
+      cacheHits: contextTrace.cacheHits,
+      cacheMisses: contextTrace.cacheMisses,
+      dbFetches: contextTrace.dbFetches,
+      deepAccessCount: contextTrace.deepAccessCount,
+      pendingProposalIncluded: contextTrace.pendingProposalIncluded,
+      contextDomains: contextTrace.contextDomains,
     });
     return Response.json(payload, {
       headers: { "Cache-Control": "no-store" },

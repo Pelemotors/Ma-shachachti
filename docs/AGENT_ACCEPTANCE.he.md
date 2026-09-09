@@ -940,4 +940,4 @@ NOT_RUN_INFRA
 | `NOT_RUN_INFRA` כשאין LLM | חובה בכל הרצת Acceptance |
 | אסור mock/regex/fixture להעברת PASS | חובה |
 
-עדכון אחרון: נוספה כ־Acceptance Specification קבועה על ענף `arch/agent-runtime-freedom` אחרי שלב 1 (ניקוי NLP מקביל).
+עדכון אחרון: שלבים 2–3 על `arch/agent-runtime-freedom` — Runtime Context, Capability Registry חי, Snapshot/cache, deep access, instrumentation. הרצה: `npm run agent:acceptance:stage23`.

@@ -15,12 +15,16 @@ import {
   AGENT_CONTRACT_VERSION,
 } from "@/lib/agent/instructions";
 import { PERSONAL_AGENT_RUNTIME_GUIDANCE } from "@/lib/agent/runtime-guidance";
-import {
-  buildAgentContext,
-  buildGroundedProposalSummary,
-} from "@/lib/domain/agent-context";
+import { buildGroundedProposalSummary } from "@/lib/domain/agent-context";
 import { PERSONAL_AGENT_POLICY_INSTRUCTIONS } from "@/lib/domain/agent-policy";
 import { filterSafeDeferActions } from "@/lib/domain/tasks/deferrable";
+import {
+  buildAgentRuntimeContext,
+  toAgentModelInput,
+  type AgentRuntimeInstrumentation,
+  type PendingProposalContext,
+} from "@/lib/agent/runtime-context";
+import { logAgentContextTrace } from "@/lib/agent/context-instrumentation";
 
 function upstreamError(status: number, raw: string) {
   let code = "";
@@ -163,6 +167,9 @@ export type ChatOrchestrationInput = {
   turnId: string;
   requestId: string;
   surface?: "chat" | "memory" | "planning";
+  householdId?: string;
+  pendingProposal?: PendingProposalContext;
+  dbFetches?: string[];
 };
 
 export type ChatOrchestrationResult = {
@@ -181,6 +188,7 @@ export type ChatOrchestrationResult = {
   turnId: string;
   selectedModel: string;
   agentContractVersion: string;
+  instrumentation: AgentRuntimeInstrumentation;
 };
 
 export async function orchestrateChatTurn(
@@ -203,17 +211,24 @@ export async function orchestrateChatTurn(
   const instructions = `${AGENT_INSTRUCTIONS}${PERSONAL_AGENT_POLICY_INSTRUCTIONS}${PERSONAL_AGENT_RUNTIME_GUIDANCE}`;
   const now = new Date();
   const state = input.state;
-  const deferral = filterSafeDeferActions(state, [], now);
-  const context = {
-    ...buildAgentContext(state, {
-      now,
-      contextTaskId: input.contextTaskId,
-      turnId: input.turnId,
-      surface: input.surface ?? "chat",
-    }),
-    deferrableCandidates: deferral.candidates.slice(0, 60),
-    protectedFromDefer: deferral.protected.slice(0, 40),
-  };
+  const runtime = buildAgentRuntimeContext({
+    state,
+    stateRevision: input.revision,
+    householdId: input.householdId ?? "local",
+    turnId: input.turnId,
+    requestId: input.requestId,
+    message: input.message,
+    contextTaskId: input.contextTaskId,
+    surface: input.surface ?? "chat",
+    pendingProposal: input.pendingProposal ?? null,
+    dbFetches: input.dbFetches ?? ["app_states"],
+    now,
+  });
+  logAgentContextTrace({
+    ...runtime.instrumentation,
+    stage: "context_built",
+  });
+  const modelInput = toAgentModelInput(runtime, input.message);
   const models = Array.from(
     new Set(
       [process.env.OPENAI_MODEL, process.env.OPENAI_FALLBACK_MODEL].filter(
@@ -228,10 +243,7 @@ export async function orchestrateChatTurn(
   let lastError: unknown;
   for (const model of models) {
     try {
-      const result = await callAgent(model, instructions, {
-        context,
-        message: input.message,
-      });
+      const result = await callAgent(model, instructions, modelInput);
       decision = result.decision;
       selectedModel = result.model;
       rejectedFromParse = result.rejectedActions;
@@ -325,6 +337,15 @@ export async function orchestrateChatTurn(
     proposal,
   };
 
+  const instrumentation = {
+    ...runtime.instrumentation,
+  };
+  logAgentContextTrace({
+    ...instrumentation,
+    stage: "completed",
+    model: selectedModel,
+  });
+
   return {
     reply: decision.reply,
     explicitActions: decision.explicitActions,
@@ -341,5 +362,6 @@ export async function orchestrateChatTurn(
     turnId: input.turnId,
     selectedModel,
     agentContractVersion: AGENT_CONTRACT_VERSION,
+    instrumentation,
   };
 }

@@ -98,6 +98,44 @@ export async function createPendingProposal(
   };
 }
 
+/** Latest pending proposal for agent context — read-only, no NLP. */
+export async function getLatestPendingProposal(
+  db: SupabaseClient,
+  userId: string,
+): Promise<{
+  id: string;
+  summary: string;
+  actionTypes: string[];
+  actionCount: number;
+  sourceRevision: number;
+  turnId: string | null;
+  expiresAt: string | null;
+} | null> {
+  const { data, error } = await db
+    .from("pending_proposals")
+    .select("id, payload, source_revision, turn_id, expires_at, status")
+    .eq("owner_id", userId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const payload = data.payload as ProposalPayload | null;
+  if (!payload?.proposedActions?.length) return null;
+  if (data.expires_at && Date.parse(data.expires_at) < Date.now()) return null;
+  return {
+    id: data.id as string,
+    summary: payload.summary,
+    actionTypes: [
+      ...new Set(payload.proposedActions.map((a) => a.type)),
+    ].slice(0, 20),
+    actionCount: payload.proposedActions.length,
+    sourceRevision: Number(data.source_revision) || 0,
+    turnId: (data.turn_id as string | null) ?? null,
+    expiresAt: (data.expires_at as string | null) ?? null,
+  };
+}
+
 export function revalidateProposalActions(
   state: AppState,
   actions: Action[],

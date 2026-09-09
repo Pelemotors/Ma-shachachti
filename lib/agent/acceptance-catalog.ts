@@ -115,7 +115,7 @@ export type AgentFailureClass =
 /** Minimum cases to open after each architecture stage (from the contract). */
 export const AGENT_ACCEPTANCE_BY_STAGE = {
   after_stage_2: ["B01", "B02", "B03", "B04", "U01", "U04", "U05"] as const,
-  after_stage_3: [] as const,
+  after_stage_3: ["C1", "C2", "C4", "C5", "C6", "C7"] as const,
   after_stage_4: ["M01", "M02", "M03", "M04", "O01", "O02", "O03", "O04"] as const,
   after_stage_5: [
     "A01",
