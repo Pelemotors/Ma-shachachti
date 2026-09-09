@@ -16,6 +16,7 @@
     "deps:check": "node scripts/check-dep-boundaries.mjs",
     "agent:eval": "node --import tsx scripts/agent-eval.ts",
     "agent:acceptance:stage23": "node --import tsx scripts/agent-acceptance-stage23.ts",
+    "agent:acceptance:pa-live": "node --import tsx scripts/agent-acceptance-pa-live.ts",
     "agent:sync-instructions": "node scripts/sync-agent-instructions.mjs",
     "smoke:ai": "node --import tsx scripts/ai-smoke.ts",
     "smoke:chat": "node --import tsx scripts/chat-smoke.ts",
