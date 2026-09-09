@@ -7,7 +7,6 @@ import {
   listLegacyAgentPolicyLearning,
   toRuntimePersonalAgentGuide,
 } from "../lib/domain/agent-guide";
-import { applyAgentPolicySignals } from "../lib/domain/agent-policy";
 import { classifyActionPolicy, agentDecisionJsonSchema } from "../lib/agent/schema";
 import {
   buildAgentContextSnapshot,
@@ -234,7 +233,7 @@ test("PAG-T07: task update keeps guide slice reusable", () => {
   assert.ok(next.cacheMisses.includes("tasks"));
 });
 
-test("PAG-T08: revision history only after successful apply", () => {
+test("PAG-T08: revisionEntry exists after successful apply; in-state history is not written", () => {
   const state = emptyState();
   const fail = applyAgentGuideUpdate(state, {
     expectedRevision: 0,
@@ -253,31 +252,20 @@ test("PAG-T08: revision history only after successful apply", () => {
   });
   assert.equal(ok.ok, true);
   if (!ok.ok) return;
-  assert.equal(ok.state.personalAgentGuideHistory.length, 1);
-  assert.equal(ok.state.personalAgentGuideHistory[0]!.revision, 1);
-  assert.equal(ok.state.personalAgentGuideHistory[0]!.previousRevision, 0);
-  assert.equal(ok.state.personalAgentGuideHistory[0]!.proposalId, PROP);
+  assert.equal(ok.revisionEntry.revision, 1);
+  assert.equal(ok.revisionEntry.previousRevision, 0);
+  assert.equal(ok.revisionEntry.proposalId, PROP);
+  assert.equal(ok.state.personalAgentGuideHistory.length, 0);
   assert.equal(state.personalAgentGuideHistory.length, 0);
 });
 
-test("PAG-T09: production path has no trait learning / policySignals contract", () => {
+test("PAG-T09: production path has no trait learning contract", () => {
   assert.ok(AGENT_CAPABILITY_TYPES.includes("agentGuide.update"));
   const schema = JSON.stringify(agentDecisionJsonSchema());
-  assert.equal(schema.includes("policySignals"), false);
   assert.equal(schema.includes("clarificationAversion"), false);
+  assert.equal(listLegacyAgentPolicyLearning(emptyState()).length, 0);
 
-  let state = emptyState();
-  state = applyAgentPolicySignals(state, [
-    {
-      trait: "verbosity",
-      direction: "increase",
-      strength: "strong",
-      evidence: "explicit",
-    },
-  ], NOW);
-  assert.equal(listLegacyAgentPolicyLearning(state).length, 0);
-
-  const ctx = buildAgentContext(state, { now: NOW });
+  const ctx = buildAgentContext(emptyState(), { now: NOW });
   assert.ok("personalAgentGuide" in ctx);
   assert.equal("personalAgentPolicy" in ctx, false);
   assert.equal("important" in ctx, false);
@@ -323,4 +311,73 @@ test("PAG-T10: runtime receives the correct user guide", () => {
   });
   assert.equal(empty.personalAgentGuide.exists, false);
   assert.equal(empty.personalAgentGuide.revision, 0);
+});
+
+test("PERSONAL-EVOLUTION-GATE mechanism: null → rev1 → rev2 replaces document", () => {
+  invalidateAgentContextCache();
+  let state = emptyState();
+  assert.equal(state.personalAgentGuide, null);
+  const firstRuntime = buildAgentRuntimeContext({
+    state,
+    stateRevision: 0,
+    householdId: "evo-user",
+    turnId: TURN,
+    requestId: PROP,
+    now: NOW,
+  });
+  assert.equal(firstRuntime.personalAgentGuide.exists, false);
+  assert.equal("personalAgentPolicy" in firstRuntime.knowledge, false);
+
+  state = applyActions(
+    state,
+    [
+      {
+        type: "agentGuide.update",
+        expectedRevision: 0,
+        text: "עדיפות לתשובות קצרות",
+        sourceTurnId: TURN,
+        proposalId: PROP,
+      },
+    ],
+    NOW,
+    true,
+  );
+  assert.equal(state.personalAgentGuide?.revision, 1);
+  const afterFirst = buildAgentRuntimeContext({
+    state,
+    stateRevision: 1,
+    householdId: "evo-user",
+    turnId: TURN,
+    requestId: PROP,
+    now: NOW,
+  });
+  assert.equal(afterFirst.personalAgentGuide.text, "עדיפות לתשובות קצרות");
+
+  state = applyActions(
+    state,
+    [
+      {
+        type: "agentGuide.update",
+        expectedRevision: 1,
+        text: "עדיפות לתשובות קצרות, ובלי לשאול שאלות מיותרות",
+      },
+    ],
+    NOW,
+    true,
+  );
+  assert.equal(state.personalAgentGuide?.revision, 2);
+  assert.equal(
+    state.personalAgentGuide?.text,
+    "עדיפות לתשובות קצרות, ובלי לשאול שאלות מיותרות",
+  );
+  const afterSecond = buildAgentRuntimeContext({
+    state,
+    stateRevision: 2,
+    householdId: "evo-user",
+    turnId: TURN,
+    requestId: PROP,
+    now: NOW,
+  });
+  assert.equal(afterSecond.personalAgentGuide.revision, 2);
+  assert.equal(state.personalAgentGuideHistory.length, 0);
 });

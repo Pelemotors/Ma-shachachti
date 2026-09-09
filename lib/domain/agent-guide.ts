@@ -6,8 +6,8 @@
  *
  * - **Current guide (SoT):** `AppState.personalAgentGuide` inside `app_states.data`.
  *   Runtime / Agent context / deep access read ONLY this field.
- * - **In-state recent audit:** `AppState.personalAgentGuideHistory` (capped).
- *   Not SoT for the active guide. Not loaded into Runtime as the guide.
+ * - **In-state `personalAgentGuideHistory`:** bounded leftover field, no longer written.
+ *   Not SoT. Not loaded into Runtime. Kept empty for schema EXPAND compatibility.
  * - **Durable audit table:** `personal_agent_guide_revisions` (best-effort append).
  *   Audit History only. NEVER read for Runtime or as current-guide SoT.
  */
@@ -149,11 +149,6 @@ export function applyAgentGuideUpdate(
     createdAt: now,
   };
 
-  const history = [
-    revisionEntry,
-    ...(state.personalAgentGuideHistory ?? []),
-  ].slice(0, PERSONAL_AGENT_GUIDE_HISTORY_MAX);
-
   const nextGuide: PersonalAgentGuideDoc = {
     text,
     revision: nextRevision,
@@ -166,7 +161,8 @@ export function applyAgentGuideUpdate(
     state: {
       ...state,
       personalAgentGuide: nextGuide,
-      personalAgentGuideHistory: history,
+      // Do not write in-state revision copies. Audit table is the history store.
+      personalAgentGuideHistory: state.personalAgentGuideHistory ?? [],
     },
     revisionEntry,
   };

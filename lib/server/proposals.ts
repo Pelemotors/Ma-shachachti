@@ -330,15 +330,24 @@ export async function approvePendingProposal(
   // Durable guide AUDIT only (best-effort). Active guide SoT remains app_states.
   if (!alreadyApplied) {
     const prevRev = state.personalAgentGuide?.revision ?? 0;
-    const nextRev = finalState.personalAgentGuide?.revision ?? 0;
-    if (nextRev > prevRev && finalState.personalAgentGuide) {
-      const entry = finalState.personalAgentGuideHistory[0];
-      if (entry && entry.revision === nextRev) {
-        try {
-          await appendPersonalAgentGuideRevision(db, input.userId, entry);
-        } catch {
-          // Audit miss must not redefine SoT; in-state history + personalAgentGuide remain.
-        }
+    const nextGuide = finalState.personalAgentGuide;
+    const nextRev = nextGuide?.revision ?? 0;
+    if (nextRev > prevRev && nextGuide) {
+      try {
+        await appendPersonalAgentGuideRevision(db, input.userId, {
+          revision: nextGuide.revision,
+          previousRevision: prevRev,
+          text: nextGuide.text,
+          sourceTurnId:
+            applicable.find((a) => a.type === "agentGuide.update")
+              ?.sourceTurnId ?? null,
+          proposalId:
+            applicable.find((a) => a.type === "agentGuide.update")
+              ?.proposalId ?? input.proposalId,
+          createdAt: nextGuide.updatedAt ?? new Date().toISOString(),
+        });
+      } catch {
+        // Audit miss must not redefine SoT; personalAgentGuide remains.
       }
     }
   }

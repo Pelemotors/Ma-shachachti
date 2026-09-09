@@ -541,9 +541,8 @@ export const StateV2Schema = z.object({
     .nullable()
     .default(null),
   /**
-   * Recent in-state AUDIT trail only (capped at 40). Not the active guide SoT.
-   * Not used by Runtime as the current guide. Older rows drop when over cap.
-   * Durable/complete audit lives (best-effort) in personal_agent_guide_revisions.
+   * Bounded leftover field — no longer written. Audit lives in
+   * personal_agent_guide_revisions. Not the active guide SoT.
    */
   personalAgentGuideHistory: z
     .array(
