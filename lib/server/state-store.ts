@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppState, emptyState, migrateState, StateV2Schema } from "../model";
+import { materializeDueRoutinesInPlace } from "../domain/routines";
 import { ApiError } from "./errors";
 
 export async function readState(db: SupabaseClient, userId: string) {
@@ -14,7 +15,7 @@ export async function readState(db: SupabaseClient, userId: string) {
       "לא ניתן לקרוא את המידע בענן.",
       "state_read_failed",
     );
-  // Dual-read: V1 is migrated in-memory to V2; never throw Zod V2 errors at existing users.
+  // Dual-read: V1 is migrated in-memory to V2; never throw V2 errors at existing users.
   const state = data ? migrateState(data.data) : emptyState();
   const { data: queue, error: queueError } = await db
     .from("reminder_queue")
@@ -30,6 +31,12 @@ export async function readState(db: SupabaseClient, userId: string) {
     const q = queue?.find((x) => x.id === reminder.id);
     if (q) reminder.status = q.status;
   }
+
+  // Routine occurrence IDs are deterministic by routine+local date. This makes
+  // materialization safe on a read: the client and a later server write see the
+  // same task identity even before the read-only occurrence is persisted.
+  materializeDueRoutinesInPlace(state, new Date());
+
   return { state, revision: data?.revision ?? 0 };
 }
 
