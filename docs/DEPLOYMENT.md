@@ -1,6 +1,6 @@
 # Dedicated project setup
 
-Target repository: Pelemotors/Ma-shachachti. The supplied Supabase project URL is `https://rvhmbxkjftrqwaocwrdo.supabase.co`. It is a public project identifier, not a credential. Direct management access was denied during this build, so no SQL has been applied there.
+Target repository: Pelemotors/Ma-shachachti. Production (`https://ma-shachachti.vercel.app`) uses Supabase project `Ma-shachachti` at `https://mrggiqhxngoibhurinlk.supabase.co` (`NEXT_PUBLIC_SUPABASE_URL` in the Production bundle). That is the canonical database. The older identifier `rvhmbxkjftrqwaocwrdo` is not Production.
 
 ## 1. Database
 
