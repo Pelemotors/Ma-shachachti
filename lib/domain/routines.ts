@@ -81,7 +81,7 @@ export function isRoutineDueToday(
   }
 }
 
-/** Convert a local wall-clock time to an ISO stamp without hardcoding UTC offset. */
+/** Convert local wall-clock time to ISO without hardcoding a UTC offset. */
 export function localWallTimeToIso(
   date: string,
   time: string,
@@ -109,7 +109,11 @@ export function localWallTimeToIso(
   return new Date(guess).toISOString();
 }
 
-function routineWindow(routine: Routine, date: string, timezone: string) {
+export function routineTimingForDate(
+  routine: Routine,
+  date: string,
+  timezone: string,
+) {
   if (routine.atTime) {
     return {
       dueAt: localWallTimeToIso(date, routine.atTime, timezone),
@@ -132,6 +136,28 @@ function routineWindow(routine: Routine, date: string, timezone: string) {
       end: localWallTimeToIso(date, hours[1], timezone),
     },
   };
+}
+
+function hash32(input: string, seed: number) {
+  let hash = seed >>> 0;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+/** Stable UUID for a routine/day so a due occurrence has the same identity on every read. */
+export function routineOccurrenceId(routineId: string, date: string) {
+  const source = `${routineId}:${date}`;
+  const hex = [0x811c9dc5, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35]
+    .map((seed) => hash32(source, seed).toString(16).padStart(8, "0"))
+    .join("")
+    .split("");
+  hex[12] = "5";
+  hex[16] = ["8", "9", "a", "b"][parseInt(hex[16]!, 16) % 4]!;
+  const value = hex.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
 /**
@@ -163,15 +189,17 @@ export function materializeDueRoutinesInPlace(
     if (!isRoutineDueToday(routine, now, timezone)) continue;
     if (routine.lastMaterializedDate === today) continue;
 
+    const occurrenceId = routineOccurrenceId(routine.id, today);
     const already = state.tasks.some(
       (t) =>
-        t.routineId === routine.id &&
-        dayKey(new Date(t.createdAt), timezone) === today,
+        t.id === occurrenceId ||
+        (t.routineId === routine.id &&
+          dayKey(new Date(t.createdAt), timezone) === today),
     );
     if (!already) {
-      const timing = routineWindow(routine, today, timezone);
+      const timing = routineTimingForDate(routine, today, timezone);
       state.tasks.push({
-        id: crypto.randomUUID(),
+        id: occurrenceId,
         title: routine.title,
         categoryId: routine.categoryId,
         detailTypeId: routine.detailTypeId,
