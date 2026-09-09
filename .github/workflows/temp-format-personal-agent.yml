@@ -1,4 +1,4 @@
-name: Temporary personal-agent formatter
+name: Temporary personal-agent patcher
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  format:
+  patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,16 +17,57 @@ jobs:
           ref: arch/personal-agent-freedom
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run format
-      - name: Commit formatting if needed
+      - name: Patch agent contract and stale architecture tests
         run: |
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git commit -m "style: prettier-format personal agent branch"
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path('lib/agent/schema.ts')
+          s = p.read_text()
+          s = s.replace(
+              'import { Action, ActionSchema, AgentWorkingMemoryPatchSchema } from "../model";',
+              'import {\n  Action,\n  ActionSchema,\n  AgentWorkingMemoryPatchSchema,\n  ProfileSchema,\n} from "../model";'
+          )
+          old = '''/** Closed application hands. This is not a taxonomy of user meanings. */\nexport const AgentActionSchema = ActionSchema.options.filter(\n  (x) => !INTERNAL_AGENT_ACTION_TYPES.has(x.shape.type.value),\n);'''
+          new = '''const AgentProfileUpdateSchema = z.object({\n  type: z.literal("profile.update"),\n  patch: ProfileSchema.pick({\n    name: true,\n    addressAs: true,\n    rooms: true,\n    bathrooms: true,\n    children: true,\n    garden: true,\n    pets: true,\n    car: true,\n    dishwasher: true,\n    dryer: true,\n    householdRoutines: true,\n    cleaner: true,\n  })\n    .partial()\n    .refine((patch) => Object.keys(patch).length > 0, "empty_profile_patch"),\n});\n\n/** Closed application hands. This is not a taxonomy of user meanings. */\nexport const AgentActionSchema = [\n  ...ActionSchema.options.filter(\n    (x) =>\n      !INTERNAL_AGENT_ACTION_TYPES.has(x.shape.type.value) &&\n      x.shape.type.value !== "profile.update",\n  ),\n  AgentProfileUpdateSchema,\n];'''
+          if old not in s:
+              raise SystemExit('schema anchor not found')
+          p.write_text(s.replace(old, new))
+
+          p = Path('lib/agent/INSTRUCTIONS.he.md')
+          s = p.read_text()
+          anchor = '## פעולות ואישור\n'
+          addition = '''## מדיניות יצירת משימה (Proposal)\n\nמשימה חדשה שהוסקה מדברי המשתמשת נכנסת כ־`task.create` ל־`proposal.proposedActions`, ולא נחשבת שמורה לפני אישור. `priority` הוא שדה ביצוע של המשימה; קבע אותו רק כשיש בסיס סמנטי ברור, ואל תמציא deadline או זמן מדויק כדי לבטא דחיפות.\n\n---\n\n'''
+          if addition not in s:
+              if anchor not in s:
+                  raise SystemExit('instructions anchor not found')
+              s = s.replace(anchor, addition + anchor)
+          p.write_text(s)
+
+          p = Path('tests/product-p01-p80.test.ts')
+          s = p.read_text()
+          old = '''  s = applyActions(\n    s,\n    [\n      {\n        type: "task.create",\n        task: {\n          title: "לפנות מדיח",\n          kind: "task",\n          categoryId: "kitchen_dishes",\n        },\n      },\n      {\n        type: "task.create",\n        task: {\n          title: "לבדוק ביטוח רכב",\n          kind: "task",\n          categoryId: "documents_admin",\n          priority: 2,\n        },\n      },\n    ],\n    now,\n  );'''
+          new = '''  s = applyActions(\n    s,\n    [\n      {\n        type: "routine.create",\n        routine: {\n          title: "לפנות מדיח",\n          categoryId: "kitchen_dishes",\n          schedule: { frequency: "daily", interval: 1 },\n        },\n      },\n      {\n        type: "task.create",\n        task: {\n          title: "לבדוק ביטוח רכב",\n          kind: "task",\n          categoryId: "documents_admin",\n          priority: 2,\n        },\n      },\n    ],\n    now,\n  );'''
+          if old not in s:
+              raise SystemExit('P03 anchor not found')
+          s = s.replace(old, new)
+          old = '''  s = applyActions(\n    s,\n    [\n      {\n        type: "task.create",\n        task: {\n          title: "סידור סלון",\n          kind: "task",\n          categoryId: "living_spaces",\n          priority: 1,\n        },\n      },\n    ],\n    now,\n  );'''
+          new = '''  s = applyActions(\n    s,\n    [\n      {\n        type: "routine.create",\n        routine: {\n          title: "סידור סלון",\n          categoryId: "living_spaces",\n          schedule: { frequency: "daily", interval: 1 },\n          priority: 1,\n        },\n      },\n    ],\n    now,\n  );'''
+          if old not in s:
+              raise SystemExit('P08 anchor not found')
+          p.write_text(s.replace(old, new))
+          PY
+          npm run agent:sync-instructions
+          npm run format
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: align agent safety schema and tests with open-agent architecture"
             git push origin HEAD:arch/personal-agent-freedom
           fi
