@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { Action, ActionSchema, AgentWorkingMemoryPatchSchema } from "../model";
+import {
+  Action,
+  ActionSchema,
+  AgentWorkingMemoryPatchSchema,
+  ProfileSchema,
+} from "../model";
 import { CATEGORY_IDS } from "../taxonomy";
 import { AGENT_POLICY_TRAITS } from "../domain/agent-policy";
 import {
@@ -24,10 +29,35 @@ const INTERNAL_AGENT_ACTION_TYPES = new Set([
   "scan.set",
 ]);
 
+const AgentProfileUpdateSchema = z.object({
+  type: z.literal("profile.update"),
+  patch: ProfileSchema.pick({
+    name: true,
+    addressAs: true,
+    rooms: true,
+    bathrooms: true,
+    children: true,
+    garden: true,
+    pets: true,
+    car: true,
+    dishwasher: true,
+    dryer: true,
+    householdRoutines: true,
+    cleaner: true,
+  })
+    .partial()
+    .refine((patch) => Object.keys(patch).length > 0, "empty_profile_patch"),
+});
+
 /** Closed application hands. This is not a taxonomy of user meanings. */
-export const AgentActionSchema = ActionSchema.options.filter(
-  (x) => !INTERNAL_AGENT_ACTION_TYPES.has(x.shape.type.value),
-);
+export const AgentActionSchema = [
+  ...ActionSchema.options.filter(
+    (x) =>
+      !INTERNAL_AGENT_ACTION_TYPES.has(x.shape.type.value) &&
+      x.shape.type.value !== "profile.update",
+  ),
+  AgentProfileUpdateSchema,
+];
 
 const AgentActionUnion = z.discriminatedUnion(
   "type",
