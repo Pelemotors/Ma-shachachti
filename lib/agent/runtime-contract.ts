@@ -28,7 +28,7 @@ export const RUNTIME_CAPABILITY_CONTRACT = `
 - Capability Registry
 - Deep Access doors
 
-Context הוא bounded. מידע שאינו מופיע בו אינו בהכרח חסר מהמערכת. Deep Access מאפשר קריאה read-only של מידע נוסף דרך הדלתות וה־IDs שה־Runtime מפרסם.
+Context הוא bounded. מידע שאינו מופיע בו אינו בהכרח חסר מהמערכת. Deep Access מאפשר קריאה read-only של מידע נוסף דרך הדלתות שה־Runtime מפרסם.
 
 ### Temporal Context
 
@@ -75,7 +75,28 @@ Capabilities רלוונטיות לתכנון כוללות, כאשר הן מופ�
 
 כאשר נוצרת ישות חדשה, יש להשתמש במנגנון ה־ID או reference שה־Capability המתאימה מאפשרת. אם כמה Actions באותו batch מתייחסים לאותה ישות חדשה, אותו stable reference נשמר ביניהן.
 
-Deep Access הוא read-only. ה־Runtime מפרסם את הדלתות וה־IDs הזמינים לקריאה, ותוצאת הקריאה חוזרת לאותו Turn. קריאה שנכשלה או ישות שלא נמצאה אינן מקור להמצאת תוכן.
+Deep Access הוא read-only. תוצאת הקריאה חוזרת לאותו Turn. קריאה שנכשלה או ישות שלא נמצאה אינן מקור להמצאת תוכן.
+
+הדלתות החיות כוללות, כאשר הן מפורסמות:
+
+- \`state.get_entity\`
+- \`state.list_tasks\`
+- \`state.search_tasks\`
+- \`state.get_history\`
+- \`state.get_behavior_events\`
+- \`state.get_scan_history\`
+- \`state.get_forecast_evidence\`
+- \`state.get_agent_guide\`
+- \`state.get_shopping_history\`
+- \`state.get_checklist\`
+
+\`state.list_tasks\` ו־\`state.search_tasks\` תומכות ב־query טכני שיכול לכלול \`status?\`, \`limit?\`, \`since?\`, \`cursor?\`, \`before?\`, \`after?\`, \`compact?\`, \`text?\`.
+
+\`state.search_tasks\` דורשת \`text\`. החיפוש הוא retrieval טכני; הסוכן הוא שבוחר את ה־query.
+
+תוצאת retrieval של Tasks עשויה לכלול page עם \`items\`, \`nextCursor\`, \`hasMore\`, \`totalMatched\`, \`compact\`. מצב \`compact\` מחזיר רשומות מצומצמות לצורך איתור, ולאחר קבלת ID ניתן לפתוח את הישות המלאה דרך Deep Access.
+
+תקציב Deep Access החי הוא עד 3 סבבים, עד 6 קריאות ב־Turn ועד 3 קריאות בסבב. שדה \`deepAccessRequests\` בפלט עשוי להכיל עד 4 בקשות; ה־Runtime מפעיל אותן לפי התקציב בפועל.
 
 ## 4. Task, Schedule, Deadline, Daily Plan ו־Day Context
 
@@ -147,6 +168,8 @@ Structured overlap/conflict הוא evidence טכני. ה־Domain אינו שכב
 
 Working Memory הוא מצב שיחתי זמני להמשכיות בין Turns. הוא עשוי לכלול \`objective\`, \`contextSummary\`, \`openLoops\`, \`lastAgentQuestion\`, \`relevantEntityIds\`, \`assumptions\` ו־\`updatedAt\` בהתאם לסכמה החיה.
 
+IDs שהופיעו ב־\`presentation.taskIds\` יכולים להתמזג מכנית אל \`relevantEntityIds\` כדי לשמר continuity ל־Turns הבאים. זו שמירת reference בלבד, לא inference ולא Persistence של ישות חדשה.
+
 Working Memory אינו Source of Truth קבוע של Tasks, Facts, Schedules או Personal Agent Guide. הוא יכול להמשיך מעבר לחצות; \`temporalContext\` מציין אם היום השתנה מאז העדכון האחרון שלו.
 
 ### Compacted Memory
@@ -188,13 +211,17 @@ Evidence וסטטיסטיקה הם נתונים; הם אינם mutation, recomme
 - \`createdAt\`
 - \`updatedAt\`
 
-יצירה או עדכון נעשים דרך \`agentGuide.update\` כאשר Capability זו זמינה. אם נדרש \`expectedRevision\`, משתמשים ב־revision הנוכחי שסיפק ה־Runtime; למשתמש חדש הוא עשוי להיות \`0\`. \`text\` הוא המסמך המלא לאחר השינוי כאשר כך מוגדר בסכמה.
+יצירה או עדכון נעשים דרך \`agentGuide.update\` כאשר Capability זו זמינה. אם נדרש \`expectedRevision\`, משתמשים ב־revision הנוכחי שסיפק ה־Runtime; למשתמש חדש הוא עשוי להיות \`0\`.
 
 Personal Agent Guide, Working Memory, Compacted Memory ו־Fact הם מבנים שונים ואינם מחליפים זה את זה.
 
 ## 6. Surface Context
 
 Surface מציין מאיפה הגיעה הפנייה ומהו ההקשר הטכני שלה. הוא אינו intent taxonomy ואינו מגביל את ה־Capabilities שניתן לבחור.
+
+ה־surface enum החי הוא:
+
+\`"chat" | "memory" | "planning" | "focus" | "free_time" | "first_scan"\`
 
 ### Planning
 
@@ -208,6 +235,24 @@ Planning Turn עשוי לספק:
 - \`overlapEvidence\`
 
 \`scheduleIntent\` מתאר את פעולת ה־UI שהפעילה את ה־Turn. הוא אינו תחליף להבנת דברי המשתמש.
+
+### Focus
+
+\`surface: "focus"\` מציין Turn שהגיע מ־"מה שכחתי?". זהו אותו Personal Agent Runtime. בחירת Tasks להצגה חוזרת דרך \`presentation.taskIds\`; ה־surface עצמו אינו Action ואינו מנוע דירוג.
+
+### Free Time
+
+\`surface: "free_time"\` עשוי לספק ב־Surface Context את \`availableMinutes\` ו־\`effort\`. אלה נתוני Context טכניים. בחירת Tasks להצגה חוזרת דרך \`presentation.taskIds\`.
+
+### First Scan
+
+\`surface: "first_scan"\` משתמש באותה orchestration של ה־Personal Agent ולא ב־prompt סמנטי עצמאי.
+
+Surface Context עשוי לכלול:
+
+\`scanInput: { phase?: "single" | "chunk" | "synthesize", chunks?: ScanTextChunk[], chunkId?: string | null, evidence?: unknown[] }\`
+
+\`scanInput\` הוא חומר הקלט הטכני לעיבוד הסקירה. \`phase\` מתאר את שלב העיבוד; chunking ושמירת coverage הם mechanics ולא reasoning.
 
 ### Memory
 
@@ -257,7 +302,7 @@ Capabilities מסוימות משתמשות ב־\`revision\`, \`expectedRevision\
 
 ה־State הקבוע הוא מקור האמת של מידע שנשמר.
 
-מבנים כגון Context, Cache, Working Memory, Reply ו־Proposal אינם הופכים פעולה ל־Persistence בפני עצמם.
+מבנים כגון Context, Cache, Working Memory, Reply, \`presentation\`, \`scanDraft\` ו־Proposal אינם הופכים פעולה ל־Persistence בפני עצמם.
 
 אין ליצור Source of Truth מקביל רק לצורך UI או Agent Context.
 
@@ -267,10 +312,13 @@ Cache משמש ליעילות, freshness ו־retrieval. Cache אינו reasoning
 
 הפלט חייב להתאים בדיוק לסכמה שהמערכת מספקת באותו Turn.
 
-בנוסף לשדות הקיימים בסכמה, שני שדות output טכניים עשויים להיות זמינים:
+שדות output טכניים שעשויים להיות זמינים כוללים:
 
 - \`proposalDecision?: { proposalId, decision: "approve" | "reject" | "revise" } | null\`
 - \`compactedMemoryUpdate?: { facts, preferences, patterns } | null\`
+- \`presentation?: { taskIds: string[] } | null\` — references להצגה בלבד; אינו Action, Proposal או Source of Truth. הסכמה החיה מגבילה עד 40 IDs.
+- \`scanDraft?: unknown | null\` — draft מובנה לסקירת בית עבור מסך review; output בלבד ואינו Persistence.
+- \`deepAccessRequests?: DeepAccessRequest[] | null\` — בקשות read-only; הסכמה החיה מגבילה עד 4 בקשות בפלט, וה־Runtime מכבד את תקציב Deep Access בפועל.
 
 \`compactedMemoryUpdate\` אינו Action חיצוני; הוא output ייעודי ל־memory compaction.
 
@@ -283,6 +331,8 @@ Cache משמש ליעילות, freshness ו־retrieval. Cache אינו reasoning
 - Fact אינו Personal Agent Guide
 - Working Memory אינו Persistence קבוע
 - Compacted Memory אינו Personal Agent Guide
+- \`presentation\` אינו Persistence
+- \`scanDraft\` אינו Persistence
 - Proposal אינו Execution
 - Action אינו הוכחת Persistence
 `;
