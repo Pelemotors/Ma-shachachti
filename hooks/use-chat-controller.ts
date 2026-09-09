@@ -25,6 +25,17 @@ export type PendingUserMessage = {
   createdAt: string;
 };
 
+function apiError(data: unknown, fallback: string) {
+  const obj = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const err = new Error(typeof obj.error === "string" ? obj.error : fallback) as Error & {
+    code?: string;
+    requestId?: string;
+  };
+  if (typeof obj.code === "string") err.code = obj.code;
+  if (typeof obj.requestId === "string") err.requestId = obj.requestId;
+  return err;
+}
+
 export function useChatController(
   h: Household,
   proposalCtrl: ProposalController,
@@ -49,6 +60,21 @@ export function useChatController(
     removeProposalAction,
     proposalMeta,
   } = proposalCtrl;
+
+  const persistServerProposal = useCallback(
+    (data: any) => {
+      const proposed = (data?.proposal?.proposedActions ?? []) as Action[];
+      if (!proposed.length) return false;
+      persistProposal(proposed, {
+        proposalId: data.proposalId ?? null,
+        summary: data.proposal?.summary,
+        similarHints: data.similarHints,
+        sourceRevision: data.revision ?? h.currentRevision(),
+      });
+      return true;
+    },
+    [h, persistProposal],
+  );
 
   const sendMessage = useCallback(
     async (text = draft) => {
@@ -97,7 +123,6 @@ export function useChatController(
             );
           }
 
-          // Optimistic UI only — never written to AppState (avoids revision conflicts).
           setPendingUserMessage({
             text: message,
             turnId: idempotencyKey,
@@ -116,24 +141,15 @@ export function useChatController(
               contextTaskId: context,
               idempotencyKey,
               turnId: idempotencyKey,
+              surface: "chat",
             }),
           });
           const data = await response.json();
-          if (!response.ok) {
-            const err = new Error(
-              typeof data.error === "string" ? data.error : "השיחה התעכבה.",
-            ) as Error & { code?: string; requestId?: string };
-            if (typeof data.code === "string") err.code = data.code;
-            if (typeof data.requestId === "string")
-              err.requestId = data.requestId;
-            throw err;
-          }
+          if (!response.ok) throw apiError(data, "השיחה התעכבה.");
 
-          if (data.state && typeof data.revision === "number") {
+          if (data.state && typeof data.revision === "number")
             h.adoptRemote(data.state, data.revision);
-          }
 
-          // Server messages with same turnId replace the pending overlay.
           setPendingUserMessage(null);
           sessionStorage.removeItem(CHAT_PENDING_KEY);
           sessionStorage.removeItem(CHAT_UI_KEY);
@@ -242,7 +258,6 @@ export function useChatController(
             ? String((e as { requestId?: string }).requestId ?? "")
             : "";
         h.setError(msg);
-        // Keep text available: restore draft + keep pending overlay for UX retry.
         setDraft(message);
         lastFailedMessage.current = message;
         setFailedTurnId(idempotencyKey);
@@ -271,6 +286,52 @@ export function useChatController(
     [draft, thinking, busy, proposal, mode, context, h, persistProposal],
   );
 
+  /**
+   * Interpret a fact that the Memory screen has already persisted. This keeps
+   * raw user knowledge durable even if AI is unavailable, while giving the same
+   * personal agent a chance to apply systemic consequences such as a Routine.
+   */
+  const processMemory = useCallback(
+    async (text: string): Promise<string> => {
+      const message = text.trim();
+      if (!message || mode !== "cloud") return "";
+      if (thinking || busy || proposal || sendLock.current) return "";
+
+      const idempotencyKey = crypto.randomUUID();
+      sendLock.current = true;
+      setThinking(true);
+      try {
+        const response = await authFetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message,
+            contextTaskId: null,
+            idempotencyKey,
+            turnId: idempotencyKey,
+            surface: "memory",
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw apiError(data, "העיבוד החכם של הזיכרון התעכב.");
+
+        if (data.state && typeof data.revision === "number")
+          h.adoptRemote(data.state, data.revision);
+        persistServerProposal(data);
+        return typeof data.reply === "string" ? data.reply : "";
+      } catch (e) {
+        h.setError(
+          e instanceof Error ? e.message : "העיבוד החכם של הזיכרון התעכב.",
+        );
+        throw e;
+      } finally {
+        sendLock.current = false;
+        setThinking(false);
+      }
+    },
+    [mode, thinking, busy, proposal, h, persistServerProposal],
+  );
+
   const retrySend = useCallback(async () => {
     const text = lastFailedMessage.current ?? draft;
     if (!text.trim()) return;
@@ -280,6 +341,7 @@ export function useChatController(
 
   return {
     sendMessage,
+    processMemory,
     retrySend,
     approveProposal,
     rejectProposal,
