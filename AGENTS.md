@@ -1,5 +1,6 @@
 # Project instructions
 
+- **Top priority for seasonal home-screen design work:** follow `.cursor/rules/seasonal-home-design-spec.mdc` before changing layout, spacing, colors, imagery, or assets. Treat the supplied image references as implementation targets, not loose inspiration.
 - This is Ma-shachachti, an independent project. Never use REMATCHER repositories, keys, databases, production URLs or real household data in fixtures.
 - Keep all UI copy in Hebrew, use RTL and accessible labels, maintain Heebo and the plum/rose/cream design tokens.
 - Keep responses short, warm and practical. Agent instructions must ship in the production bundle (see `docs/AI_CHAT_RELIABILITY.he.md` R02); changing instructions requires checking behavioral examples.

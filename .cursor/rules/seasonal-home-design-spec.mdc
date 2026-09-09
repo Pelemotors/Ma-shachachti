@@ -1,0 +1,131 @@
+---
+description: Seasonal home-screen design implementation rules and reference-match requirements
+alwaysApply: true
+---
+
+# Seasonal Home Design Spec
+
+## Work Rules Before Any Design Change
+
+- Work only on a separate design branch. Never work directly on `main`, never merge without explicit approval, never use rebase or force-push unless the user explicitly asks.
+- Before changing code, analyze the attached reference images in detail: layout, spacing, heights, radii, colors, typography, icon sizing, borders, shadows, blur, opacity, background placement, and scroll behavior.
+- The goal is not "inspiration". Aim for the closest practical visual match to the approved references.
+- If existing assets are not close enough, create new ones. Preferred options are lightweight SVG or CSS; use PNG/WebP only when raster is required for a natural botanical texture.
+- New assets must stay lightweight, retina-sharp, responsive, and avoid unnecessary library dependencies.
+- Do not change business logic, API, DB, agent flow, or data structures unless a UI change strictly requires it.
+- Before finishing, compare the result visually against the references and fix deviations in spacing, scale, alignment, color, opacity, typography, icon sizing, and background placement.
+- In the final handoff, report: branch, commit, changed files, new assets, and anything still different from the reference.
+
+## Home Screen Principles
+
+- The UI must stay white, clean, and quiet. The season only tints the interface gently.
+- Keep 70-80% of the screen white or near-white, 15-20% very soft seasonal color, and only 5-8% strong seasonal color.
+- Do not turn the full screen into seasonal green/yellow/red/blue. Avoid strong gradients, heavy shadows, obvious glassmorphism, or decorative overload.
+- The product should still feel like a practical home-management and tasks app, not a floral or ornamental experience.
+
+## Layout And Hierarchy
+
+- Background stays near-white: `#FFFEFC` to `#FFFFFF`.
+- Content max width: `430px`.
+- Horizontal padding: `16px`.
+- Card radius: `20px` to `24px`.
+- Borders: `1px` and very subtle.
+- Shadows: barely noticeable.
+- Top order is fixed: `Header` -> `הבית שלך, בקצב שלך` -> `בוקר טוב, אירה.` -> `מה יעזור לך עכשיו?` -> action cards.
+
+## Header
+
+- Height about `56px` to `64px`.
+- In RTL: app mark on the right, `מה שכחתי?` beside it, bell on the left side, user circle at the far left.
+- Do not enlarge the header and do not give it a strong colored background.
+
+## Top Copy Styling
+
+- `הבית שלך, בקצב שלך` is a brand tagline, not a content heading.
+- Tagline style: `15px`, weight `400`, color `#8A8A8A`, aligned right.
+- Place the tagline near the header: `8px` to `12px` below header, then `22px` to `28px` above the greeting.
+- `בוקר טוב, אירה.` is the strongest heading: `32px` to `36px`, weight `700`, line-height about `1.05`, color `#181923`.
+- Only the final period may use the strong seasonal color.
+- `מה יעזור לך עכשיו?` should be `17px` to `18px`, weight `400`, color `#8A8A92`.
+- Spacing: greeting to subtitle `10px` to `12px`, subtitle to first card `26px` to `32px`.
+
+## Action Cards
+
+- Keep exactly this order: `מה שכחתי?`, `מה שונה היום?`, `יש לי זמן פנוי`.
+- Stack vertically at equal width.
+- Height: `82px` to `88px`.
+- Radius: `20px`.
+- Gap between cards: `12px`.
+- `מה שכחתי?` is the primary CTA and the only fully tinted card, using a pastel-strong seasonal color rather than a dark saturated tone.
+- Primary CTA text: title `20px`, weight `600` to `700`; subtitle `14px`, weight `400`; text remains white.
+- Primary CTA icon container: `50px` square, radius `14px`, background `rgba(255,255,255,.14)`.
+- Secondary cards stay almost white: `rgba(255,255,255,.88)` with a subtle seasonal border.
+- On secondary cards, only the icon zone gets a very light seasonal tint, around `8%` to `12%` opacity, with the icon stroke in the main seasonal color.
+
+## Seasonal Palette
+
+- Spring: primary `#82A986`, strong `#668E6D`, soft `#EAF3E9`, ultra-soft `#F5F9F4`.
+- Summer: primary `#F0B44A`, strong `#DE9621`, soft `#FFF3D5`, ultra-soft `#FFFAEF`.
+- Autumn: primary `#C9827D`, strong `#B96560`, soft `#F7E4E1`, ultra-soft `#FCF5F3`.
+- Winter: primary `#79A6CF`, strong `#5687B4`, soft `#E6F0F8`, ultra-soft `#F4F8FC`.
+- Keep the tones soft and clean: sage for spring, warm yellow for summer, muted rosy autumn, light clear blue for winter.
+
+## Botanical Background Rules
+
+- Botanical elements are background texture only, never focal decoration.
+- Use at most `2` to `3` botanical elements on the full screen.
+- Spring: delicate branch with green leaves and up to two small white flowers.
+- Summer: lemon branch with leaves and exactly one lemon.
+- Autumn: branch with maple-like leaves only, no fruit and no cones.
+- Winter: thin fir branch; one small cone is allowed only if it feels naturally attached.
+- Botanical opacity: about `0.10` to `0.18`.
+- Add slight blur around `0.5px` to `1.5px`.
+- A white overlay is encouraged, for example `rgba(255,255,255,.65)`, so the art feels milk-washed and subdued.
+- If the eye notices the branch before the main CTA, the design is wrong.
+
+## "עכשיו אצלך" And Task List
+
+- After the three action cards, leave a clear gap of about `34px` to `42px`.
+- `עכשיו אצלך` should be `26px` to `30px`, weight `500` to `600`.
+- `לכל המשימות` uses the seasonal color but should not be bold.
+- Tasks should look like a clean list, not bulky cards.
+- Row height should be about `52px` to `58px`.
+- Checkbox size should be about `20px` to `24px` with a subtle border like `#B8BBC0`.
+- Emojis stay small and restrained.
+
+## Chat Bar And Scroll Behavior
+
+- The chat bar is a primary visual element and should be clearly tinted, not white.
+- Seasonal chat backgrounds:
+  - Spring: `#EDF5ED`
+  - Summer: `#FFF4DC`
+  - Autumn: `#F8E5E3`
+  - Winter: `#EAF3FA`
+- Structure: send button, text input, microphone.
+- Height: `64px` to `70px`.
+- Radius: `28px` to `32px`.
+- Microphone size: `56px` to `62px`, circular, background uses the seasonal strong color.
+- The microphone should be visually larger than other icons on the screen.
+- On scroll, keep the chat bar and bottom navigation fixed.
+- When scrolled, the chat bar may become slightly transparent around `0.90` opacity with `backdrop-filter: blur(12px)`, but the microphone must stay prominent and accessible.
+
+## Bottom Navigation
+
+- Keep exactly four items: `בית`, `שיחה`, `משימות`, `קניות`.
+- Background stays white.
+- Inactive icons/text use about `#74777D`.
+- Active state uses the strong seasonal color.
+- Under `בית`, use only a small seasonal dot. Do not tint the whole navigation bar.
+
+## Explicit Donts
+
+- Do not change texts, tab names, functionality, or data structures for the sake of design matching.
+- Do not recolor the whole background into the season.
+- Do not use strong gradients.
+- Do not add more than `2` to `3` botanical elements.
+- Do not enlarge the illustrations.
+- Do not add heavy shadows.
+- Do not add obvious glassmorphism.
+- Do not change the order of the three action cards.
+- Do not make the interface feel feminine, flowery, or decorative.
+- Always prefer this hierarchy: white -> content -> action -> season. Never season -> decoration -> content.

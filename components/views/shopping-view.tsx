@@ -32,6 +32,7 @@ export function ShoppingView(props: {
           required
         />
         <input
+          className="quantity"
           aria-label="כמות"
           placeholder="כמות"
           value={props.quantity}

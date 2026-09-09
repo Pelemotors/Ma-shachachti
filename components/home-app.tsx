@@ -156,7 +156,10 @@ export function HomeApp() {
   };
 
   return (
-    <div className="app-shell" data-theme={activeTheme}>
+    <div
+      className={"app-shell" + (view === "home" ? " home-active" : "")}
+      data-theme={activeTheme}
+    >
       <aside className="desktop-sidebar">
         <div className="wordmark">
           <span className="brand-mark small">מ׳</span>
@@ -230,7 +233,11 @@ export function HomeApp() {
         )}
         <main
           className={
-            view === "chat" ? "main-content chat-page" : "main-content"
+            view === "chat"
+              ? "main-content chat-page"
+              : view === "home"
+                ? "main-content home-screen"
+                : "main-content"
           }
         >
           {h.error && (

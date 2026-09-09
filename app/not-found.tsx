@@ -1,9 +1,16 @@
 import Link from "next/link";
+import { SeasonalPublicShell } from "@/components/seasonal-public-shell";
+
 export default function NotFound() {
   return (
-    <main className="center">
-      <h1>העמוד הזה לא נמצא</h1>
-      <Link href="/">חזרה לבית</Link>
-    </main>
+    <SeasonalPublicShell>
+      <main className="center">
+        <div className="brand-mark">מ׳</div>
+        <h1>העמוד הזה לא נמצא</h1>
+        <Link className="primary" href="/">
+          חזרה לבית
+        </Link>
+      </main>
+    </SeasonalPublicShell>
   );
 }
