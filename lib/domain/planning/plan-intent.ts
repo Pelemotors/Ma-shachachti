@@ -14,6 +14,56 @@ export function stampTaskCreateIds(actions: Action[]): Action[] {
 }
 
 /**
+ * Bind schedule.set to a same-turn task.create via explicit id, createIndex,
+ * or a single create in the batch. Does not interpret natural language.
+ */
+export function stampScheduleCreateRefs(actions: Action[]): Action[] {
+  const stamped = stampTaskCreateIds(actions);
+  const creates = stamped.filter(
+    (action): action is Extract<Action, { type: "task.create" }> =>
+      action.type === "task.create" && Boolean(action.task.id),
+  );
+  return stamped.map((action) => {
+    if (action.type !== "schedule.set") return action;
+    if (action.taskId) {
+      const { createIndex: _createIndex, ...rest } = action;
+      return rest;
+    }
+    if (
+      action.createIndex !== undefined &&
+      creates[action.createIndex]?.task.id
+    ) {
+      const { createIndex: _createIndex, ...rest } = action;
+      return { ...rest, taskId: creates[action.createIndex].task.id };
+    }
+    if (creates.length === 1 && creates[0].task.id) {
+      const { createIndex: _createIndex, ...rest } = action;
+      return { ...rest, taskId: creates[0].task.id };
+    }
+    return action;
+  });
+}
+
+/** Move a same-batch task.create before the schedule.set that references it. */
+export function orderActionsForApply(actions: Action[]): Action[] {
+  const out = [...actions];
+  for (let i = 0; i < out.length; i++) {
+    const action = out[i];
+    if (action.type !== "schedule.set") continue;
+    const createIdx = out.findIndex((candidate) => {
+      if (candidate.type !== "task.create") return false;
+      if (action.taskId && candidate.task.id === action.taskId) return true;
+      return false;
+    });
+    if (createIdx > i) {
+      const [create] = out.splice(createIdx, 1);
+      out.splice(i, 0, create);
+    }
+  }
+  return out;
+}
+
+/**
  * Resolve which create IDs are explicitly requested for today's plan.
  * Indexes (when present) refer to task.create actions in order within `actions`.
  * If affectsToday and indexes omitted → all stamped creates.

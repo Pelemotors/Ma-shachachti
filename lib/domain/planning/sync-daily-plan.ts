@@ -32,6 +32,9 @@ export function actionAffectsDailyPlan(
     case "plan.set":
     case "plan.clear":
       return true;
+    case "schedule.set":
+    case "schedule.remove":
+      return false;
     case "task.update": {
       const p = action.patch;
       return Boolean(
@@ -72,6 +75,15 @@ export function syncDailyPlanAfterActions(input: {
   const authorizeBroad =
     input.authorizeBroadReplan ??
     (affectsToday && requestedTodayTaskIds.length > 0);
+
+  if (
+    input.actions.some(
+      (action) =>
+        action.type === "schedule.set" || action.type === "schedule.remove",
+    )
+  ) {
+    return { state: input.state, planSynced: true, planSyncFailed: false };
+  }
 
   const needsSync =
     affectsToday ||

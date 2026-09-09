@@ -79,6 +79,44 @@ export function useChatController(
     [h, persistProposal],
   );
 
+  const requestTaskPlacement = useCallback(
+    async (input: { taskId: string; title: string; selectedDate?: string }) => {
+      if (mode !== "cloud" || thinking || busy || sendLock.current) return;
+      sendLock.current = true;
+      setThinking(true);
+      try {
+        const turnId = crypto.randomUUID();
+        const response = await authFetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: input.title,
+            contextTaskId: input.taskId,
+            idempotencyKey: turnId,
+            turnId,
+            surface: "planning",
+            selectedDate: input.selectedDate,
+            manualPlacementTaskId: input.taskId,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok)
+          throw apiError(data, "לא הצלחתי לשבץ את המשימה בלו״ז.");
+        if (data.state && typeof data.revision === "number")
+          h.adoptRemote(data.state, data.revision);
+        persistServerProposal(data);
+      } catch (e) {
+        h.setError(
+          e instanceof Error ? e.message : "לא הצלחתי לשבץ את המשימה בלו״ז.",
+        );
+      } finally {
+        sendLock.current = false;
+        setThinking(false);
+      }
+    },
+    [mode, thinking, busy, h, persistServerProposal],
+  );
+
   const sendMessage = useCallback(
     async (text = draft) => {
       if (!text.trim() || thinking || busy || proposal || sendLock.current)
@@ -353,6 +391,8 @@ export function useChatController(
     setContext,
     clearProposal,
     persistProposal,
+    persistServerProposal,
+    requestTaskPlacement,
     sendLock,
     setError: h.setError,
     clearError: () => {

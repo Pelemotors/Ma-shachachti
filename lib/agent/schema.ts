@@ -370,6 +370,21 @@ export function classifyActionPolicy(
   return "auto";
 }
 
+export function glueTaskScheduleActions(auto: Action[], proposal: Action[]) {
+  const all = [...auto, ...proposal];
+  const hasCreate = all.some((action) => action.type === "task.create");
+  if (!hasCreate) return { auto, proposal };
+  const sticky = (action: Action) =>
+    action.type === "schedule.set" ||
+    action.type === "schedule.remove" ||
+    action.type === "planning.set" ||
+    action.type === "planning.clear";
+  return {
+    auto: auto.filter((action) => !sticky(action)),
+    proposal: [...proposal, ...auto.filter(sticky)],
+  };
+}
+
 export function chatActionsNeedProposal(actions: Action[]): boolean {
   return actions.some((a) => classifyActionPolicy(a) === "proposal");
 }
@@ -392,7 +407,7 @@ export function partitionActionsByPolicy(
   }
   if (auto.filter((a) => a.type !== "message.add").length > 5)
     return { auto: [] as Action[], proposal: [...auto, ...proposal] };
-  return { auto, proposal };
+  return glueTaskScheduleActions(auto, proposal);
 }
 
 export type IsolatedDecision = {
@@ -672,6 +687,14 @@ function actionJsonSchema() {
         },
       },
       dueAt: { type: "string" },
+      date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      plannedStart: nullableString,
+      plannedEnd: nullableString,
+      dayPart: {
+        type: "string",
+        enum: ["morning", "afternoon", "evening"],
+      },
+      createIndex: { type: "integer", minimum: 0, maximum: 19 },
       hiddenUntil: { type: "string" },
       urgency: { type: "string", enum: ["urgent", "medium", "low"] },
       eventType: {

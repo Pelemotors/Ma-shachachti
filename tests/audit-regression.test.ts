@@ -18,7 +18,7 @@ test("legacy states receive an empty planning model without data loss", () => {
     applyActions(emptyState(), [create("כביסה")], now).tasks[0],
   );
   const parsed = StateSchema.parse(legacy);
-  assert.deepEqual(parsed.planning, { today: null, plan: null });
+  assert.deepEqual(parsed.planning, { today: null, plans: {} });
   assert.equal(parsed.tasks[0].title, "כביסה");
 });
 

@@ -1,6 +1,7 @@
 import type { AppState, Task, HouseholdMember } from "@/lib/model";
 import { dayKey, formatTime } from "@/lib/time";
 import { activeFacts } from "@/lib/engine";
+import { planForDate, planningPlans } from "@/lib/domain/planning/plans";
 import { sanitizeWorkingMemory } from "@/lib/domain/working-memory";
 import { buildAgentCapabilityContext } from "@/lib/agent/capabilities";
 import { toRuntimePersonalAgentGuide } from "@/lib/domain/agent-guide";
@@ -18,6 +19,8 @@ import {
 export type AgentSurfaceContext = {
   memoryKind?: "stable" | "temporary";
   memoryExpiresAt?: string | null;
+  selectedDate?: string | null;
+  manualPlacementTaskId?: string | null;
 };
 
 function stampLocal(iso: string | null | undefined, timezone: string) {
@@ -120,7 +123,11 @@ export function buildAgentContext(
       t.status === "unknown" ||
       t.status === "in_progress",
   );
-  const plan = state.planning.plan ?? null;
+  const todayKey = dayKey(now, tz);
+  const selectedDate = opts.surfaceContext?.selectedDate ?? todayKey;
+  const selectedPlan = planForDate(state, selectedDate);
+  const todayPlan = planForDate(state, todayKey);
+  const storedDates = Object.keys(planningPlans(state)).sort();
 
   const mapTask = (t: Task) => ({
     id: t.id,
@@ -335,26 +342,52 @@ export function buildAgentContext(
     contextTaskId: opts.contextTaskId ?? null,
     history: state.messages.slice(-(opts.messageLimit ?? 20)),
     turnId: opts.turnId,
-    dailyPlan: plan
+    turn: {
+      selectedDate,
+      selectedDateIsToday: selectedDate === todayKey,
+      manualPlacementTaskId: opts.surfaceContext?.manualPlacementTaskId ?? null,
+      storedPlanDates: storedDates.slice(-21),
+    },
+    dailyPlan: selectedPlan
       ? {
-          date: plan.date,
-          availableMinutes: plan.availableMinutes,
-          effort: plan.effort,
-          plannedTaskIds: plan.items.map((i) => i.taskId),
-          lockedTaskIds: plan.items
+          date: selectedPlan.date,
+          availableMinutes: selectedPlan.availableMinutes,
+          effort: selectedPlan.effort,
+          plannedTaskIds: selectedPlan.items.map((i) => i.taskId),
+          lockedTaskIds: selectedPlan.items
             .filter((i) => i.locked)
             .map((i) => i.taskId),
-          completedPlanItems: plan.items
+          completedPlanItems: selectedPlan.items
             .filter((i) => i.planStatus === "done")
             .map((i) => i.taskId),
+          items: selectedPlan.items.slice(0, 40).map((item) => ({
+            taskId: item.taskId,
+            plannedStart: item.plannedStart,
+            dayPart: item.dayPart ?? null,
+            planStatus: item.planStatus,
+          })),
         }
       : null,
+    todayPlan:
+      todayKey === selectedDate
+        ? null
+        : todayPlan
+          ? {
+              date: todayPlan.date,
+              plannedTaskIds: todayPlan.items.map((i) => i.taskId),
+            }
+          : null,
     planningConstraint: state.planning.today,
   };
 }
 
 export function buildGroundedProposalSummary(actions: { type: string }[]) {
   const creates = actions.filter((a) => a.type === "task.create").length;
+  const scheduled = actions.some((a) => a.type === "schedule.set");
+  if (creates === 1 && scheduled)
+    return "זיהיתי משימה ושיבוץ בלו״ז. לשמור?";
+  if (creates > 1 && scheduled)
+    return `זיהיתי ${creates} משימות כולל שיבוץ בלו״ז. לשמור?`;
   if (creates === 1) return "זיהיתי משימה אחת. להוסיף אותה לרשימת המשימות?";
   if (creates > 1)
     return `זיהיתי ${creates} משימות. להוסיף אותן לרשימת המשימות?`;

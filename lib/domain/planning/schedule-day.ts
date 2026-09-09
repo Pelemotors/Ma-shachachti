@@ -5,6 +5,7 @@ import type {
   Task,
 } from "@/lib/model";
 import { formatClockTime, localHour } from "@/lib/time";
+import { planForDate as planForDateFromSoT } from "./plans";
 
 export type DayPart = "morning" | "afternoon" | "evening" | "unscheduled";
 
@@ -24,14 +25,12 @@ export const DAY_PART_ANCHORS: Record<
   evening: { hour: 18, minute: 0 },
 };
 
-/** Read the stored DailyPlan when it belongs to the requested calendar day. */
+/** Read the stored DailyPlan for that calendar day from the plans SoT. */
 export function planForDate(
   state: AppState,
   dateKey: string,
 ): DailyPlanSession | null {
-  const plan = state.planning.plan;
-  if (!plan || plan.date !== dateKey) return null;
-  return plan;
+  return planForDateFromSoT(state, dateKey);
 }
 
 export function visiblePlanItems(plan: DailyPlanSession): DailyPlanItem[] {
@@ -50,6 +49,15 @@ export function dayPartFromStamp(
   if (hour < 12) return "morning";
   if (hour < 17) return "afternoon";
   return "evening";
+}
+
+export function dayPartForItem(
+  item: DailyPlanItem,
+  timezone: string,
+): DayPart {
+  if (item.plannedStart) return dayPartFromStamp(item.plannedStart, timezone);
+  if (item.dayPart) return item.dayPart;
+  return "unscheduled";
 }
 
 export function formatShortDate(dateKey: string) {
@@ -96,14 +104,12 @@ export function scheduleRowsForPlan(
     .map((item) => {
       const task = byId.get(item.taskId);
       if (!task || task.status === "cancelled") return null;
-      const stamp =
-        item.plannedStart ?? task.preferredWindow?.start ?? task.dueAt;
       return {
         item,
         task,
         timeLabel: itemClockLabel(item, timezone),
         timeInput: itemTimeInputValue(item, timezone),
-        part: dayPartFromStamp(stamp, timezone),
+        part: dayPartForItem(item, timezone),
       };
     })
     .filter((row): row is ScheduleRow => Boolean(row));

@@ -54,7 +54,7 @@ test("planForDate uses the stored DailyPlan for that date only", async () => {
 });
 
 test("removing a plan item skips it without deleting the task", async () => {
-  const { s, ids } = await seedPlan();
+  const { s, ids, session } = await seedPlan();
   const next = applyActions(
     s,
     [
@@ -68,7 +68,11 @@ test("removing a plan item skips it without deleting the task", async () => {
     true,
   );
   assert.ok(next.tasks.some((t) => t.id === ids[0] && t.status === "open"));
-  const rows = scheduleRowsForPlan(next, next.planning.plan!, TZ);
+  const rows = scheduleRowsForPlan(
+    next,
+    planForDate(next, session.date)!,
+    TZ,
+  );
   assert.ok(!rows.some((row) => row.item.taskId === ids[0]));
   const home = getHomeTodayTasks(next, NOW);
   assert.ok(!home.tasks.some((t) => t.id === ids[0]));
@@ -90,8 +94,8 @@ test("moving a scheduled task to another day keeps the same task id", async () =
 });
 
 test("schedule groups timed items by existing stamps only", async () => {
-  const { s } = await seedPlan();
-  const rows = scheduleRowsForPlan(s, s.planning.plan!, TZ);
+  const { s, session } = await seedPlan();
+  const rows = scheduleRowsForPlan(s, planForDate(s, session.date)!, TZ);
   assert.ok(rows.length >= 1);
   for (const row of rows) {
     if (!row.item.plannedStart) assert.equal(row.timeLabel, null);
@@ -144,5 +148,6 @@ test("old regular-day CTA is gone from the plan screen", async () => {
   assert.match(schedule, /הלו״ז שלי/);
   assert.match(schedule, /בנה לי לו״ז/);
   assert.match(home, /מה שונה היום\?/);
+  assert.match(schedule, /משימות פתוחות/);
   assert.match(home, /ללו״ז המלא/);
 });

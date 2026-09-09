@@ -22,6 +22,7 @@ import {
   type DayPart,
   planForDate,
 } from "@/lib/domain/planning/schedule-day";
+import { openCommitmentCount } from "@/lib/domain/planning/plans";
 
 type Household = ReturnType<typeof useHousehold>;
 
@@ -33,6 +34,8 @@ export function useDailyPlanController(
     defaultEffort?: number;
     run: (actions: Action[], confirmed?: boolean) => Promise<void>;
     sendLock: { current: boolean };
+    onAgentPayload?: (data: unknown) => boolean;
+    onOpenChat?: () => void;
   },
 ) {
   const { state, mode } = h;
@@ -43,9 +46,11 @@ export function useDailyPlanController(
   const [planHours, setPlanHours] = useState(2);
   const [planMinsPart, setPlanMinsPart] = useState(0);
   const [planEffort, setPlanEffort] = useState(seed);
-  const [planReady, setPlanReady] = useState(Boolean(state.planning.plan));
+  const [planReady, setPlanReady] = useState(
+    Boolean(planForDate(state, todayKey)),
+  );
   const [planPhase, setPlanPhase] = useState<"setup" | "result">(
-    state.planning.plan ? "result" : "setup",
+    planForDate(state, todayKey) ? "result" : "setup",
   );
   const [changedDay, setChangedDay] = useState("");
   const [planBusy, setPlanBusy] = useState(false);
@@ -98,65 +103,52 @@ export function useDailyPlanController(
 
   const submitChangedDay = useCallback(async () => {
     if (planBusy || opts.sendLock.current) return;
+    const note = changedDay.trim();
+    if (!note) return;
+    if (mode !== "cloud") {
+      h.setError("כדי להבין מה השתנה צריך חיבור לחשבון ולעזרה אישית.");
+      return;
+    }
+    if (!state.profile.aiConsent) {
+      h.setError("אפשר להפעיל עזרה אישית בהגדרות, ואז לכתוב מה השתנה.");
+      return;
+    }
     setPlanBusy(true);
     try {
       const turnId = crypto.randomUUID();
-      const note = changedDay.trim();
-      const mins = durationToMinutes(planHours, planMinsPart) || 120;
-
-      // Functional contract: changedDay always reaches planning constraint + plan build.
-      let nextState = await h.commit([
-        {
-          type: "planning.set",
-          constraint: {
-            date: selectedDate,
-            availableFrom: null,
-            availableUntil: null,
-            unavailable: [],
-            effort: planEffort as 1 | 2 | 3,
-            note: note.slice(0, 500),
-          },
-        },
-      ]);
-
-      if (mode === "cloud" && note) {
-        const response = await authFetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: note,
-            idempotencyKey: turnId,
-            turnId,
-          }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error);
-        if (data.state && typeof data.revision === "number") {
-          h.adoptRemote(data.state, data.revision);
-          nextState = data.state;
-        } else {
-          const actions = (data.explicitActions ??
-            data.actions ??
-            []) as Action[];
-          if (actions.length) nextState = await h.commit(actions);
-        }
+      const response = await authFetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: note,
+          idempotencyKey: turnId,
+          turnId,
+          surface: "planning",
+          selectedDate,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(
+          typeof data.error === "string"
+            ? data.error
+            : "לא הצלחתי להבין מה השתנה.",
+        );
+      if (data.state && typeof data.revision === "number") {
+        h.adoptRemote(data.state, data.revision);
+      } else {
+        const actions = (data.explicitActions ?? data.actions ?? []) as Action[];
+        if (actions.length) await h.commit(actions);
       }
-
-      const session = buildDailyPlanSession(
-        nextState,
-        mins,
-        planEffort as 1 | 2 | 3,
-        h.currentRevision(),
-        selectedClock,
-      );
-      await h.commit([{ type: "plan.set", plan: session }]);
+      const hasProposal = opts.onAgentPayload?.(data) ?? false;
       setChangedDay("");
-      markReady();
+      if (hasProposal) opts.onOpenChat?.();
+      else if (planForDate(h.state, selectedDate) || data.state) markReady();
     } catch (e) {
       h.setError(
         e instanceof Error
           ? e.message
-          : "לא הצלחתי לסדר את היום. אפשר לנסות שוב.",
+          : "לא הצלחתי להבין מה השתנה. אפשר לנסות שוב.",
       );
     } finally {
       setPlanBusy(false);
@@ -166,12 +158,9 @@ export function useDailyPlanController(
     opts,
     mode,
     changedDay,
-    planHours,
-    planMinsPart,
-    planEffort,
     h,
+    state.profile.aiConsent,
     selectedDate,
-    selectedClock,
     markReady,
   ]);
 
@@ -201,16 +190,18 @@ export function useDailyPlanController(
 
   const patchPlanItem = useCallback(
     async (taskId: string, patch: Partial<DailyPlanItem>) => {
-      await opts.run([{ type: "plan.itemUpdate", taskId, patch }]);
+      await opts.run([
+        { type: "plan.itemUpdate", taskId, date: selectedDate, patch },
+      ]);
     },
-    [opts],
+    [opts, selectedDate],
   );
 
   const removeFromPlan = useCallback(
     async (taskId: string) => {
-      await patchPlanItem(taskId, { planStatus: "skipped", locked: true });
+      await opts.run([{ type: "schedule.remove", taskId, date: selectedDate }]);
     },
-    [patchPlanItem],
+    [opts, selectedDate],
   );
 
   const changeItemTime = useCallback(
@@ -250,14 +241,11 @@ export function useDailyPlanController(
     async (taskId: string, dateKey: string) => {
       if (!dateKey || dateKey === selectedDate) return;
       await opts.run([
-        {
-          type: "task.deferUntil",
-          id: taskId,
-          hiddenUntil: startOfDateKey(dateKey, timezone),
-        },
+        { type: "schedule.remove", taskId, date: selectedDate },
+        { type: "schedule.set", taskId, date: dateKey },
       ]);
     },
-    [opts, selectedDate, timezone],
+    [opts, selectedDate],
   );
 
   const deferSelectedDay = useCallback(
@@ -289,6 +277,7 @@ export function useDailyPlanController(
     selectedDate,
     selectedClock,
     todayKey,
+    openTaskCount: openCommitmentCount(state),
     setSelectedDate,
     goPrevDay,
     goNextDay,

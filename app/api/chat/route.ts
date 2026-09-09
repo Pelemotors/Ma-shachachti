@@ -27,7 +27,7 @@ import { summarizeContextTrace } from "@/lib/agent/context-instrumentation";
 import { syncDailyPlanAfterActions } from "@/lib/domain/planning/sync-daily-plan";
 import {
   resolveRequestedTodayTaskIds,
-  stampTaskCreateIds,
+  stampScheduleCreateRefs,
 } from "@/lib/domain/planning/plan-intent";
 import { buildGroundedProposalSummary } from "@/lib/domain/agent-context";
 import { AGENT_CONTRACT_VERSION } from "@/lib/agent/instructions";
@@ -185,6 +185,11 @@ export async function POST(req: Request) {
         idempotencyKey: z.string().uuid(),
         turnId: z.string().uuid().optional(),
         surface: z.enum(["chat", "memory", "planning"]).optional(),
+        selectedDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        manualPlacementTaskId: z.string().uuid().optional(),
       })
       .parse(await jsonBody(req, 20_000));
     turnId = body.turnId ?? body.idempotencyKey;
@@ -196,6 +201,8 @@ export async function POST(req: Request) {
           contextTaskId: body.contextTaskId ?? null,
           turnId,
           surface: body.surface ?? "chat",
+          selectedDate: body.selectedDate ?? null,
+          manualPlacementTaskId: body.manualPlacementTaskId ?? null,
         }),
       )
       .digest("hex");
@@ -250,6 +257,8 @@ export async function POST(req: Request) {
       turnId,
       requestId,
       surface: body.surface ?? "chat",
+      selectedDate: body.selectedDate ?? null,
+      manualPlacementTaskId: body.manualPlacementTaskId ?? null,
       householdId: userId,
       pendingProposal: pending
         ? {
@@ -332,7 +341,7 @@ export async function POST(req: Request) {
     let similarHints: { title: string; existingTitle: string }[] = [];
     let proposalSummary = result.proposal?.summary ?? "";
     if (proposedActions.length) {
-      const stampedEarly = stampTaskCreateIds(proposedActions);
+      const stampedEarly = stampScheduleCreateRefs(proposedActions);
       let requestedTodayTaskIds = resolveRequestedTodayTaskIds({
         actions: stampedEarly,
         affectsToday: Boolean(result.affectsToday),

@@ -185,6 +185,8 @@ export type ChatOrchestrationInput = {
   turnId: string;
   requestId: string;
   surface?: "chat" | "memory" | "planning";
+  selectedDate?: string | null;
+  manualPlacementTaskId?: string | null;
   householdId?: string;
   pendingProposal?: PendingProposalContext;
   dbFetches?: string[];
@@ -241,6 +243,10 @@ export async function orchestrateChatTurn(
     requestId: input.requestId,
     contextTaskId: input.contextTaskId,
     surface: input.surface ?? "chat",
+    surfaceContext: {
+      selectedDate: input.selectedDate ?? null,
+      manualPlacementTaskId: input.manualPlacementTaskId ?? null,
+    },
     pendingProposal: input.pendingProposal ?? null,
     dbFetches: input.dbFetches ?? ["app_states"],
     now,

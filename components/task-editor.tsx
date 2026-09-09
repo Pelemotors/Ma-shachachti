@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Action, AppState, Task } from "@/lib/model";
 import { TASK_CATEGORIES, CategoryId } from "@/lib/taxonomy";
+import { isoAtLocal } from "@/lib/time";
 import { Dialog } from "./dialog";
 
 export function TaskEditor({
@@ -12,7 +13,10 @@ export function TaskEditor({
 }: {
   task?: Task;
   state: AppState;
-  onSave: (a: Action) => Promise<void>;
+  onSave: (
+    actions: Action[],
+    meta?: { requestAgentPlacement?: { taskId: string; title: string } },
+  ) => Promise<void>;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(task?.title ?? "");
@@ -47,6 +51,11 @@ export function TaskEditor({
   const [deps, setDeps] = useState(task?.dependsOn ?? []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [placement, setPlacement] = useState<
+    "agent" | "dated" | "someday"
+  >(task ? "someday" : "agent");
+  const [placeDate, setPlaceDate] = useState("");
+  const [placeTime, setPlaceTime] = useState("");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -102,10 +111,41 @@ export function TaskEditor({
               },
           ),
       };
+      if (task) {
+        await onSave([{ type: "task.update", id: task.id, patch }]);
+        onClose();
+        return;
+      }
+      const taskId = crypto.randomUUID();
+      const actions: Action[] = [
+        { type: "task.create", task: { ...patch, id: taskId } },
+      ];
+      if (placement === "dated") {
+        if (!placeDate) {
+          setError("כשבוחרים שיבוץ צריך תאריך.");
+          setSaving(false);
+          return;
+        }
+        const plannedStart = placeTime
+          ? isoAtLocal(
+              placeDate,
+              Number(placeTime.slice(0, 2)),
+              Number(placeTime.slice(3, 5)),
+              state.profile.timezone,
+            )
+          : null;
+        actions.push({
+          type: "schedule.set",
+          taskId,
+          date: placeDate,
+          plannedStart,
+        });
+      }
       await onSave(
-        task
-          ? { type: "task.update", id: task.id, patch }
-          : { type: "task.create", task: patch },
+        actions,
+        placement === "agent"
+          ? { requestAgentPlacement: { taskId, title: patch.title } }
+          : undefined,
       );
       onClose();
     } catch (err) {
@@ -137,6 +177,60 @@ export function TaskEditor({
           />
           <span>יש דדליין?</span>
         </label>
+        {!task ? (
+          <fieldset className="stack tight">
+            <legend>שיבוץ בלו״ז</legend>
+            <label className="row gap align-center">
+              <input
+                type="radio"
+                name="placement"
+                checked={placement === "agent"}
+                onChange={() => setPlacement("agent")}
+              />
+              <span>הסוכן ישבץ מקום מתאים</span>
+            </label>
+            <label className="row gap align-center">
+              <input
+                type="radio"
+                name="placement"
+                checked={placement === "dated"}
+                onChange={() => setPlacement("dated")}
+              />
+              <span>לתאריך מסוים</span>
+            </label>
+            <label className="row gap align-center">
+              <input
+                type="radio"
+                name="placement"
+                checked={placement === "someday"}
+                onChange={() => setPlacement("someday")}
+              />
+              <span>מתישהו / ללא שיבוץ</span>
+            </label>
+            {placement === "dated" ? (
+              <div className="row gap wrap">
+                <label className="stack tight grow">
+                  <span>תאריך בלו״ז</span>
+                  <input
+                    type="date"
+                    value={placeDate}
+                    onChange={(e) => setPlaceDate(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className="stack tight grow">
+                  <span>שעה (רשות)</span>
+                  <input
+                    type="time"
+                    value={placeTime}
+                    onChange={(e) => setPlaceTime(e.target.value)}
+                  />
+                </label>
+              </div>
+            ) : null}
+          </fieldset>
+        ) : null}
+
         {hasDeadline ? (
           <div className="row gap wrap">
             <label className="stack tight grow">

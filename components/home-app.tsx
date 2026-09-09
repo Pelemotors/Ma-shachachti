@@ -58,6 +58,8 @@ export function HomeApp() {
     defaultEffort: state.planning.today?.effort ?? 2,
     run: tasks.run,
     sendLock: chat.sendLock,
+    onAgentPayload: chat.persistServerProposal,
+    onOpenChat: () => setView("chat"),
   });
   const shopping = useShoppingController(
     state.shopping,
@@ -415,8 +417,16 @@ export function HomeApp() {
         confirm={tasks.confirm}
         lifeAdminPrompt={tasks.lifeAdminPrompt}
         onCloseEditor={() => tasks.setEditor(null)}
-        onSaveEditor={async (a) => {
-          await tasks.run([a]);
+        onSaveEditor={async (actions, meta) => {
+          await tasks.run(actions, true);
+          if (
+            meta?.requestAgentPlacement &&
+            mode === "cloud" &&
+            state.profile.aiConsent
+          ) {
+            setView("chat");
+            await chat.requestTaskPlacement(meta.requestAgentPlacement);
+          }
         }}
         onCloseCompletion={() => tasks.setCompletion(null)}
         onWorkActual={tasks.setWorkActual}

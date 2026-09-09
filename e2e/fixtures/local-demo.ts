@@ -108,7 +108,7 @@ export function buildLocalState(
     reminders: [],
     messages: [],
     excludedTemplates: [],
-    planning: { today: null, plan: null },
+    planning: { today: null, plans: {} },
     events: [],
     members: [],
     suggestionHistory: [],

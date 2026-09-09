@@ -5,6 +5,7 @@
 import type { AppState } from "@/lib/model";
 import { dayKey } from "@/lib/time";
 import { activeFacts } from "@/lib/engine";
+import { planForDate, planningPlans } from "@/lib/domain/planning/plans";
 import { checklistIndexEntry } from "@/lib/domain/checklists";
 
 const OPEN_TASK = new Set(["open", "unknown", "in_progress"]);
@@ -15,7 +16,11 @@ export type AgentEntityIndex = {
   reminders: { total: number; pending: number; pendingIds: string[] };
   routines: { total: number; active: number; activeIds: string[] };
   shopping: { total: number; open: number; purchased: number };
-  plans: { hasTodayPlan: boolean; plannedTaskCount: number };
+  plans: {
+    hasTodayPlan: boolean;
+    plannedTaskCount: number;
+    storedDateCount: number;
+  };
   home: { areaCount: number; firstScanStatus: string | null };
   memory: { factCount: number; compactedFactCount: number };
   forecasts: { learningCount: number; forecastKindCount: number };
@@ -43,7 +48,7 @@ export function buildEntityIndex(
   const pendingReminders = state.reminders.filter((r) => r.status === "pending");
   const activeRoutines = state.routines.filter((r) => r.status === "active");
   const openShopping = state.shopping.filter((s) => !s.purchasedAt);
-  const plan = state.planning.plan;
+  const plan = planForDate(state, dayKey(now, tz));
   const facts = activeFacts(state, now);
   const tasksWithSteps = state.tasks.filter((t) => (t.steps?.length ?? 0) > 0);
   const openStepCount = state.tasks.reduce(
@@ -78,8 +83,9 @@ export function buildEntityIndex(
       purchased: state.shopping.length - openShopping.length,
     },
     plans: {
-      hasTodayPlan: Boolean(plan && plan.date === dayKey(now, tz)),
+      hasTodayPlan: Boolean(plan),
       plannedTaskCount: plan?.items.length ?? 0,
+      storedDateCount: Object.keys(planningPlans(state)).length,
     },
     home: {
       areaCount: state.homeAreas.length,

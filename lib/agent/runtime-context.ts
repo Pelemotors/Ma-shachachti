@@ -277,6 +277,7 @@ export function toAgentModelInput(
       deepAccessAvailable: runtime.deepAccessAvailable,
       deepAccess,
       knowledge: runtime.knowledge,
+      turn: (runtime.knowledge as { turn?: unknown }).turn ?? null,
       deferrableCandidates: runtime.deferrableCandidates,
       protectedFromDefer: runtime.protectedFromDefer,
     },

@@ -37,6 +37,8 @@ export const AGENT_CAPABILITY_TYPES = [
   "reminder.cancel",
   "planning.set",
   "planning.clear",
+  "schedule.set",
+  "schedule.remove",
   "profile.update",
   "member.upsert",
   "member.remove",
@@ -130,7 +132,15 @@ export const AGENT_CAPABILITY_CONTRACT = [
     type: "planning.set/planning.clear",
     purpose: "Capture today's real constraints and available effort/time.",
     policy: "auto",
-    notes: "This is context for planning, not a replacement task.",
+    notes: "This is context for planning, not a replacement task. A free-text note may also require Task or Schedule actions in the same turn.",
+  },
+  {
+    type: "schedule.set/schedule.remove",
+    purpose:
+      "Place a Task on a calendar day (and optional day-part or clock time), move it, or remove it from the schedule without deleting the Task.",
+    policy: "auto_or_proposal",
+    notes:
+      "Task and Schedule are different. Creating a Task does not schedule it. When the same turn creates a Task and places it, return both actions in one Proposal and reuse the same task id (or createIndex). Do not invent a clock time without a basis; date-only or dayPart is enough. schedule.remove unschedules only.",
   },
   {
     type: "profile.update",
