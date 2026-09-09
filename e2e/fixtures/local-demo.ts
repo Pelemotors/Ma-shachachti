@@ -10,10 +10,21 @@ export type SeedTask = {
   categoryId?: string;
   priority?: number;
   kind?: "task" | "idea";
+  routineId?: string | null;
+};
+
+export type SeedRoutine = {
+  id?: string;
+  title: string;
+  categoryId?: string;
+  priority?: number;
 };
 
 /** Minimal AppState JSON for localStorage — avoids importing lib/engine (catalog.json ESM). */
-export function buildLocalState(tasks: SeedTask[] = []) {
+export function buildLocalState(
+  tasks: SeedTask[] = [],
+  routines: SeedRoutine[] = [],
+) {
   return {
     schemaVersion: 2,
     profile: {
@@ -64,11 +75,33 @@ export function buildLocalState(tasks: SeedTask[] = []) {
       templateId: null,
       recurrenceDays: null,
       occurrenceOf: null,
+      routineId: t.routineId ?? null,
       notes: "",
       completedAt: null,
       actualWorkMinutes: null,
+      durationFeedbackAskedAt: null,
       relatedMemberIds: [],
       homeAreaIds: [],
+    })),
+    routines: routines.map((r) => ({
+      id: r.id ?? randomUUID(),
+      title: r.title,
+      status: "active",
+      categoryId: r.categoryId ?? "unclassified",
+      detailTypeId: null,
+      schedule: { frequency: "daily", interval: 1 },
+      timeOfDay: "any",
+      atTime: null,
+      workMinutes: 15,
+      effort: 2,
+      priority: r.priority ?? 1,
+      notes: "",
+      sourceFactId: null,
+      relatedMemberIds: [],
+      homeAreaIds: [],
+      createdAt: STAMP,
+      updatedAt: STAMP,
+      lastMaterializedDate: "2026-09-07",
     })),
     facts: [],
     shopping: [],
