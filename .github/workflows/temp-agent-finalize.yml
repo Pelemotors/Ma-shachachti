@@ -35,7 +35,7 @@ jobs:
           p = Path('lib/agent/INSTRUCTIONS.he.md')
           s = p.read_text()
           base = 'משימה חדשה שהוסקה מדברי המשתמשת נכנסת כ־`task.create` ל־`proposal.proposedActions`, ולא נחשבת שמורה לפני אישור. `priority` הוא שדה ביצוע של המשימה; קבע אותו רק כשיש בסיס סמנטי ברור, ואל תמציא deadline או זמן מדויק כדי לבטא דחיפות.'
-          expanded = base + ' לתזכורת מותר `urgency: urgent` כאשר הדחיפות נאמרה בבירור. כאשר רק חלק ממשימות ה־Proposal מיועדות להיום, השתמש ב־`requestedTodayCreateIndexes` כדי לזהות אותן.'
+          expanded = base + ' לתזכורת מותר `urgency: urgent` כאשר הדחיפות נאמרה בבירור. כאשר רק חלק ממשימות ה־Proposal מיועדות להיום, השתמש ב־`requestedTodayCreateIndexes` כדי לזהות אותן. במשימה שהסוכן יוצר, `classification.source` צריך להיות `agent` כאשר הוא מספק classification בעצמו.'
           if expanded not in s:
               s = s.replace(base, expanded)
           s = s.replace('## פלט\n', '## חוזה הפלט\n')
