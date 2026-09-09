@@ -29,14 +29,8 @@ const LIFE_ADMIN: CategoryId[] = [
   "guests_hosting",
 ];
 
-/** Category-first. Title heuristics are fallback only for legacy unclassified tasks. */
-const LIFE_FALLBACK_RE =
-  /ביטוח|תשלום|מסמך|תור|ברכה|מתנה|אירוע|הבטחה|טלפון|דואר|טופס|חשבון|מרשם/;
-
 export function isLifeAdminTask(task: Task): boolean {
-  if (LIFE_ADMIN.includes(task.categoryId)) return true;
-  if (task.categoryId !== "unclassified") return false;
-  return LIFE_FALLBACK_RE.test(task.title);
+  return LIFE_ADMIN.includes(task.categoryId);
 }
 
 function asWindow(

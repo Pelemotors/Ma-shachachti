@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeFirstScan } from "../lib/domain/first-scan";
+import { parseSemanticScanResult } from "../lib/domain/first-scan/semantic";
 
-test("domain7: semantic scan preferred; heuristic is fallback only", () => {
+test("domain7: semantic scan strips invented routine/deadline from LLM output", () => {
   const semantic = {
     detectedAreas: [
       { name: "מטבח", type: "kitchen", count: 1, ambiguous: false },
@@ -28,11 +28,7 @@ test("domain7: semantic scan preferred; heuristic is fallback only", () => {
     inventedResponsibility: false,
     inventedDuration: false,
   };
-  const fromAi = analyzeFirstScan("ignored", { semantic });
+  const fromAi = parseSemanticScanResult(semantic);
   assert.equal(fromAi.proposedTasks[0]?.recurrenceDays, null);
   assert.equal(fromAi.proposedTasks[0]?.dueAt, null);
-  const fallback = analyzeFirstScan("יש לי מטבח עם מדיח");
-  assert.ok(
-    fallback.detectedAreas.length >= 1 || fallback.proposedTasks.length >= 0,
-  );
 });

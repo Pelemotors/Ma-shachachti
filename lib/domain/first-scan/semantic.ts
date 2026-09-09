@@ -1,10 +1,9 @@
 import { z } from "zod";
 import type { FirstScanAnalysis } from "./analyze";
-import { analyzeScanText } from "./analyze";
 
 /**
- * Structured First Home Scan from semantic/LLM output.
- * Heuristic `analyzeScanText` remains offline fallback only.
+ * Structured First Home Scan from semantic/LLM output only.
+ * Heuristic parsing lives in analyze.ts for migration/domain tests — not production.
  */
 export const SemanticScanResultSchema = z.object({
   detectedAreas: z
@@ -48,7 +47,6 @@ export const SemanticScanResultSchema = z.object({
     .object({ question: z.string().min(1).max(300) })
     .nullable()
     .default(null),
-  /** Never invent these — must stay null unless user was explicit. */
   inventedRoutine: z.literal(false).default(false),
   inventedDeadline: z.literal(false).default(false),
   inventedResponsibility: z.literal(false).default(false),
@@ -69,7 +67,6 @@ function stripInventions(scan: SemanticScanResult): FirstScanAnalysis {
       homeAreaNames: t.homeAreaNames,
       dependsOnTitles: t.dependsOnTitles,
       relatedMemberNames: t.relatedMemberNames,
-      // AI must not invent routine/deadline — force null unless schema already null.
       recurrenceDays: null,
       dueAt: null,
     })),
@@ -78,16 +75,11 @@ function stripInventions(scan: SemanticScanResult): FirstScanAnalysis {
   };
 }
 
-/**
- * Prefer validated semantic AI result; fall back to heuristic text parser.
- */
-export function analyzeFirstScan(
-  text: string,
-  opts: { semantic?: unknown; preferSemantic?: boolean } = {},
-): FirstScanAnalysis {
-  if (opts.preferSemantic !== false && opts.semantic != null) {
-    const parsed = SemanticScanResultSchema.safeParse(opts.semantic);
-    if (parsed.success) return stripInventions(parsed.data);
+/** Parse validated LLM scan JSON — no heuristic fallback. */
+export function parseSemanticScanResult(semantic: unknown): FirstScanAnalysis {
+  const parsed = SemanticScanResultSchema.safeParse(semantic);
+  if (!parsed.success) {
+    throw new Error("invalid semantic scan output");
   }
-  return analyzeScanText(text);
+  return stripInventions(parsed.data);
 }

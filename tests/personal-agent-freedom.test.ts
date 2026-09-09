@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { emptyState, type Action } from "../lib/model";
 import { applyActions } from "../lib/engine";
 import {
@@ -212,6 +214,31 @@ test("ordered action validation supports create then linked reminder", () => {
   const result = filterRunnableActions(emptyState(), actions, NOW);
   assert.equal(result.accepted.length, 2);
   assert.equal(result.rejected.length, 0);
+});
+
+test("production agent path does not import legacy NLP heuristic modules", () => {
+  const paths = [
+    "lib/domain/first-scan/ai.ts",
+    "lib/domain/first-scan/semantic.ts",
+    "components/demo-reply.ts",
+    "hooks/use-chat-controller.ts",
+    "app/api/first-scan/analyze/route.ts",
+  ];
+  const forbidden = [
+    /analyzeScanText/,
+    /filterShoppingProposalItems/,
+    /compactConversation.*מעדיפ/,
+  ];
+  for (const rel of paths) {
+    const src = readFileSync(join(process.cwd(), rel), "utf8");
+    for (const re of forbidden) {
+      assert.equal(
+        re.test(src),
+        false,
+        `${rel} must not reference legacy NLP pattern ${re}`,
+      );
+    }
+  }
 });
 
 test("referential integrity validates routine ids and destructive policy proposes removal", () => {

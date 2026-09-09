@@ -9,7 +9,6 @@ import { emptyState } from "../lib/model";
 import { applyActions } from "../lib/engine";
 import { orchestrateChatTurn } from "../lib/agent/orchestration";
 import { analyzeFirstScanSemantic } from "../lib/domain/first-scan/ai";
-import { analyzeFirstScan } from "../lib/domain/first-scan/semantic";
 
 function loadEnvLocal() {
   const path = resolve(process.cwd(), ".env.local");
@@ -232,31 +231,13 @@ async function main() {
     const id = `first_scan_${i + 1}`;
     try {
       const { analysis, source } = await analyzeFirstScanSemantic(text);
-      const stripped = analyzeFirstScan(text, {
-        semantic: {
-          detectedAreas: analysis.detectedAreas,
-          observations: analysis.observations,
-          proposedTasks: analysis.proposedTasks.map((t) => ({
-            ...t,
-            recurrenceDays: null,
-            dueAt: null,
-          })),
-          profileFacts: analysis.profileFacts,
-          members: [],
-          clarification: analysis.clarification,
-          inventedRoutine: false,
-          inventedDeadline: false,
-          inventedResponsibility: false,
-          inventedDuration: false,
-        },
-      });
-      const invented = stripped.proposedTasks.some(
+      const invented = analysis.proposedTasks.some(
         (t) => t.recurrenceDays != null || t.dueAt != null,
       );
       results.push({
         id,
-        ok: !invented && stripped.detectedAreas.length > 0,
-        detail: `source=${source};areas=${stripped.detectedAreas.length}`,
+        ok: !invented && analysis.detectedAreas.length > 0,
+        detail: `source=${source};areas=${analysis.detectedAreas.length}`,
       });
     } catch (e) {
       results.push({

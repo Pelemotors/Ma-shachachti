@@ -4,8 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Domain 14 — architecture gate: new semantic paths must not grow phrase brains.
- * Allowed: technical markers, UUID/date validation, First Scan heuristic fallback file.
+ * Domain 14 — production agent path must not grow phrase brains.
  */
 const FORBIDDEN_PATTERNS = [
   {
@@ -27,9 +26,21 @@ const FORBIDDEN_PATTERNS = [
     file: "lib/domain/notifications/policy.ts",
     mustNotMatch: [/includes\(|\/[א-ת]/],
   },
+  {
+    file: "lib/domain/first-scan/ai.ts",
+    mustNotMatch: [/analyzeScanText/, /analyzeFirstScan\(/],
+  },
+  {
+    file: "lib/domain/first-scan/semantic.ts",
+    mustNotMatch: [/analyzeScanText/],
+  },
+  {
+    file: "components/demo-reply.ts",
+    mustNotMatch: [/\.test\(/, /אולי\\s/, /סיימתי|לא היום/],
+  },
 ];
 
-test("domain14: new semantic/forecast/pace/policy paths avoid phrase NLP", () => {
+test("domain14: semantic/forecast/pace/policy paths avoid phrase NLP", () => {
   for (const rule of FORBIDDEN_PATTERNS) {
     const src = readFileSync(join(process.cwd(), rule.file), "utf8");
     for (const re of rule.mustNotMatch) {
@@ -42,11 +53,15 @@ test("domain14: new semantic/forecast/pace/policy paths avoid phrase NLP", () =>
   }
 });
 
-test("domain14: first-scan heuristic remains a separate fallback module", () => {
+test("domain14: first-scan heuristic isolated from production semantic modules", () => {
+  const ai = readFileSync(
+    join(process.cwd(), "lib/domain/first-scan/ai.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(ai, /analyzeScanText/);
   const semantic = readFileSync(
     join(process.cwd(), "lib/domain/first-scan/semantic.ts"),
     "utf8",
   );
-  assert.match(semantic, /analyzeScanText/);
-  assert.match(semantic, /fallback|Heuristic|heuristic/i);
+  assert.doesNotMatch(semantic, /analyzeScanText/);
 });

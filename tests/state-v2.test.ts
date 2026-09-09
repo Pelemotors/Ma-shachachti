@@ -183,7 +183,7 @@ test("semantic duplicate detection", () => {
   const loose = findSemanticDuplicate(s, "לרוקן את המדיח", {
     categoryId: "kitchen_dishes",
   });
-  assert.ok(loose, "expected semantic overlap on מדיח");
+  assert.equal(loose, undefined, "paraphrase dedupe is agent responsibility");
 });
 
 test("StateSchema dual-read accepts missing planning", () => {

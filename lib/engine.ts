@@ -1172,6 +1172,7 @@ export function freeTimeV2(
   return { closeFirst, outsidePlan };
 }
 
+/** Exact normalized title match only — paraphrase dedupe is the agent's job. */
 export function findSemanticDuplicate(
   s: AppState,
   title: string,
@@ -1199,17 +1200,7 @@ export function findSemanticDuplicate(
       const overlap = incomingAreas.some((id) => t.homeAreaIds.includes(id));
       if (!overlap) return false;
     }
-    const hay = normalize(t.title);
-    if (hay === needle) return true;
-    if (hay.includes(needle) || needle.includes(hay)) return true;
-    const tokens = (value: string) =>
-      value.split(" ").filter((w) => w.length > 2);
-    const a = new Set(tokens(hay));
-    const b = tokens(needle);
-    const overlap = b.filter((w) =>
-      [...a].some((x) => x.includes(w) || w.includes(x)),
-    );
-    return overlap.length >= 1;
+    return normalize(t.title) === needle;
   });
 }
 

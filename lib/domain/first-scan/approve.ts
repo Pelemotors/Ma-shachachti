@@ -200,9 +200,7 @@ export function buildScanApproveActions(
         proposed.homeAreaNames.length === 0 ||
         t.homeAreaNames.some((n) => proposed.homeAreaNames.includes(n));
       if (!sameAreas) return false;
-      const a = normalize(t.title);
-      const b = normalize(proposed.title);
-      return a === b || a.includes(b) || b.includes(a);
+      return normalize(t.title) === normalize(proposed.title);
     });
     if (batchDupTitle) continue;
 

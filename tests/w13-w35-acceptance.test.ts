@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { emptyState, migrateState } from "../lib/model";
 import { applyActions } from "../lib/engine";
-import { filterShoppingProposalItems } from "../lib/shopping-proposal";
 import { enrichTaskLocal } from "../lib/enrichment";
 import { compactConversation } from "../lib/personalization";
 import { resolveRelativeTime } from "../lib/relative-time";
@@ -45,13 +44,12 @@ test("W14 turn-shaped operations can be recorded and undone via state restore", 
   assert.equal(undone.messages.length, 0);
 });
 
-test("W25 partial shopping proposal filtering", () => {
-  const items = [{ title: "סלמון" }, { title: "בטטה" }, { title: "ברוקולי" }];
-  assert.equal(filterShoppingProposalItems(items, "כן").length, 3);
-  assert.equal(filterShoppingProposalItems(items, "לא").length, 0);
-  assert.deepEqual(
-    filterShoppingProposalItems(items, "כן בלי ברוקולי").map((x) => x.title),
-    ["סלמון", "בטטה"],
+test("W25 legacy shopping phrase parser is not exported from domain", async () => {
+  const domain = await import("../lib/domain/shopping");
+  assert.equal(
+    "filterShoppingProposalItems" in domain,
+    false,
+    "NL shopping parser must stay out of production domain exports",
   );
 });
 
@@ -84,7 +82,11 @@ test("W31 compaction keeps recent messages only", () => {
   }
   const compacted = compactConversation(s, now);
   assert.ok(compacted.messages.length <= 12);
-  assert.ok(compacted.compactedMemory.preferences.length >= 1);
+  assert.equal(
+    compacted.compactedMemory.preferences.length,
+    s.compactedMemory.preferences.length,
+    "compaction must not keyword-classify user text",
+  );
 });
 
 test("W29 relative time resolver returns preferred evening window", () => {

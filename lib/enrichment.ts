@@ -1,4 +1,4 @@
-import { classifyLegacyCategory, CategoryId } from "./taxonomy";
+import { CategoryId } from "./taxonomy";
 import { catalog } from "./catalog";
 import { normalize } from "./model";
 
@@ -54,11 +54,7 @@ export function enrichTaskLocal(input: {
     };
   }
   return {
-    categoryId: classifyLegacyCategory(
-      "שונות / לא מסווג",
-      input.title,
-      input.templateId,
-    ),
+    categoryId: "unclassified",
     detailTypeId: input.detailTypeId ?? null,
     workMinutes: input.workMinutes,
     waitMinutes: input.waitMinutes,

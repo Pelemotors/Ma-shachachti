@@ -1,11 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import type { Action, AppState } from "@/lib/model";
-import {
-  applyScanCorrection,
-  type FirstScanAnalysis,
-} from "@/lib/domain/first-scan/analyze";
-import { analyzeFirstScan } from "@/lib/domain/first-scan/semantic";
+import type { FirstScanAnalysis } from "@/lib/domain/first-scan/analyze";
 import { buildScanApproveActions } from "@/lib/domain/first-scan/approve";
 import { DurationWheel, durationToMinutes } from "@/components/duration-wheel";
 import {
@@ -18,16 +14,27 @@ import { messageForCode } from "@/lib/errors";
 
 const SCAN_ANALYSIS_FAIL_HE = messageForCode("scan_analysis_failed");
 
-/** Prefer server semantic scan when authenticated; else local heuristic only. */
+/** Server semantic scan only — fail closed when agent unavailable. */
 async function analyzeScanPreferSemantic(
   text: string,
   opts?: { aiConsent?: boolean },
 ): Promise<FirstScanAnalysis> {
   const { supabase, authFetch } = await import("@/lib/supabase-browser");
-  // Local-demo / e2e clear Supabase: never hit the API (avoids next-dev compile/HMR races).
-  if (!supabase) return analyzeFirstScan(text);
+  if (!supabase) {
+    const err = new Error(messageForCode("ai_not_configured")) as Error & {
+      code?: string;
+    };
+    err.code = "ai_not_configured";
+    throw err;
+  }
   const session = (await supabase.auth.getSession()).data.session;
-  if (!session) return analyzeFirstScan(text);
+  if (!session) {
+    const err = new Error(messageForCode("ai_not_configured")) as Error & {
+      code?: string;
+    };
+    err.code = "ai_not_configured";
+    throw err;
+  }
   if (opts?.aiConsent === false) {
     const err = new Error(messageForCode("ai_consent_required")) as Error & {
       code?: string;
@@ -257,10 +264,28 @@ export function FirstScanPanel(props: {
     }
   }
 
-  function applyFix() {
-    if (!analysis || !correction.trim()) return;
-    setAnalysis(applyScanCorrection(analysis, correction));
-    setCorrection("");
+  async function applyFix() {
+    if (!session || !correction.trim()) return;
+    setAnalysisError("");
+    const base = session.chunks.map((c) => c.text).join("\n");
+    const text = `${base}\n\nתיקון מהמשתמש: ${correction.trim()}`;
+    try {
+      const a = await analyzeScanPreferSemantic(text, {
+        aiConsent: props.state.profile.aiConsent,
+      });
+      setAnalysis(a);
+      setCorrection("");
+    } catch (e) {
+      const code =
+        e && typeof e === "object" && "code" in e
+          ? String((e as { code?: string }).code ?? "")
+          : "";
+      setAnalysisError(
+        code === "ai_consent_required"
+          ? messageForCode("ai_consent_required")
+          : SCAN_ANALYSIS_FAIL_HE,
+      );
+    }
   }
 
   async function returnToCapture() {

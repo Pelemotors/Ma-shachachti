@@ -7,7 +7,10 @@ import {
   readState,
   ApiError,
 } from "@/lib/server";
-import { analyzeFirstScanSemantic } from "@/lib/domain/first-scan/ai";
+import {
+  analyzeFirstScanSemantic,
+  ScanAnalysisError,
+} from "@/lib/domain/first-scan/ai";
 import { messageForCode } from "@/lib/errors";
 
 export const runtime = "nodejs";
@@ -34,6 +37,13 @@ export async function POST(req: Request) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
+    if (error instanceof ScanAnalysisError) {
+      const status = error.code === "ai_not_configured" ? 503 : 502;
+      return fail(
+        new ApiError(status, messageForCode(error.code), error.code),
+        requestId,
+      );
+    }
     return fail(error, requestId);
   }
 }

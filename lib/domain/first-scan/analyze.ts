@@ -1,3 +1,7 @@
+/**
+ * Legacy heuristic first-scan parser — migration/domain tests only.
+ * Production scan path: LLM → parseSemanticScanResult (fail closed).
+ */
 import type { CategoryId } from "../../taxonomy";
 
 export type DetectedArea = {

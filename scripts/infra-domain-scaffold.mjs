@@ -113,7 +113,7 @@ export { freeTimeV2, opportunities };
 
 w(
   "lib/domain/shopping.ts",
-  `export { filterShoppingProposalItems } from "../shopping-proposal";
+  `/** Shopping domain — NL proposal parsing removed from production exports. */
 `,
 );
 
