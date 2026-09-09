@@ -64,8 +64,9 @@ export function HomeApp() {
 
   useEffect(() => {
     const id = setInterval(() => setClock(new Date()), 60000);
-    if (new URLSearchParams(window.location.search).get("view") === "reminders")
-      setView("reminders");
+    const initialView = new URLSearchParams(window.location.search).get("view");
+    if (initialView === "reminders") setView("reminders");
+    if (initialView === "plan") setView("plan");
     return () => clearInterval(id);
   }, []);
 

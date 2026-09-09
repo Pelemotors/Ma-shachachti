@@ -1,6 +1,5 @@
 "use client";
 import { DurationWheel, durationToMinutes } from "@/components/duration-wheel";
-import { ViewHeader } from "@/components/view-header";
 import { VoiceButton } from "@/components/voice-recorder";
 
 export function PlanSetupView(props: {
@@ -11,20 +10,34 @@ export function PlanSetupView(props: {
   planBusy: boolean;
   mode: string;
   aiConsent: boolean;
+  compact?: boolean;
   onDuration: (v: { hours: number; minutes: number }) => void;
   onEffort: (v: number) => void;
   onChangedDay: (v: string) => void;
-  onBuild: () => void;
   onChangedDaySubmit: () => void;
   onNeedConsent: () => void;
   onError: (msg: string) => void;
 }) {
   const voiceEnabled = props.mode === "cloud" && !props.planBusy;
   return (
-    <>
-      <ViewHeader view="plan" />
-      <p className="intro">תוכנית שמורה להיום — לא מחושבת מחדש בכל רענון.</p>
-      <section className="panel stack">
+    <section
+      className={props.compact ? "panel stack schedule-adjust" : "panel stack"}
+    >
+      <h3 className="schedule-adjust-title">מה שונה היום?</h3>
+      <p className="muted schedule-adjust-hint">
+        עדכון קצר שעוזר להתאים את היום — בלי לבנות מחדש בלי סיבה.
+      </p>
+      <label>
+        מה השתנה
+        <textarea
+          value={props.changedDay}
+          onChange={(e) => props.onChangedDay(e.target.value)}
+          placeholder="למשל: היום אני יוצאת ב־16:00, אין לי כוח, הילדה בבית, יש לי רק שעה בבוקר..."
+          rows={2}
+        />
+      </label>
+      <details className="schedule-adjust-more">
+        <summary>כמה זמן וכוח יש לי היום?</summary>
         <DurationWheel
           hours={props.planHours}
           minutes={props.planMinsPart}
@@ -42,54 +55,38 @@ export function PlanSetupView(props: {
             <option value={3}>הרבה</option>
           </select>
         </label>
-        <button
-          className="primary"
-          disabled={
-            durationToMinutes(props.planHours, props.planMinsPart) === 0
+      </details>
+      <div className="button-row">
+        <VoiceButton
+          enabled={voiceEnabled}
+          aiConsent={props.aiConsent}
+          onNeedConsent={props.onNeedConsent}
+          disabledHint={
+            props.mode !== "cloud"
+              ? "תמלול קולי זמין אחרי חיבור לחשבון. אפשר להקליד כאן."
+              : "תמלול קולי זמין אחרי הפעלת עזרה אישית. אפשר להקליד כאן."
           }
-          onClick={() => void props.onBuild()}
+          onText={(text) =>
+            props.onChangedDay(
+              props.changedDay
+                ? `${props.changedDay.trim()} ${text}`.trim()
+                : text,
+            )
+          }
+          onError={props.onError}
+        />
+        <button
+          className="secondary"
+          type="button"
+          disabled={!props.changedDay.trim() || props.planBusy}
+          onClick={() => void props.onChangedDaySubmit()}
         >
-          היום כרגיל — בנה תוכנית
+          עדכון היום
         </button>
-
-        <label>
-          מה שונה היום?
-          <textarea
-            value={props.changedDay}
-            onChange={(e) => props.onChangedDay(e.target.value)}
-            placeholder="למשל: יש לי תור ב־16:00, הילדה בבית היום, בערב אני יוצאת..."
-            rows={3}
-          />
-        </label>
-        <div className="button-row">
-          <VoiceButton
-            enabled={voiceEnabled}
-            aiConsent={props.aiConsent}
-            onNeedConsent={props.onNeedConsent}
-            disabledHint={
-              props.mode !== "cloud"
-                ? "תמלול קולי זמין אחרי חיבור לחשבון. אפשר להקליד כאן."
-                : "תמלול קולי זמין אחרי הפעלת עזרה אישית. אפשר להקליד כאן."
-            }
-            onText={(text) =>
-              props.onChangedDay(
-                props.changedDay
-                  ? `${props.changedDay.trim()} ${text}`.trim()
-                  : text,
-              )
-            }
-            onError={props.onError}
-          />
-          <button
-            className="secondary"
-            type="button"
-            disabled={!props.changedDay.trim() || props.planBusy}
-            onClick={() => void props.onChangedDaySubmit()}
-          >
-            המשך
-          </button>
-        </div>
-      </section>
-    </>
+      </div>
+      {durationToMinutes(props.planHours, props.planMinsPart) === 0 ? (
+        <p className="muted">כדי לבנות או להתאים לו״ז צריך לבחור כמה זמן יש.</p>
+      ) : null}
+    </section>
   );
 }

@@ -15,7 +15,7 @@ export const VIEW_TITLES: Record<AppView, string> = {
   kit: "מתאים לבית שלכם?",
   history: "מה כבר נעשה",
   focus: "מה שכחתי?",
-  plan: "נעשה סדר ביום",
+  plan: "הלו״ז שלי",
   free: "זמן בשביל מה שמתאים",
 };
 
