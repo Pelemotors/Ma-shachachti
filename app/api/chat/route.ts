@@ -1,11 +1,6 @@
 import { authorize, HttpError } from "@/lib/server-auth";
-import {
-  executeActions,
-  groundReply,
-  loadMemory,
-  loadTasks,
-  parseActions,
-} from "@/lib/actions";
+import { composeReply } from "@/lib/action-schema";
+import { loadMemory, loadTasks, runRequestedActions } from "@/lib/actions";
 import {
   AGENT_TURN_JSON_SCHEMA,
   buildInstructions,
@@ -108,15 +103,8 @@ export async function POST(req: Request) {
       .slice()
       .reverse()
       .map((item) => ({ role: item.role, content: item.content }));
-    const openaiBase = {
-      model,
-      store: false,
-      instructions: buildInstructions({ tasks, memory }),
-      input: openaiInput,
-      max_output_tokens: 1400,
-    };
 
-    let response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -124,7 +112,11 @@ export async function POST(req: Request) {
       },
       signal: AbortSignal.timeout(30_000),
       body: JSON.stringify({
-        ...openaiBase,
+        model,
+        store: false,
+        instructions: buildInstructions({ tasks, memory }),
+        input: openaiInput,
+        max_output_tokens: 1400,
         text: {
           format: {
             type: "json_schema",
@@ -136,19 +128,7 @@ export async function POST(req: Request) {
       }),
     });
 
-    let raw = await response.text();
-    if (!response.ok && response.status === 400) {
-      response = await fetch("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        signal: AbortSignal.timeout(30_000),
-        body: JSON.stringify(openaiBase),
-      });
-      raw = await response.text();
-    }
+    const raw = await response.text();
 
     if (!response.ok) {
       console.error("OpenAI Lean chat upstream error", {
@@ -171,9 +151,9 @@ export async function POST(req: Request) {
     if (!extracted) throw new HttpError(502, "הסוכן לא החזיר תשובה.");
 
     const decision = parseDecision(extracted);
-    const actions = parseActions(decision.actions);
-    const results = await executeActions(db, userId, actions);
-    const reply = groundReply(decision.reply, results);
+    if (!decision.ok) throw new HttpError(502, "הסוכן החזיר תשובה לא תקינה.");
+    const results = await runRequestedActions(db, userId, decision.actions);
+    const reply = composeReply(decision.reply, results);
     if (!reply) throw new HttpError(502, "הסוכן לא החזיר תשובה.");
 
     const { data: saved, error: assistantSaveError } = await db

@@ -1,51 +1,24 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { z } from "zod";
+import { inspectActions } from "./action-schema";
 import type {
   ActionResult,
   ActionType,
   AgentAction,
   MemoryRow,
   TaskRow,
-} from "@/lib/types";
-import { ACTION_TYPES } from "@/lib/types";
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-const ActionSchema = z.object({
-  type: z.enum(ACTION_TYPES),
-  id: z.string().uuid().nullable().optional(),
-  title: z.string().trim().min(1).max(200).nullable().optional(),
-  notes: z.string().trim().max(2000).nullable().optional(),
-  due_on: z.string().regex(DATE_RE).nullable().optional(),
-  kind: z.enum(["preference", "fact"]).nullable().optional(),
-  content: z.string().trim().min(1).max(500).nullable().optional(),
-  confidence: z.enum(["low", "medium", "high"]).nullable().optional(),
-});
+} from "./types";
 
 type Db = SupabaseClient;
 
-export function parseActions(raw: unknown): AgentAction[] {
-  if (!Array.isArray(raw)) return [];
-  const actions: AgentAction[] = [];
-  for (const item of raw.slice(0, 10)) {
-    const parsed = ActionSchema.safeParse(item);
-    if (!parsed.success) continue;
-    actions.push({
-      type: parsed.data.type,
-      id: parsed.data.id ?? null,
-      title: parsed.data.title ?? null,
-      notes: parsed.data.notes ?? null,
-      due_on: parsed.data.due_on ?? null,
-      kind: parsed.data.kind ?? null,
-      content: parsed.data.content ?? null,
-      confidence: parsed.data.confidence ?? null,
-    });
-  }
-  return actions;
-}
-
 function fail(type: ActionType, error: string): ActionResult {
   return { ok: false, type, error };
+}
+
+function ok(
+  type: ActionType,
+  extra: { id?: string; title?: string | null; due_on?: string | null } = {},
+): ActionResult {
+  return { ok: true, type, ...extra };
 }
 
 async function ownTask(db: Db, userId: string, id: string) {
@@ -94,7 +67,11 @@ export async function executeAction(
         .single();
       if (error || !data)
         return fail(action.type, "לא הצלחנו ליצור את המשימה.");
-      return { ok: true, type: action.type, id: data.id as string };
+      return ok(action.type, {
+        id: data.id as string,
+        title: action.title,
+        due_on: action.due_on,
+      });
     }
     case "task.update": {
       if (!action.id) return fail(action.type, "חסר מזהה משימה.");
@@ -111,7 +88,11 @@ export async function executeAction(
         .eq("user_id", userId)
         .eq("id", action.id);
       if (error) return fail(action.type, "לא הצלחנו לעדכן את המשימה.");
-      return { ok: true, type: action.type, id: action.id };
+      return ok(action.type, {
+        id: action.id,
+        title: action.title,
+        due_on: action.due_on,
+      });
     }
     case "task.reschedule": {
       if (!action.id || !action.due_on)
@@ -124,7 +105,11 @@ export async function executeAction(
         .eq("user_id", userId)
         .eq("id", action.id);
       if (error) return fail(action.type, "לא הצלחנו לשנות את התאריך.");
-      return { ok: true, type: action.type, id: action.id };
+      return ok(action.type, {
+        id: action.id,
+        title: action.title,
+        due_on: action.due_on,
+      });
     }
     case "task.complete": {
       if (!action.id) return fail(action.type, "חסר מזהה משימה.");
@@ -136,7 +121,7 @@ export async function executeAction(
         .eq("user_id", userId)
         .eq("id", action.id);
       if (error) return fail(action.type, "לא הצלחנו לסמן את המשימה כבוצעה.");
-      return { ok: true, type: action.type, id: action.id };
+      return ok(action.type, { id: action.id, title: action.title });
     }
     case "task.reopen": {
       if (!action.id) return fail(action.type, "חסר מזהה משימה.");
@@ -148,7 +133,7 @@ export async function executeAction(
         .eq("user_id", userId)
         .eq("id", action.id);
       if (error) return fail(action.type, "לא הצלחנו לפתוח מחדש את המשימה.");
-      return { ok: true, type: action.type, id: action.id };
+      return ok(action.type, { id: action.id, title: action.title });
     }
     case "task.delete": {
       if (!action.id) return fail(action.type, "חסר מזהה משימה.");
@@ -160,7 +145,7 @@ export async function executeAction(
         .eq("user_id", userId)
         .eq("id", action.id);
       if (error) return fail(action.type, "לא הצלחנו למחוק את המשימה.");
-      return { ok: true, type: action.type, id: action.id };
+      return ok(action.type, { id: action.id, title: action.title });
     }
     case "memory.upsert": {
       if (!action.content) return fail(action.type, "חסר תוכן לזיכרון.");
@@ -180,7 +165,7 @@ export async function executeAction(
           .eq("user_id", userId)
           .eq("id", action.id);
         if (error) return fail(action.type, "לא הצלחנו לעדכן את הזיכרון.");
-        return { ok: true, type: action.type, id: action.id };
+        return ok(action.type, { id: action.id });
       }
       const { data, error } = await db
         .from("agent_memory")
@@ -195,7 +180,7 @@ export async function executeAction(
         .single();
       if (error || !data)
         return fail(action.type, "לא הצלחנו לשמור את הזיכרון.");
-      return { ok: true, type: action.type, id: data.id as string };
+      return ok(action.type, { id: data.id as string });
     }
     case "memory.remove": {
       if (!action.id) return fail(action.type, "חסר מזהה זיכרון.");
@@ -207,7 +192,7 @@ export async function executeAction(
         .eq("user_id", userId)
         .eq("id", action.id);
       if (error) return fail(action.type, "לא הצלחנו למחוק את הזיכרון.");
-      return { ok: true, type: action.type, id: action.id };
+      return ok(action.type, { id: action.id });
     }
   }
 }
@@ -222,6 +207,24 @@ export async function executeActions(
     results.push(await executeAction(db, userId, action));
   }
   return results;
+}
+
+export async function runRequestedActions(
+  db: Db,
+  userId: string,
+  raw: unknown,
+) {
+  const inspected = inspectActions(raw);
+  for (const result of inspected.results) {
+    if (!result.ok) {
+      console.error("Lean action rejected", {
+        type: result.type,
+        detail: result.detail ?? "execute",
+      });
+    }
+  }
+  const executed = await executeActions(db, userId, inspected.accepted);
+  return [...inspected.results, ...executed];
 }
 
 export async function loadTasks(db: Db, userId: string): Promise<TaskRow[]> {
@@ -245,10 +248,4 @@ export async function loadMemory(db: Db, userId: string): Promise<MemoryRow[]> {
     .limit(40);
   if (error) throw error;
   return (data ?? []) as MemoryRow[];
-}
-
-export function groundReply(reply: string, results: ActionResult[]) {
-  const failed = results.filter((result) => !result.ok);
-  if (!failed.length) return reply.trim();
-  return `${reply.trim()}\n\nחלק מהפעולות לא נשמרו. אפשר לנסות שוב.`;
 }

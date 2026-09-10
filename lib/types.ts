@@ -47,5 +47,16 @@ export type AgentAction = {
 };
 
 export type ActionResult =
-  | { ok: true; type: ActionType; id?: string }
-  | { ok: false; type: ActionType; error: string };
+  | {
+      ok: true;
+      type: ActionType;
+      id?: string;
+      title?: string | null;
+      due_on?: string | null;
+    }
+  | {
+      ok: false;
+      type: ActionType | "invalid";
+      error: string;
+      detail?: string;
+    };

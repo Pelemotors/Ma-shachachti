@@ -4,6 +4,8 @@ import {
 } from "@/lib/agent/instructions";
 import type { MemoryRow, TaskRow } from "@/lib/types";
 
+export { AGENT_TURN_JSON_SCHEMA, parseDecision } from "@/lib/action-schema";
+
 const TIME_ZONE = "Asia/Jerusalem";
 
 export function todayContext(now = new Date()) {
@@ -36,25 +38,23 @@ export function buildInstructions(input: {
 
   return `${AGENT_INSTRUCTIONS}
 
-## מצב המוצר — Lean V1
-אתה מחליט. הקוד מבצע. אין לך SQL ואין לך גישה ישירה למסד הנתונים.
-החזר JSON בלבד לפי הסכימה. השדה reply הוא מה שהמשתמש יראה.
-אל תגיד ששמרת או שינית משהו שלא ביקשת לבצע ב-actions.
-אם אין צורך בפעולה, החזר actions ריק וענה בשיחה.
+## יכולות זמינות עכשיו — Lean V1
+אתה מחליט. הקוד מבצע. אין SQL ואין גישה ישירה למסד.
+החזר JSON בלבד לפי הסכימה.
+שדה reply הוא שיחה בלבד: הסבר, שאלה, או גבול תחום. אל תכתוב בו שפעולה כבר נשמרה.
+אם צריך לשנות נתונים — שים זאת ב-actions. הקוד יאשר למשתמש רק אחרי ביצוע אמיתי.
 
-פעולות מותרות:
-- task.create: title חובה, due_on אופציונלי (YYYY-MM-DD), notes אופציונלי
+פעולות זמינות:
+- task.create: title חובה. due_on רק YYYY-MM-DD. שעה, אם חשובה, ב-notes. אין תזכורות ואין שעת התראה.
 - task.update: id חובה, וגם title/notes/due_on לפי הצורך
 - task.reschedule: id + due_on
-- task.complete / task.reopen / task.delete: id חובה. delete מסמן cancelled ולא מוחק פיזית
-- memory.upsert: content חובה, kind=preference|fact, confidence=low|medium|high. id רק אם מעדכנים זיכרון קיים
+- task.complete / task.reopen / task.delete: id חובה. delete מסמן cancelled
+- memory.upsert: content חובה, kind=preference|fact, confidence=low|medium|high. id רק לעדכון קיים
 - memory.remove: id חובה
 
-כללים קצרים:
-- כשמזהים משימה קיימת, השתמשו ב-id שלה. אל תיצרו כפילות.
-- due_on הוא תאריך לוח שנה בלבד, ב-${timeZone}.
-- שמרו בזיכרון רק העדפה או עובדה ששווה להשתמש בה בשיחות הבאות, לא הודעה רגעית.
-- עד 10 פעולות בפנייה אחת.
+אין reminder.create, אין חיפוש באינטרנט, אין שמירת שעה כשדה נפרד.
+אם מבקשים תזכורת לשעה — שמור משימה לתאריך אם מתאים, וכתוב ב-reply שאין התראה לשעה.
+עד 10 פעולות בפנייה. כשמזהים משימה קיימת השתמש ב-id שלה.
 
 ## הקשר עכשיו
 היום: ${weekday} ${date} (${timeZone})
@@ -78,81 +78,4 @@ ${
     : "- אין"
 }
 `;
-}
-
-export const AGENT_TURN_JSON_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["reply", "actions"],
-  properties: {
-    reply: { type: "string" },
-    actions: {
-      type: "array",
-      maxItems: 10,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "type",
-          "id",
-          "title",
-          "notes",
-          "due_on",
-          "kind",
-          "content",
-          "confidence",
-        ],
-        properties: {
-          type: {
-            type: "string",
-            enum: [
-              "task.create",
-              "task.update",
-              "task.complete",
-              "task.reopen",
-              "task.reschedule",
-              "task.delete",
-              "memory.upsert",
-              "memory.remove",
-            ],
-          },
-          id: { type: ["string", "null"] },
-          title: { type: ["string", "null"] },
-          notes: { type: ["string", "null"] },
-          due_on: { type: ["string", "null"] },
-          kind: { type: ["string", "null"] },
-          content: { type: ["string", "null"] },
-          confidence: { type: ["string", "null"] },
-        },
-      },
-    },
-  },
-} as const;
-
-export function parseDecision(text: string) {
-  const trimmed = text.trim();
-  const candidates = [trimmed];
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced?.[1]) candidates.unshift(fenced[1].trim());
-  const firstBrace = trimmed.indexOf("{");
-  const lastBrace = trimmed.lastIndexOf("}");
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    candidates.push(trimmed.slice(firstBrace, lastBrace + 1));
-  }
-
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate) as {
-        reply?: unknown;
-        actions?: unknown;
-      };
-      if (typeof parsed.reply === "string" && parsed.reply.trim()) {
-        return { reply: parsed.reply.trim(), actions: parsed.actions };
-      }
-    } catch {
-      // try next candidate
-    }
-  }
-
-  return { reply: trimmed, actions: [] };
 }

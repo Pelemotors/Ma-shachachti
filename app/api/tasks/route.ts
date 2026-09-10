@@ -1,5 +1,6 @@
 import { authorize, HttpError } from "@/lib/server-auth";
-import { executeAction, loadTasks, parseActions } from "@/lib/actions";
+import { inspectActions } from "@/lib/action-schema";
+import { executeAction, loadTasks } from "@/lib/actions";
 
 export const runtime = "nodejs";
 
@@ -28,13 +29,16 @@ export async function POST(req: Request) {
   try {
     const { db, userId } = await authorize(req);
     const body = await req.json().catch(() => null);
-    const actions = parseActions(body?.actions ?? [body]);
-    if (!actions.length) throw new HttpError(400, "לא התקבלה פעולה תקינה.");
-    if (actions.length > 10)
-      throw new HttpError(400, "יותר מדי פעולות בבת אחת.");
+    const inspected = inspectActions(body?.actions ?? [body]);
+    if (
+      inspected.results.some((result) => !result.ok) ||
+      !inspected.accepted.length
+    ) {
+      throw new HttpError(400, "לא התקבלה פעולה תקינה.");
+    }
 
     const results = [];
-    for (const action of actions) {
+    for (const action of inspected.accepted) {
       if (!action.type.startsWith("task.")) {
         throw new HttpError(400, "מכאן אפשר לעדכן רק משימות.");
       }
