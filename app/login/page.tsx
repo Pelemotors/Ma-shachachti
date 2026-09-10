@@ -11,40 +11,27 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
-    setNotice("");
     if (!supabase) {
       setError("החיבור לענן עדיין לא הוגדר.");
       return;
     }
+
     setBusy(true);
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
     setBusy(false);
+
     if (signInError) {
       setError("פרטי ההתחברות לא נכונים או שהחשבון אינו זמין.");
       return;
     }
     router.replace("/app");
-  }
-
-  async function resetPassword() {
-    setError("");
-    setNotice("");
-    if (!supabase || !email.trim()) {
-      setError("יש להזין כתובת אימייל קודם.");
-      return;
-    }
-    setBusy(true);
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/login`,
-    });
-    setBusy(false);
-    if (resetError) setError("לא הצלחנו לשלוח קישור לאיפוס הסיסמה.");
-    else setNotice("שלחנו קישור לאיפוס הסיסמה למייל.");
   }
 
   return (
@@ -77,15 +64,9 @@ export default function LoginPage() {
             />
           </label>
           {error ? <div className="error-box">{error}</div> : null}
-          {notice ? <div className="success-box">{notice}</div> : null}
           <button className="primary-button" disabled={busy} type="submit">
             {busy ? "מתחבר…" : "כניסה"}
           </button>
-          <div className="login-actions">
-            <button className="text-button" disabled={busy} type="button" onClick={resetPassword}>
-              שכחתי סיסמה
-            </button>
-          </div>
         </form>
       </section>
     </main>
