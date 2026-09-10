@@ -1,5 +1,5 @@
-import { PersonalAreaGate } from "@/components/personal-area-gate";
+import { ChatApp } from "@/components/chat-app";
 
-export default function PersonalAreaPage() {
-  return <PersonalAreaGate />;
+export default function AppPage() {
+  return <ChatApp />;
 }

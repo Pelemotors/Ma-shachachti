@@ -1,14 +1,9 @@
 import type { NextConfig } from "next";
+
 const config: NextConfig = {
   poweredByHeader: false,
-  // Playwright and some hosts hit the dev server as 127.0.0.1 while
-  // `next dev --hostname 0.0.0.0` would otherwise block /_next assets.
-  allowedDevOrigins: ["127.0.0.1", "localhost"],
   outputFileTracingIncludes: {
-    "/api/chat": [
-      "./lib/agent/instructions.ts",
-      "./lib/agent/runtime-contract.ts",
-    ],
+    "/api/chat": ["./lib/agent/INSTRUCTIONS.he.md"],
   },
   async headers() {
     return [
@@ -18,13 +13,10 @@ const config: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "DENY" },
-          {
-            key: "Permissions-Policy",
-            value: "camera=(), geolocation=(), microphone=(self)",
-          },
         ],
       },
     ];
   },
 };
+
 export default config;

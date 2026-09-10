@@ -1,124 +1,93 @@
 "use client";
-import { useState } from "react";
+
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-browser";
-import { SeasonalPublicShell } from "@/components/seasonal-public-shell";
-function returnTarget() {
-  const raw = new URLSearchParams(location.search).get("returnTo") || "/app";
-  return raw.startsWith("/app") && !raw.startsWith("//") ? raw : "/app";
-}
+import { seasonForDate } from "@/lib/season";
+
 export default function LoginPage() {
-  const [email, setEmail] = useState(""),
-    [password, setPassword] = useState(""),
-    [signup, setSignup] = useState(false),
-    [busy, setBusy] = useState(false),
-    [message, setMessage] = useState("");
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!supabase) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      if (signup) {
-        const { data, error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        if (data.session) location.replace(returnTarget());
-        else setMessage("החשבון נוצר. לאחר אישור מנהל אפשר יהיה להיכנס.");
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-        location.replace(returnTarget());
-      }
-    } catch {
-      setMessage(
-        signup
-          ? "לא הצלחנו ליצור חשבון. בדקי את הפרטים ונסי שוב."
-          : "האימייל או הסיסמה אינם נכונים.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function reset() {
-    if (!supabase || !email) {
-      setMessage("הזיני אימייל כדי לאפס סיסמה.");
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    if (!supabase) {
+      setError("החיבור לענן עדיין לא הוגדר.");
       return;
     }
     setBusy(true);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${location.origin}/app`,
-      });
-      if (error) throw error;
-      setMessage("שלחנו קישור לאיפוס סיסמה לאימייל.");
-    } catch {
-      setMessage("לא הצלחנו לשלוח קישור לאיפוס סיסמה.");
-    } finally {
-      setBusy(false);
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    setBusy(false);
+    if (signInError) {
+      setError("פרטי ההתחברות לא נכונים או שהחשבון אינו זמין.");
+      return;
     }
+    router.replace("/app");
   }
+
+  async function resetPassword() {
+    setError("");
+    setNotice("");
+    if (!supabase || !email.trim()) {
+      setError("יש להזין כתובת אימייל קודם.");
+      return;
+    }
+    setBusy(true);
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/login`,
+    });
+    setBusy(false);
+    if (resetError) setError("לא הצלחנו לשלוח קישור לאיפוס הסיסמה.");
+    else setNotice("שלחנו קישור לאיפוס הסיסמה למייל.");
+  }
+
   return (
-    <SeasonalPublicShell>
-      <main className="welcome">
+    <main className="lean-shell" data-theme={seasonForDate()}>
+      <section className="login-wrap">
         <div className="brand-mark">מ׳</div>
         <p className="eyebrow">מה שכחתי?</p>
-        <h1>{signup ? "יצירת חשבון" : "כניסה לאזור האישי"}</h1>
-        <form className="panel stack" onSubmit={submit}>
-          <label>
-            אימייל
+        <h1>כניסה לאזור האישי</h1>
+        <p className="muted">הסוכן האישי שלך מחכה לך כאן.</p>
+
+        <form className="card login-card" onSubmit={submit}>
+          <label className="field">
+            <span>אימייל</span>
             <input
               type="email"
-              dir="ltr"
               autoComplete="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(event) => setEmail(event.target.value)}
             />
           </label>
-          <label>
-            סיסמה
+          <label className="field">
+            <span>סיסמה</span>
             <input
               type="password"
-              dir="ltr"
-              autoComplete={signup ? "new-password" : "current-password"}
-              minLength={6}
+              autoComplete="current-password"
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
             />
           </label>
-          <button className="primary" disabled={busy}>
-            {busy ? "רגע…" : signup ? "יצירת חשבון" : "כניסה"}
+          {error ? <div className="error-box">{error}</div> : null}
+          {notice ? <div className="success-box">{notice}</div> : null}
+          <button className="primary-button" disabled={busy} type="submit">
+            {busy ? "מתחבר…" : "כניסה"}
           </button>
+          <div className="login-actions">
+            <button className="text-button" disabled={busy} type="button" onClick={resetPassword}>
+              שכחתי סיסמה
+            </button>
+          </div>
         </form>
-        {!signup && (
-          <button className="text-button" disabled={busy} onClick={reset}>
-            שכחתי סיסמה
-          </button>
-        )}
-        <button
-          className="text-button"
-          onClick={() => {
-            setSignup(!signup);
-            setMessage("");
-          }}
-        >
-          {signup ? "כבר יש לי חשבון — כניסה" : "אין לי חשבון — הרשמה"}
-        </button>
-        {message && (
-          <p
-            className={
-              message.includes("נוצר") || message.includes("שלחנו")
-                ? "muted"
-                : "error"
-            }
-          >
-            {message}
-          </p>
-        )}
-      </main>
-    </SeasonalPublicShell>
+      </section>
+    </main>
   );
 }
