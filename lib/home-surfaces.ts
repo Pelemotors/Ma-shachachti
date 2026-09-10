@@ -1,26 +1,42 @@
+export const CHAT_SURFACES = ["forgotten", "schedule", "free-time"] as const;
+export type ChatSurface = (typeof CHAT_SURFACES)[number];
+
 export const HOME_SURFACES = [
   {
     id: "forgotten",
     title: "מה שכחתי?",
     subtitle: "מה כדאי לשים לב אליו עכשיו",
-    objective: "מה שכחתי? תעדף לי מתוך המשימות שלי מה כדאי להציג עכשיו.",
+    objective: "מה שכחתי?",
     primary: true,
   },
   {
     id: "schedule",
     title: "צור לי לו״ז להיום",
     subtitle: "סדר את המשימות להיום",
-    objective: "צור לי לו״ז להיום מתוך המשימות שלי.",
+    objective: "צור לי לו״ז להיום",
     primary: false,
   },
   {
     id: "free-time",
     title: "יש לי זמן פנוי",
     subtitle: "מה מתאים לזמן שיש לי",
-    objective: "יש לי זמן פנוי. מה מתוך המשימות שלי מתאים עכשיו?",
+    objective: "יש לי זמן פנוי",
     primary: false,
   },
-] as const;
+] as const satisfies ReadonlyArray<{
+  id: ChatSurface;
+  title: string;
+  subtitle: string;
+  objective: string;
+  primary: boolean;
+}>;
+
+export function isChatSurface(value: unknown): value is ChatSurface {
+  return (
+    typeof value === "string" &&
+    (CHAT_SURFACES as readonly string[]).includes(value)
+  );
+}
 
 export function greetingForDate(date = new Date()) {
   const hour = Number(

@@ -11,7 +11,11 @@ import {
 import { useRouter } from "next/navigation";
 import { authFetch, supabase } from "@/lib/supabase-browser";
 import { seasonForDate } from "@/lib/season";
-import { greetingForDate, HOME_SURFACES } from "@/lib/home-surfaces";
+import {
+  greetingForDate,
+  HOME_SURFACES,
+  type ChatSurface,
+} from "@/lib/home-surfaces";
 import { appendTranscript } from "@/lib/audio/recorder-helpers";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import type { ClientPresentation, PresentedTask, TaskRow } from "@/lib/types";
@@ -115,7 +119,7 @@ export function ChatApp() {
     [tasks],
   );
 
-  async function sendMessage(message: string) {
+  async function sendMessage(message: string, surface: ChatSurface | null = null) {
     if (!message || sending) return;
 
     setError("");
@@ -132,7 +136,7 @@ export function ChatApp() {
     const response = await authFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(surface ? { message, surface } : { message }),
     }).catch(() => null);
 
     if (!response) {
@@ -172,8 +176,8 @@ export function ChatApp() {
     await sendMessage(message);
   }
 
-  function openSurface(objective: string) {
-    void sendMessage(objective);
+  function openSurface(surface: (typeof HOME_SURFACES)[number]) {
+    void sendMessage(surface.objective, surface.id);
   }
 
   async function runTaskAction(action: Record<string, unknown>) {
@@ -286,7 +290,7 @@ export function ChatApp() {
                   className={`home-action ${surface.primary ? "primary" : "secondary"}`}
                   type="button"
                   disabled={sending}
-                  onClick={() => openSurface(surface.objective)}
+                  onClick={() => openSurface(surface)}
                 >
                   <span className="copy">
                     <strong>{surface.title}</strong>

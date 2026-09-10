@@ -3,9 +3,11 @@ import { composeReply } from "@/lib/action-schema";
 import { loadMemory, loadTasks, runRequestedActions } from "@/lib/actions";
 import {
   AGENT_TURN_JSON_SCHEMA,
+  applySurfaceTurnPolicy,
   buildInstructions,
   parseDecision,
 } from "@/lib/agent/turn";
+import { parseChatRequest } from "@/lib/chat-request";
 import { resolveTaskListPresentation } from "@/lib/presentation";
 
 export const runtime = "nodejs";
@@ -69,11 +71,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const { db, userId } = await authorize(req);
-    const body = await req.json().catch(() => null);
-    const message =
-      typeof body?.message === "string" ? body.message.trim() : "";
-    if (!message) throw new HttpError(400, "ההודעה ריקה.");
-    if (message.length > 8000) throw new HttpError(400, "ההודעה ארוכה מדי.");
+    const parsed = parseChatRequest(await req.json().catch(() => null));
+    if (!parsed.ok) throw new HttpError(parsed.status, parsed.error);
+    const { message, surface } = parsed.request;
 
     const { error: userSaveError } = await db.from("chat_messages").insert({
       user_id: userId,
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model,
         store: false,
-        instructions: buildInstructions({ tasks, memory }),
+        instructions: buildInstructions({ tasks, memory, surface }),
         input: openaiInput,
         max_output_tokens: 1400,
         text: {
@@ -153,13 +153,18 @@ export async function POST(req: Request) {
 
     const decision = parseDecision(extracted);
     if (!decision.ok) throw new HttpError(502, "הסוכן החזיר תשובה לא תקינה.");
-    const results = await runRequestedActions(db, userId, decision.actions);
+    const scoped = applySurfaceTurnPolicy({
+      surface,
+      actions: decision.actions,
+      presentation: decision.presentation,
+    });
+    const results = await runRequestedActions(db, userId, scoped.actions);
     const reply = composeReply(decision.reply, results);
     if (!reply) throw new HttpError(502, "הסוכן לא החזיר תשובה.");
 
     const nextTasks = await loadTasks(db, userId);
     const presentation = resolveTaskListPresentation(
-      decision.presentation,
+      scoped.presentation,
       nextTasks,
     );
 

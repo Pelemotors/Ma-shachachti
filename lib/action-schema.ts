@@ -235,12 +235,14 @@ function claimsExecution(text: string) {
   return EXECUTION_CLAIM_RE.test(text);
 }
 
-function conversationalParts(text: string) {
-  return text
-    .split(/\n+/)
-    .flatMap((block) => block.split(/(?<=[.!?])\s+/))
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0 && !claimsExecution(part));
+function conversationalLines(text: string) {
+  return text.split("\n").map((line) =>
+    line
+      .split(/(?<=[.!?])\s+/)
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0 && !claimsExecution(part))
+      .join(" "),
+  );
 }
 
 export function composeReply(llmReply: string, results: ActionResult[]) {
@@ -248,7 +250,10 @@ export function composeReply(llmReply: string, results: ActionResult[]) {
     .map((result) => (result.ok ? successLine(result) : failureLine(result)))
     .join("\n")
     .trim();
-  const talk = conversationalParts(llmReply).join(" ").trim();
+  const talk = conversationalLines(llmReply)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
   if (facts && talk) return `${facts}\n${talk}`;
   if (facts) return facts;
