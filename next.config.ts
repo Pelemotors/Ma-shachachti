@@ -6,6 +6,7 @@ const config: NextConfig = {
   outputFileTracingIncludes: {
     "/api/chat": ["./lib/agent/instructions.ts"],
   },
+  serverExternalPackages: ["web-push"],
   async headers() {
     return [
       {
@@ -14,6 +15,13 @@ const config: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "DENY" },
+        ],
+      },
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache" },
+          { key: "Service-Worker-Allowed", value: "/" },
         ],
       },
     ];

@@ -18,8 +18,16 @@ import {
 } from "@/lib/home-surfaces";
 import { appendTranscript } from "@/lib/audio/recorder-helpers";
 import { VoiceRecorder } from "@/components/voice-recorder";
+import { SettingsPanel } from "@/components/settings-panel";
 import type { ClientPresentation, PresentedTask, TaskRow } from "@/lib/types";
 import { formatTaskWhen } from "@/lib/time";
+import {
+  DEFAULT_REMINDER_MINUTES,
+  formatTaskReminder,
+  REMINDER_MINUTE_OPTIONS,
+  reminderLabel,
+} from "@/lib/reminders";
+import { reminderPatchFromSelect, reminderSelectValue } from "@/lib/push-client";
 
 type ChatMessage = {
   id: string;
@@ -29,7 +37,7 @@ type ChatMessage = {
   presentation?: ClientPresentation | null;
 };
 
-type View = "home" | "chat" | "tasks";
+type View = "home" | "chat" | "tasks" | "settings";
 
 function formatDue(task: { due_on: string | null; due_at?: string | null }) {
   return formatTaskWhen({ due_on: task.due_on, due_at: task.due_at ?? null });
@@ -54,6 +62,9 @@ export function ChatApp() {
   const [sending, setSending] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
   const [error, setError] = useState("");
+  const [defaultReminderMinutes, setDefaultReminderMinutes] = useState(
+    DEFAULT_REMINDER_MINUTES,
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
 
@@ -84,6 +95,12 @@ export function ChatApp() {
         setMessages(body.messages ?? []);
         setTasks(body.tasks ?? []);
       }
+      const prefs = await authFetch("/api/preferences")
+        .then((item) => item.json())
+        .catch(() => ({}));
+      if (alive && Number.isFinite(Number(prefs.default_reminder_minutes))) {
+        setDefaultReminderMinutes(Number(prefs.default_reminder_minutes));
+      }
       setLoading(false);
     }
     void load();
@@ -91,6 +108,28 @@ export function ChatApp() {
       alive = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view !== "tasks" && view !== "settings") return;
+    let alive = true;
+    void authFetch("/api/preferences")
+      .then((item) => item.json())
+      .then((prefs) => {
+        if (alive && Number.isFinite(Number(prefs.default_reminder_minutes))) {
+          setDefaultReminderMinutes(Number(prefs.default_reminder_minutes));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [view]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -255,8 +294,27 @@ export function ChatApp() {
           <div className="brand-mark small">מ׳</div>
           <div className="chat-header-copy">
             <strong>מה שכחתי?</strong>
-            <span>{view === "tasks" ? "המשימות שלך" : "הסוכן האישי שלך"}</span>
+            <span>
+              {view === "tasks"
+                ? "המשימות שלך"
+                : view === "settings"
+                  ? "הגדרות"
+                  : "הסוכן האישי שלך"}
+            </span>
           </div>
+          <button
+            className="icon-button settings-button"
+            type="button"
+            aria-label="הגדרות"
+            onClick={() => setView("settings")}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.22-1.14.52-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.77 8.84a.5.5 0 0 0 .12.64L4.92 11.06c-.04.31-.06.63-.06.94s.02.63.06.94L2.89 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.64.22l2.39-.96c.49.42 1.04.72 1.63.94l.36 2.54c.05.24.26.42.5.42h3.84c.24 0 .45-.18.5-.42l.36-2.54c.59-.22 1.14-.52 1.63-.94l2.39.96c.24.1.51.01.64-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"
+              />
+            </svg>
+          </button>
           <button className="logout-button" type="button" onClick={logout}>
             יציאה
           </button>
@@ -348,6 +406,8 @@ export function ChatApp() {
             {error ? <div className="error-box">{error}</div> : null}
             <div ref={bottomRef} />
           </div>
+        ) : view === "settings" ? (
+          <SettingsPanel />
         ) : (
           <div className="tasks-panel">
             <form className="task-create" onSubmit={addTask}>
@@ -393,6 +453,46 @@ export function ChatApp() {
                       {formatDue(task) ? (
                         <small>{formatDue(task)}</small>
                       ) : null}
+                      {task.due_at ? (
+                        <small>
+                          🔔{" "}
+                          {formatTaskReminder({
+                            due_at: task.due_at,
+                            reminder_enabled: task.reminder_enabled,
+                            reminder_offset_minutes:
+                              task.reminder_offset_minutes,
+                            default_reminder_minutes: defaultReminderMinutes,
+                          })}
+                        </small>
+                      ) : null}
+                      {task.due_at ? (
+                        <label className="task-reminder">
+                          <span>תזכורת</span>
+                          <select
+                            aria-label={`תזכורת עבור ${task.title}`}
+                            disabled={savingTask}
+                            value={reminderSelectValue(task)}
+                            onChange={(event) =>
+                              void runTaskAction({
+                                type: "task.update",
+                                id: task.id,
+                                ...reminderPatchFromSelect(event.target.value),
+                              })
+                            }
+                          >
+                            <option value="default">
+                              ברירת המחדל שלי —{" "}
+                              {reminderLabel(defaultReminderMinutes)}
+                            </option>
+                            {REMINDER_MINUTE_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {reminderLabel(option)}
+                              </option>
+                            ))}
+                            <option value="off">ללא התראה</option>
+                          </select>
+                        </label>
+                      ) : null}
                     </div>
                   </li>
                 ))}
@@ -422,7 +522,8 @@ export function ChatApp() {
         )}
 
         <div className="composer-wrap">
-          <form className="composer" onSubmit={send}>
+          {view === "settings" ? null : (
+            <form className="composer" onSubmit={send}>
             <VoiceRecorder
               enabled={!sending}
               onText={(transcript) => {
@@ -450,7 +551,8 @@ export function ChatApp() {
             >
               ←
             </button>
-          </form>
+            </form>
+          )}
           <nav className="bottom-nav" aria-label="ניווט ראשי">
             <button
               className={view === "home" ? "active" : undefined}
