@@ -12,6 +12,8 @@ import { useRouter } from "next/navigation";
 import { authFetch, supabase } from "@/lib/supabase-browser";
 import { seasonForDate } from "@/lib/season";
 import { greetingForDate, HOME_SURFACES } from "@/lib/home-surfaces";
+import { appendTranscript } from "@/lib/audio/recorder-helpers";
+import { VoiceRecorder } from "@/components/voice-recorder";
 import type { ClientPresentation, PresentedTask, TaskRow } from "@/lib/types";
 
 type ChatMessage = {
@@ -63,6 +65,7 @@ export function ChatApp() {
   const [savingTask, setSavingTask] = useState(false);
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const draftRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -429,7 +432,17 @@ export function ChatApp() {
 
         <div className="composer-wrap">
           <form className="composer" onSubmit={send}>
+            <VoiceRecorder
+              enabled={!sending}
+              onText={(transcript) => {
+                setText((current) => appendTranscript(current, transcript));
+                setError("");
+                requestAnimationFrame(() => draftRef.current?.focus());
+              }}
+              onError={setError}
+            />
             <textarea
+              ref={draftRef}
               aria-label="הודעה לסוכן"
               placeholder="אפשר פשוט לכתוב כאן…"
               rows={1}

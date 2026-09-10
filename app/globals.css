@@ -537,6 +537,111 @@ h1 {
   max-height: 132px;
   padding: 10px 11px;
 }
+.composer:has(.voice-recorder--active) > textarea,
+.composer:has(.voice-recorder--active) > .send-button {
+  display: none;
+}
+.composer:has(.voice-recorder--active) .voice-recorder--active {
+  flex: 1;
+  width: 100%;
+}
+.voice-recorder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.voice-recorder--active {
+  direction: rtl;
+}
+.voice-recorder--recording {
+  background: color-mix(in srgb, var(--accent-soft) 70%, #fff);
+  border-radius: 22px;
+  padding: 4px 6px;
+}
+.voice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 50%;
+  color: var(--on-primary);
+  background: var(--primary);
+  flex-shrink: 0;
+  gap: 4px;
+}
+.voice.recording {
+  width: auto;
+  min-width: 56px;
+  padding: 0 14px;
+  border-radius: 28px;
+}
+.voice-waveform {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 28px;
+  flex: 1;
+  min-width: 72px;
+}
+.voice-waveform__bar {
+  flex: 1;
+  max-width: 6px;
+  border-radius: 3px;
+  background: var(--primary);
+  min-height: 4px;
+}
+.voice-recorder__clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-weight: 600;
+  min-width: 3.2em;
+}
+.voice-recorder__error {
+  color: #a85a52;
+  font-size: 13px;
+  margin: 0;
+  flex: 1 1 100%;
+}
+.voice-recorder__send {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: auto;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 16px;
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.voice-recorder__finish-label {
+  font-size: 13px;
+}
+.text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary);
+  background: transparent;
+  font-size: 14px;
+  padding: 5px 0;
+  min-height: 40px;
+}
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--text);
+}
 .send-button {
   width: 44px;
   height: 44px;
