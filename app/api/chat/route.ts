@@ -6,6 +6,7 @@ import {
   applySurfaceTurnPolicy,
   buildInstructions,
   parseDecision,
+  surfaceInputHint,
 } from "@/lib/agent/turn";
 import { parseChatRequest } from "@/lib/chat-request";
 import { resolveTaskListPresentation } from "@/lib/presentation";
@@ -103,7 +104,12 @@ export async function POST(req: Request) {
     const openaiInput = (recent ?? [])
       .slice()
       .reverse()
-      .map((item) => ({ role: item.role, content: item.content }));
+      .map((item, index, items) => {
+        const isCurrentUserTurn =
+          index === items.length - 1 && item.role === "user";
+        const hint = isCurrentUserTurn ? surfaceInputHint(surface) : "";
+        return { role: item.role, content: `${hint}${item.content}` };
+      });
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",

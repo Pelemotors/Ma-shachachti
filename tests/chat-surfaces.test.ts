@@ -4,6 +4,7 @@ import { composeReply } from "../lib/action-schema.ts";
 import {
   applySurfaceTurnPolicy,
   buildInstructions,
+  surfaceInputHint,
   todayContext,
 } from "../lib/agent/turn.ts";
 import { parseChatRequest } from "../lib/chat-request.ts";
@@ -108,6 +109,15 @@ test("buildInstructions includes Jerusalem current time", () => {
   assert.doesNotMatch(text, /השעה עכשיו: 17:50/);
 });
 
+test("schedule input hint is turn context only and carries Jerusalem time", () => {
+  const hint = surfaceInputHint("schedule", eveningUtc);
+  assert.equal(surfaceInputHint(null, eveningUtc), "");
+  assert.match(hint, /surface=schedule/);
+  assert.match(hint, /20:50/);
+  assert.match(hint, /Asia\/Jerusalem/);
+  assert.doesNotMatch(hint, /צור לי לו״ז להיום/);
+});
+
 test("schedule surface is parsed separately from a regular chat message", () => {
   const schedule = parseChatRequest({
     message: "צור לי לו״ז להיום",
@@ -143,13 +153,13 @@ test("schedule instructions ask for a conversational plan and keep actions empty
     surface: "schedule",
     now: eveningUtc,
   });
-  assert.match(text, /משטח: הצעת לו״ז להיום/);
+  assert.match(text, /הוראת turn נוכחי: הצעת לו״ז להיום/);
   assert.match(text, /actions: \[\]/);
   assert.match(text, /presentation: null/);
   assert.match(text, /אל תתכנן שעות שכבר עברו/);
   assert.match(text, /אל תציע פריט שמתחיל לפני 20:50 היום/);
-  assert.match(text, /אינה אוטומטית "משימה להיום"/);
-  assert.doesNotMatch(text, /משטח: מה שכחתי\?/);
+  assert.match(text, /אינה אוטומטית משימה להיום/);
+  assert.doesNotMatch(text, /הוראת turn נוכחי: מה שכחתי\?/);
 });
 
 test("at 20:50 the schedule turn forbids a 15:00 slot the same day", () => {
@@ -219,12 +229,12 @@ test("forgotten surface drops mutations but may keep a task_list", () => {
     surface: "forgotten",
     now: eveningUtc,
   });
-  assert.match(text, /משטח: מה שכחתי\?/);
+  assert.match(text, /הוראת turn נוכחי: מה שכחתי\?/);
   assert.match(text, /אין לבנות לו״ז/);
   assert.match(text, /אין להציע שעות ביצוע/);
   assert.match(text, /actions: \[\]/);
   assert.match(text, /presentation.type = "task_list"/);
-  assert.doesNotMatch(text, /משטח: הצעת לו״ז להיום/);
+  assert.doesNotMatch(text, /הוראת turn נוכחי: הצעת לו״ז להיום/);
 
   const scoped = applySurfaceTurnPolicy({
     surface: "forgotten",
