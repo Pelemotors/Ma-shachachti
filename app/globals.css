@@ -611,6 +611,44 @@ h1 {
 .chat-task-list .task-copy small {
   font-size: 12px;
 }
+.task-suggestions {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.task-suggestions li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 35%, #fff);
+}
+.task-suggestions .task-copy {
+  display: grid;
+  gap: 2px;
+}
+.task-suggestions .task-copy span {
+  font-size: 15px;
+  font-weight: 500;
+}
+.task-suggestions .task-copy small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.task-suggestions .settings-action {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 6px 10px;
+}
+.task-check.proposed {
+  opacity: 0.35;
+  pointer-events: none;
+}
 .message-row.user .bubble {
   background: var(--primary);
   color: var(--on-primary);

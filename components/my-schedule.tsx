@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authFetch } from "@/lib/supabase-browser";
+import { FIXED_TIME_LABEL } from "@/lib/schedule";
 import { addJerusalemDays, formatClockRange, formatJerusalemDay, todayContext } from "@/lib/time";
 import type { TaskRow } from "@/lib/types";
 
@@ -14,25 +15,33 @@ export function MySchedule(props: {
   const today = todayContext().date;
   const [date, setDate] = useState(today);
   const [timed, setTimed] = useState<Timed[]>([]);
-  const [throughout, setThroughout] = useState<TaskRow[]>([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
+    setTimed([]);
+    setError("");
+    setLoading(true);
     void authFetch(`/api/schedule?date=${date}`)
       .then((response) => response.json())
       .then((body) => {
         if (!alive) return;
+        if (typeof body.date === "string" && body.date !== date) return;
         if (!Array.isArray(body.timed)) {
           setError("לא הצלחנו לטעון את הלוז.");
+          setLoading(false);
           return;
         }
         setTimed(body.timed);
-        setThroughout(body.throughout ?? []);
         setError("");
+        setLoading(false);
       })
       .catch(() => {
-        if (alive) setError("לא הצלחנו לטעון את הלוז.");
+        if (alive) {
+          setError("לא הצלחנו לטעון את הלוז.");
+          setLoading(false);
+        }
       });
     return () => {
       alive = false;
@@ -74,37 +83,14 @@ export function MySchedule(props: {
                   {formatClockRange(item.start, item.end)}
                 </small>
                 <span>{item.title}</span>
-                {item.fixed ? <em>קבוע</em> : null}
+                {item.fixed ? <em>{FIXED_TIME_LABEL}</em> : null}
               </div>
             </li>
           );
         })}
       </ul>
-      {throughout.length ? (
-        <section>
-          <h2>במהלך היום</h2>
-          <ul className="schedule-plan-list">
-            {throughout.map((task) => {
-              const done = task.status !== "open";
-              return (
-                <li key={task.id} className={done ? "done" : undefined}>
-                  <button
-                    className={`task-check${done ? " checked" : ""}`}
-                    type="button"
-                    disabled={props.saving}
-                    onClick={() => props.onToggle(task.id, done)}
-                  />
-                  <div className="task-copy">
-                    <span>{task.title}</span>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ) : null}
-      {!timed.length && !throughout.length ? (
-        <p className="muted">אין שיבוץ ליום הזה.</p>
+      {!loading && !timed.length && !error ? (
+        <p className="muted">אין משימות משובצות בלו״ז ליום הזה.</p>
       ) : null}
     </div>
   );

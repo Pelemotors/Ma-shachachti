@@ -161,6 +161,18 @@ export async function executeAction(
           alreadyExists: true,
         });
       }
+      let plannedStart: string | null = null;
+      let plannedEnd: string | null = null;
+      if (action.plan_patch === "set") {
+        const planned = resolvePlannedWindow(
+          action.planned_date,
+          action.planned_start_time,
+          action.planned_end_time,
+        );
+        if (!planned.ok) return fail(action.type, planned.error);
+        plannedStart = planned.start;
+        plannedEnd = planned.end;
+      }
       const { data, error } = await db
         .from("tasks")
         .insert({
@@ -169,6 +181,8 @@ export async function executeAction(
           notes: fields.notes,
           due_on: fields.due_on,
           due_at: fields.due_at,
+          planned_start_at: plannedStart,
+          planned_end_at: plannedEnd,
           reminder_enabled: reminderEnabled,
           reminder_offset_minutes: reminderOffset,
           status: "open",
@@ -475,33 +489,77 @@ export async function saveTaskPlans(
   userId: string,
   date: string,
   items: Array<{
-    task_id: string;
+    task_id?: string | null;
+    title?: string | null;
     planned_start: string;
     planned_end: string | null;
+    anchor?: "fixed" | "planned" | null;
   }>,
 ) {
   if (!DATE_RE.test(date)) throw new Error("invalid_date");
   const now = new Date().toISOString();
+  const blank: AgentAction = {
+    type: "task.create",
+    id: null,
+    title: null,
+    notes: null,
+    due_on: null,
+    due_time: null,
+    due_patch: null,
+    reminder_enabled: null,
+    reminder_offset_minutes: null,
+    reminder_patch: null,
+    plan_patch: null,
+    planned_date: null,
+    planned_start_time: null,
+    planned_end_time: null,
+    kind: null,
+    content: null,
+    confidence: null,
+    silent: null,
+  };
   for (const item of items.slice(0, 20)) {
-    if (!(await ownTask(db, userId, item.task_id))) {
-      throw new Error("forbidden_task");
+    if (item.task_id) {
+      if (!(await ownTask(db, userId, item.task_id))) {
+        throw new Error("forbidden_task");
+      }
+      const planned = resolvePlannedWindow(
+        date,
+        item.planned_start,
+        item.planned_end,
+      );
+      if (!planned.ok) throw new Error(planned.error);
+      const { error } = await db
+        .from("tasks")
+        .update({
+          planned_start_at: planned.start,
+          planned_end_at: planned.end,
+          updated_at: now,
+        })
+        .eq("user_id", userId)
+        .eq("id", item.task_id);
+      if (error) throw error;
+      continue;
     }
-    const planned = resolvePlannedWindow(
-      date,
-      item.planned_start,
-      item.planned_end,
-    );
-    if (!planned.ok) throw new Error(planned.error);
-    const { error } = await db
-      .from("tasks")
-      .update({
-        planned_start_at: planned.start,
-        planned_end_at: planned.end,
-        updated_at: now,
-      })
-      .eq("user_id", userId)
-      .eq("id", item.task_id);
-    if (error) throw error;
+    const title = item.title?.trim() || "";
+    if (!title) continue;
+    const create =
+      item.anchor === "fixed"
+        ? await executeAction(db, userId, {
+            ...blank,
+            title,
+            due_on: date,
+            due_time: item.planned_start,
+          })
+        : await executeAction(db, userId, {
+            ...blank,
+            title,
+            plan_patch: "set",
+            planned_date: date,
+            planned_start_time: item.planned_start,
+            planned_end_time: item.planned_end,
+          });
+    if (!create.ok) throw new Error(create.error);
   }
   return loadTasks(db, userId);
 }

@@ -294,7 +294,7 @@ export function ChatApp() {
               presentation: {
                 ...message.presentation,
                 items: message.presentation.items.map((item) => {
-                  const next = byId.get(item.task_id);
+                  const next = item.task_id ? byId.get(item.task_id) : undefined;
                   return next ? { ...item, title: next.title, status: next.status } : item;
                 }),
               },
@@ -397,8 +397,10 @@ export function ChatApp() {
         date: plan.date,
         items: plan.items.map((item) => ({
           task_id: item.task_id,
+          title: item.title,
           planned_start: item.planned_start,
           planned_end: item.planned_end,
+          anchor: item.fixed ? "fixed" : "planned",
         })),
       }),
     }).catch(() => null);
@@ -408,16 +410,41 @@ export function ChatApp() {
       return;
     }
     const body = await response.json().catch(() => ({}));
-    if (Array.isArray(body.tasks)) setTasks(body.tasks);
+    const nextTasks = Array.isArray(body.tasks) ? (body.tasks as TaskRow[]) : null;
+    if (nextTasks) setTasks(nextTasks);
     setMessages((current) =>
-      current.map((message) =>
-        message.id === messageId && message.presentation?.type === "schedule_plan"
-          ? {
-              ...message,
-              presentation: { ...message.presentation, saved: true },
-            }
-          : message,
-      ),
+      current.map((message) => {
+        if (message.id !== messageId || message.presentation?.type !== "schedule_plan") {
+          return message;
+        }
+        const byId = new Map((nextTasks ?? []).map((task) => [task.id, task]));
+        const byTitle = new Map(
+          (nextTasks ?? [])
+            .filter((task) => task.status === "open")
+            .map((task) => [task.title, task]),
+        );
+        return {
+          ...message,
+          presentation: {
+            ...message.presentation,
+            saved: true,
+            items: message.presentation.items.map((item) => {
+              const next = item.task_id
+                ? byId.get(item.task_id)
+                : byTitle.get(item.title);
+              return next
+                ? {
+                    ...item,
+                    task_id: next.id,
+                    title: next.title,
+                    status: next.status,
+                    fixed: Boolean(next.due_at),
+                  }
+                : item;
+            }),
+          },
+        };
+      }),
     );
   }
 
@@ -584,6 +611,38 @@ export function ChatApp() {
                           void savePlan(message.id, message.presentation as Extract<ClientPresentation, { type: "schedule_plan" }>)
                         }
                       />
+                    ) : null}
+                    {message.role === "assistant" &&
+                    message.presentation?.type === "task_suggestions" ? (
+                      <ul className="task-suggestions">
+                        {message.presentation.items.map((item) => {
+                          const already = tasks.some(
+                            (task) =>
+                              task.status === "open" && task.title === item.title,
+                          );
+                          return (
+                            <li key={item.title}>
+                              <div className="task-copy">
+                                <span>{item.title}</span>
+                                {item.reason ? <small>{item.reason}</small> : null}
+                              </div>
+                              <button
+                                className="settings-action"
+                                type="button"
+                                disabled={savingTask || already}
+                                onClick={() =>
+                                  void runTaskAction({
+                                    type: "task.create",
+                                    title: item.title,
+                                  })
+                                }
+                              >
+                                {already ? "נוספה" : "הוסף למשימות"}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
                     ) : null}
                   </div>
                 </div>

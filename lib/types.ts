@@ -130,10 +130,19 @@ export type ActionResult =
       detail?: string;
     };
 
+export type ScheduleAnchor = "fixed" | "planned";
+
 export type AgentScheduleItem = {
-  task_id: string;
+  task_id: string | null;
+  title: string | null;
   planned_start: string;
   planned_end: string | null;
+  anchor: ScheduleAnchor | null;
+};
+
+export type AgentSuggestionItem = {
+  title: string;
+  reason: string | null;
 };
 
 export type AgentPresentation =
@@ -145,6 +154,10 @@ export type AgentPresentation =
       type: "schedule_plan";
       date: string;
       items: AgentScheduleItem[];
+    }
+  | {
+      type: "task_suggestions";
+      items: AgentSuggestionItem[];
     }
   | null;
 
@@ -158,12 +171,17 @@ export type PresentedTask = {
 };
 
 export type PresentedScheduleItem = {
-  task_id: string;
+  task_id: string | null;
   title: string;
-  status: TaskStatus;
+  status: TaskStatus | "proposed";
   planned_start: string;
   planned_end: string | null;
   fixed: boolean;
+};
+
+export type PresentedSuggestion = {
+  title: string;
+  reason: string | null;
 };
 
 export type ClientPresentation =
@@ -176,4 +194,8 @@ export type ClientPresentation =
       date: string;
       saved: boolean;
       items: PresentedScheduleItem[];
+    }
+  | {
+      type: "task_suggestions";
+      items: PresentedSuggestion[];
     };

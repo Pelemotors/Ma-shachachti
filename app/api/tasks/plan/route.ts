@@ -25,25 +25,39 @@ export async function POST(req: Request) {
     if (!Array.isArray(body.items) || !body.items.length) {
       throw new HttpError(400, "אין פריטים לשמירה.");
     }
-    const items = [];
+    const items: Array<{
+      task_id: string | null;
+      title: string | null;
+      planned_start: string;
+      planned_end: string | null;
+      anchor: "fixed" | "planned" | null;
+    }> = [];
     for (const raw of body.items.slice(0, 20)) {
       if (!raw || typeof raw !== "object") continue;
       const item = raw as {
         task_id?: unknown;
+        title?: unknown;
         planned_start?: unknown;
         planned_end?: unknown;
+        anchor?: unknown;
       };
-      if (typeof item.task_id !== "string") continue;
+      const taskId = typeof item.task_id === "string" && item.task_id ? item.task_id : null;
+      const title = typeof item.title === "string" ? item.title.trim() : "";
+      if (!taskId && !title) continue;
       if (typeof item.planned_start !== "string" || !TIME_RE.test(item.planned_start)) {
         throw new HttpError(400, "שעת השיבוץ אינה תקינה.");
       }
+      const anchor =
+        item.anchor === "fixed" || item.anchor === "planned" ? item.anchor : null;
       items.push({
-        task_id: item.task_id,
+        task_id: taskId,
+        title: title || null,
         planned_start: item.planned_start,
         planned_end:
           typeof item.planned_end === "string" && TIME_RE.test(item.planned_end)
             ? item.planned_end
             : null,
+        anchor,
       });
     }
     if (!items.length) throw new HttpError(400, "אין פריטים לשמירה.");

@@ -1,5 +1,6 @@
 "use client";
 
+import { FIXED_TIME_LABEL } from "@/lib/schedule";
 import { formatClockRange } from "@/lib/time";
 import type { ClientPresentation } from "@/lib/types";
 
@@ -18,22 +19,27 @@ export function SchedulePlanCard(props: {
       </p>
       <ul className="schedule-plan-list">
         {props.plan.items.map((item) => {
-          const done = item.status !== "open";
+          const done = item.status !== "open" && item.status !== "proposed";
+          const key = item.task_id ?? `${item.title}-${item.planned_start}`;
           return (
-            <li key={item.task_id} className={done ? "done" : undefined}>
-              <button
-                className={`task-check${done ? " checked" : ""}`}
-                type="button"
-                aria-label={item.title}
-                disabled={props.saving}
-                onClick={() => props.onToggle(item.task_id, done)}
-              />
+            <li key={key} className={done ? "done" : undefined}>
+              {item.task_id ? (
+                <button
+                  className={`task-check${done ? " checked" : ""}`}
+                  type="button"
+                  aria-label={item.title}
+                  disabled={props.saving}
+                  onClick={() => props.onToggle(item.task_id as string, done)}
+                />
+              ) : (
+                <span className="task-check proposed" aria-hidden="true" />
+              )}
               <div className="task-copy">
                 <small className="schedule-time">
                   {formatClockRange(item.planned_start, item.planned_end)}
                 </small>
                 <span>{item.title}</span>
-                {item.fixed ? <em>קבוע</em> : null}
+                {item.fixed ? <em>{FIXED_TIME_LABEL}</em> : null}
               </div>
             </li>
           );

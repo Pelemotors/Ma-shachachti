@@ -21,7 +21,6 @@ export async function GET(req: Request) {
         end: item.end,
         fixed: item.fixed,
       })),
-      throughout: day.throughout,
     });
   } catch (error) {
     if (error instanceof HttpError) {

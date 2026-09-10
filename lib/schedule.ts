@@ -8,9 +8,11 @@ export type ScheduleTimedItem = {
   fixed: boolean;
 };
 
+export const FIXED_TIME_LABEL = "שעה קבועה";
+
 export function classifyScheduleDay(tasks: TaskRow[], date: string) {
   const timed: ScheduleTimedItem[] = [];
-  const throughout: TaskRow[] = [];
+  const seen = new Set<string>();
   for (const task of tasks) {
     if (task.status === "cancelled") continue;
     const dueDate = task.due_at ? jerusalemParts(task.due_at).date : null;
@@ -31,28 +33,24 @@ export function classifyScheduleDay(tasks: TaskRow[], date: string) {
         end: null,
         fixed: true,
       });
+      seen.add(task.id);
       continue;
     }
-    if (plannedDate === date && plannedStart) {
+    if (plannedDate === date && plannedStart && !seen.has(task.id)) {
       timed.push({
         task,
         start: plannedStart,
         end: plannedEnd && plannedEnd > plannedStart ? plannedEnd : null,
         fixed: false,
       });
-      continue;
-    }
-    if (task.due_on === date && !task.due_at && plannedDate !== date) {
-      throughout.push(task);
     }
   }
   timed.sort((a, b) => a.start.localeCompare(b.start));
-  return { timed, throughout };
+  return { timed };
 }
 
 export function taskTouchesDate(task: TaskRow, date: string) {
   if (task.status === "cancelled") return false;
-  if (task.due_on === date) return true;
   if (task.due_at && jerusalemParts(task.due_at).date === date) return true;
   if (task.planned_start_at && jerusalemParts(task.planned_start_at).date === date) {
     return true;

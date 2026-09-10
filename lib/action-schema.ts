@@ -152,13 +152,55 @@ export const AGENT_TURN_JSON_SCHEMA = {
               items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["task_id", "planned_start", "planned_end"],
+                required: [
+                  "task_id",
+                  "title",
+                  "planned_start",
+                  "planned_end",
+                  "anchor",
+                ],
                 properties: {
-                  task_id: { type: "string", pattern: UUID_RE.source },
+                  task_id: nullable({
+                    type: "string",
+                    pattern: UUID_RE.source,
+                  }),
+                  title: nullable({
+                    type: "string",
+                    minLength: 1,
+                    maxLength: 200,
+                  }),
                   planned_start: { type: "string", pattern: TIME_RE.source },
                   planned_end: nullable({
                     type: "string",
                     pattern: TIME_RE.source,
+                  }),
+                  anchor: nullable({
+                    type: "string",
+                    enum: ["fixed", "planned"],
+                  }),
+                },
+              },
+            },
+          },
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "items"],
+          properties: {
+            type: { type: "string", enum: ["task_suggestions"] },
+            items: {
+              type: "array",
+              maxItems: 8,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["title", "reason"],
+                properties: {
+                  title: { type: "string", minLength: 1, maxLength: 200 },
+                  reason: nullable({
+                    type: "string",
+                    maxLength: 200,
                   }),
                 },
               },
@@ -225,12 +267,31 @@ export const AgentPresentationSchema = z.union([
     items: z
       .array(
         z.object({
-          task_id: z.string().uuid(),
+          task_id: z.string().uuid().nullable().optional(),
+          title: z
+            .string()
+            .trim()
+            .max(200)
+            .nullable()
+            .optional()
+            .transform((value) => value || null),
           planned_start: z.string().regex(TIME_RE),
           planned_end: z.string().regex(TIME_RE).nullable(),
+          anchor: z.enum(["fixed", "planned"]).nullable().optional(),
         }),
       )
       .max(20),
+  }),
+  z.object({
+    type: z.literal("task_suggestions"),
+    items: z
+      .array(
+        z.object({
+          title: z.string().trim().min(1).max(200),
+          reason: z.string().trim().max(200).nullable().optional(),
+        }),
+      )
+      .max(8),
   }),
   z.null(),
 ]);
@@ -420,6 +481,33 @@ export function composeReply(llmReply: string, results: ActionResult[]) {
   return llmReply.trim();
 }
 
+function normalizePresentation(
+  presentation: z.infer<typeof AgentPresentationSchema>,
+): AgentPresentation {
+  if (!presentation) return null;
+  if (presentation.type === "task_list") return presentation;
+  if (presentation.type === "task_suggestions") {
+    return {
+      type: "task_suggestions",
+      items: presentation.items.map((item) => ({
+        title: item.title,
+        reason: item.reason ?? null,
+      })),
+    };
+  }
+  return {
+    type: "schedule_plan",
+    date: presentation.date,
+    items: presentation.items.map((item) => ({
+      task_id: item.task_id ?? null,
+      title: item.title ?? null,
+      planned_start: item.planned_start,
+      planned_end: item.planned_end,
+      anchor: item.anchor ?? null,
+    })),
+  };
+}
+
 export function parseDecision(text: string) {
   const trimmed = text.trim();
   try {
@@ -435,13 +523,14 @@ export function parseDecision(text: string) {
     const presentationResult = AgentPresentationSchema.safeParse(
       parsed.presentation === undefined ? null : parsed.presentation,
     );
+    const presentation = presentationResult.success
+      ? normalizePresentation(presentationResult.data)
+      : null;
     return {
       ok: true as const,
       reply: parsed.reply.trim(),
       actions: parsed.actions,
-      presentation: (presentationResult.success
-        ? presentationResult.data
-        : null) as AgentPresentation,
+      presentation,
       consequence_updates: Array.isArray(parsed.consequence_updates)
         ? parsed.consequence_updates
         : [],

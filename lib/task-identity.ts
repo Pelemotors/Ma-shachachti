@@ -19,6 +19,15 @@ export function exactTaskFields(fields: ExactTaskFields) {
   };
 }
 
+function sameInstant(left: string | null, right: string | null) {
+  if (left == null && right == null) return true;
+  if (left == null || right == null) return false;
+  const a = Date.parse(left);
+  const b = Date.parse(right);
+  if (Number.isNaN(a) || Number.isNaN(b)) return left === right;
+  return a === b;
+}
+
 export function isExactOpenDuplicate(
   existing: ExactTaskFields,
   incoming: ExactTaskFields,
@@ -30,6 +39,6 @@ export function isExactOpenDuplicate(
     left.title === right.title &&
     left.notes === right.notes &&
     left.due_on === right.due_on &&
-    left.due_at === right.due_at
+    sameInstant(left.due_at, right.due_at)
   );
 }

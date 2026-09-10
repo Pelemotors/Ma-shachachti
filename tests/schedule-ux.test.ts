@@ -128,14 +128,22 @@ test("schedule surface keeps schedule_plan and drops mutations", () => {
     presentation: {
       type: "schedule_plan",
       date: "2026-09-10",
-      items: [{ task_id: dog.id, planned_start: "21:00", planned_end: null }],
+      items: [
+        {
+          task_id: dog.id,
+          title: null,
+          planned_start: "21:00",
+          planned_end: null,
+          anchor: null,
+        },
+      ],
     },
   });
   assert.deepEqual(scoped.actions, []);
   assert.equal(scoped.presentation?.type, "schedule_plan");
 });
 
-test("my schedule separates fixed, planned, date-only and backlog", () => {
+test("my schedule keeps only timed items and ignores date-only tasks", () => {
   const planned = {
     ...dog,
     id: "44444444-4444-4444-8444-444444444444",
@@ -161,9 +169,9 @@ test("my schedule separates fixed, planned, date-only and backlog", () => {
   const day = classifyScheduleDay([parents, planned, dateOnly, backlog], "2026-09-10");
   assert.equal(day.timed.some((item) => item.fixed && item.task.id === parents.id), true);
   assert.equal(day.timed.some((item) => item.task.id === planned.id), true);
-  assert.equal(day.throughout.some((task) => task.id === dateOnly.id), true);
+  assert.equal(day.timed.some((item) => item.task.id === dateOnly.id), false);
   assert.equal(day.timed.some((item) => item.task.id === backlog.id), false);
-  assert.equal(day.throughout.some((task) => task.id === backlog.id), false);
+  assert.equal("throughout" in day, false);
 });
 
 test("upcoming reminders hide sent, done, cancelled, disabled and date-only", () => {

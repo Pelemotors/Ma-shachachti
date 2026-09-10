@@ -3,6 +3,7 @@ import { DATE_RE, TIME_RE, dueTimeFromDueAt, todayContext } from "./time.ts";
 import type {
   ClientPresentation,
   PresentedScheduleItem,
+  PresentedSuggestion,
   PresentedTask,
   TaskRow,
 } from "./types.ts";
@@ -83,14 +84,11 @@ export function resolveSchedulePlanPresentation(
     if (!value || typeof value !== "object") continue;
     const item = value as {
       task_id?: unknown;
+      title?: unknown;
       planned_start?: unknown;
       planned_end?: unknown;
+      anchor?: unknown;
     };
-    if (typeof item.task_id !== "string" || !UUID_RE.test(item.task_id)) continue;
-    if (seen.has(item.task_id)) continue;
-    const task = byId.get(item.task_id);
-    if (!task || task.status === "cancelled") continue;
-
     let start =
       typeof item.planned_start === "string" && TIME_RE.test(item.planned_start)
         ? item.planned_start
@@ -99,24 +97,46 @@ export function resolveSchedulePlanPresentation(
       typeof item.planned_end === "string" && TIME_RE.test(item.planned_end)
         ? item.planned_end
         : null;
-    const fixed = Boolean(task.due_at);
-    if (fixed && task.due_at) {
-      const dueClock = dueTimeFromDueAt(task.due_at);
-      const dueDate = task.due_on ?? null;
-      if (!dueClock || dueDate !== raw.date) continue;
-      start = dueClock;
+    const taskId =
+      typeof item.task_id === "string" && UUID_RE.test(item.task_id)
+        ? item.task_id
+        : null;
+    if (taskId) {
+      if (seen.has(taskId)) continue;
+      const task = byId.get(taskId);
+      if (!task || task.status === "cancelled") continue;
+      const fixed = Boolean(task.due_at);
+      if (fixed && task.due_at) {
+        const dueClock = dueTimeFromDueAt(task.due_at);
+        const dueDate = task.due_on ?? null;
+        if (!dueClock || dueDate !== raw.date) continue;
+        start = dueClock;
+      }
+      if (!start) continue;
+      if (end && end <= start) end = null;
+      if (raw.date === today && start < currentTime) continue;
+      seen.add(taskId);
+      items.push({
+        task_id: task.id,
+        title: task.title,
+        status: task.status,
+        planned_start: start,
+        planned_end: end,
+        fixed,
+      });
+      continue;
     }
-    if (!start) continue;
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    if (!title || !start) continue;
     if (end && end <= start) end = null;
     if (raw.date === today && start < currentTime) continue;
-    seen.add(item.task_id);
     items.push({
-      task_id: task.id,
-      title: task.title,
-      status: task.status,
+      task_id: null,
+      title,
+      status: "proposed",
       planned_start: start,
       planned_end: end,
-      fixed,
+      fixed: item.anchor === "fixed",
     });
   }
 
@@ -125,19 +145,55 @@ export function resolveSchedulePlanPresentation(
   return { type: "schedule_plan", date: raw.date, saved: false, items };
 }
 
+export function resolveSuggestionPresentation(
+  presentation: unknown,
+): Extract<ClientPresentation, { type: "task_suggestions" }> | null {
+  if (
+    !presentation ||
+    typeof presentation !== "object" ||
+    Array.isArray(presentation)
+  ) {
+    return null;
+  }
+  const raw = presentation as { type?: unknown; items?: unknown };
+  if (raw.type !== "task_suggestions" || !Array.isArray(raw.items)) return null;
+  const items: PresentedSuggestion[] = [];
+  const seen = new Set<string>();
+  for (const value of raw.items.slice(0, 8)) {
+    if (!value || typeof value !== "object") continue;
+    const item = value as { title?: unknown; reason?: unknown };
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    if (!title || seen.has(title.toLowerCase())) continue;
+    seen.add(title.toLowerCase());
+    items.push({
+      title,
+      reason:
+        typeof item.reason === "string" && item.reason.trim()
+          ? item.reason.trim()
+          : null,
+    });
+  }
+  if (!items.length) return null;
+  return { type: "task_suggestions", items };
+}
+
 export function resolveAgentPresentation(
   presentation: unknown,
   tasks: TaskRow[],
   now = new Date(),
   surface: string | null = null,
 ): ClientPresentation | null {
-  if (
+  const type =
     presentation &&
     typeof presentation === "object" &&
-    !Array.isArray(presentation) &&
-    (presentation as { type?: unknown }).type === "schedule_plan"
-  ) {
+    !Array.isArray(presentation)
+      ? (presentation as { type?: unknown }).type
+      : null;
+  if (type === "schedule_plan") {
     return resolveSchedulePlanPresentation(presentation, tasks, now);
+  }
+  if (type === "task_suggestions") {
+    return resolveSuggestionPresentation(presentation);
   }
   return resolveTaskListPresentation(presentation, tasks, {
     max: surface === "forgotten" ? 6 : 20,
@@ -185,19 +241,27 @@ export function replyForPresentation(
   reply: string,
   presentation: ClientPresentation | null,
 ) {
-  if (presentation?.type === "task_list") {
+  if (!presentation) return reply.trim();
+  if (presentation.type === "task_list") {
     return sanitizeCardReply(
       reply,
       presentation.tasks.map((task) => task.title),
       forgottenFallback(presentation.tasks.length),
     );
   }
-  if (presentation?.type === "schedule_plan") {
+  if (presentation.type === "schedule_plan") {
     return sanitizeCardReply(
       reply,
       presentation.items.map((item) => item.title),
-      "תוכנית מוצעת להמשך היום.",
+      "תוכנית מוצעת.",
     );
   }
-  return sanitizeCardReply(reply, [], reply.trim() || forgottenFallback(0));
+  if (presentation.type === "task_suggestions") {
+    return sanitizeCardReply(
+      reply,
+      presentation.items.map((item) => item.title),
+      "הנה כמה הצעות.",
+    );
+  }
+  return reply.trim();
 }

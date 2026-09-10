@@ -231,8 +231,10 @@ test("schedule surface drops task.create and other mutations", () => {
       items: [
         {
           task_id: dogTask.id,
+          title: null,
           planned_start: "21:00",
           planned_end: "21:15",
+          anchor: null,
         },
       ],
     },

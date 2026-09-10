@@ -9,7 +9,7 @@ import type {
   MemoryRow,
   TaskRow,
 } from "../types.ts";
-import { TIME_ZONE, dueTimeFromDueAt, todayContext } from "../time.ts";
+import { TIME_ZONE, dueTimeFromDueAt, jerusalemParts, todayContext } from "../time.ts";
 
 export { AGENT_TURN_JSON_SCHEMA, parseDecision } from "../action-schema.ts";
 export { TIME_ZONE, todayContext };
@@ -22,6 +22,11 @@ function formatTask(task: TaskRow, consequence?: ConsequenceRow) {
     : task.due_on
       ? " | at none"
       : "";
+  const planned = task.planned_start_at
+    ? ` | planned ${jerusalemParts(task.planned_start_at).date} ${jerusalemParts(task.planned_start_at).time}${
+        task.planned_end_at ? `-${jerusalemParts(task.planned_end_at).time}` : ""
+      }`
+    : " | planned none";
   const reminder = task.due_at
     ? task.reminder_enabled
       ? ` | reminder ${task.reminder_offset_minutes ?? "default"}`
@@ -36,7 +41,7 @@ function formatTask(task: TaskRow, consequence?: ConsequenceRow) {
   const consequenceText = consequence
     ? ` | consequence severity=${consequence.severity} confidence=${consequence.confidence} basis=${consequence.basis.kind} valid_until=${consequence.valid_until ?? "null"} updated_at=${consequence.updated_at} reason=${consequence.reason}`
     : " | consequence none";
-  return `- ${task.id} [${task.status}] ${task.title}${due}${time}${reminder}${notes}${created}${reschedules}${lastRescheduled}${consequenceText}`;
+  return `- ${task.id} [${task.status}] ${task.title}${due}${time}${planned}${reminder}${notes}${created}${reschedules}${lastRescheduled}${consequenceText}`;
 }
 
 function surfaceInstructions(
@@ -51,13 +56,14 @@ surface=schedule.
 אל תשמור, תיצור, תשנה, תדחה, תשלים או תמחק שום משימה רק משום שהיא שולבה בלו״ז.
 ברירת המחדל ב-turn הזה:
 actions: []
-החזר presentation.type = "schedule_plan" עם date של היום ו-items של task_id + planned_start + planned_end.
+החזר presentation.type = "schedule_plan" עם date של היום.
+לכל פריט: task_id אם זו משימה קיימת, או title אם זו הצעה חדשה שעוד אין לה id. planned_start ו-planned_end. anchor=fixed רק אם השעה היא מועד אמיתי של המשימה; אחרת planned.
 reply קצר בלבד. אל תכתוב את הלו״ז כרשימת Markdown בתוך reply.
 
-השתמש בשעה הנוכחית, בתאריך הנוכחי, במשימות הפתוחות, בתאריכי יעד, ב-due_at, בזיכרון הרלוונטי ובהקשר מהשיחה.
+השתמש בשעה הנוכחית, בתאריך הנוכחי, במשימות הפתוחות, בתאריכי יעד, ב-due_at, ב-planned_start_at, בזיכרון הרלוונטי ובהקשר מהשיחה.
 אל תקרא שעה מתוך notes. notes הוא טקסט חופשי בלבד.
 משימה עם due_at היא Fixed Time Task — עוגן בשעה האמיתית. אל תזיז אותה לשעה אחרת רק כחלק מהצעת הלו״ז.
-משימה עם due_on בלי due_at שייכת ליום הזה אבל אין לה שעה קשיחה. אפשר לכתוב אותה כ"במהלך היום" או לשבץ כהצעה, ולהבהיר שהשעה אינה deadline.
+משימה עם due_on בלי due_at שייכת ליום אבל אין לה שעה קשיחה. אפשר לשבץ אותה כהצעת planned time. אל תהפוך את שעת השיבוץ שלך ל-due_at.
 משימה בלי due_on ו-due_at היא backlog גמיש; אפשר להציע אותה סביב העוגנים אם מתאימה.
 בנה תוכנית רק לזמן שנותר מהיום.
 אל תתכנן שעות שכבר עברו. אל תציע פריט שמתחיל לפני ${currentTime} היום.
@@ -214,7 +220,7 @@ export function buildInstructions(input: {
 אם המשתמש רק מודה או מאשר בלי בקשה חדשה לשינוי נתונים — החזר actions: [] ואל תחזור על הפעולה הקודמת.
 
 פעולות זמינות:
-- task.create: title חובה. due_on = YYYY-MM-DD או null. due_time = HH:mm או null. due_on=null ו-due_time=null = בלי מועד. due_on בלי due_time = תאריך בלבד. due_on+due_time = Fixed Time; המערכת ממירה ל-due_at לפי Asia/Jerusalem. אסור due_time בלי due_on. אל תשמור שעה ב-notes. reminder_offset_minutes רק אם המשתמש ביקש במפורש override; אחרת null. reminder_enabled=false רק אם ביקש במפורש בלי תזכורת. אל תיצור שורה חדשה אם כבר קיימת משימה פעילה זהה בדיוק ב-title + due_on + due_at + notes.
+- task.create: title חובה. due_on = YYYY-MM-DD או null. due_time = HH:mm או null. due_on=null ו-due_time=null = בלי מועד. due_on בלי due_time = תאריך בלבד. due_on+due_time = Fixed Time; המערכת ממירה ל-due_at לפי Asia/Jerusalem. אסור due_time בלי due_on. שעת תכנון שאתה מציע אינה due_time — השתמש ב-plan_patch=set עם planned_date+planned_start_time+planned_end_time, והשאר due_on/due_time כ-null אלא אם המשתמש מסר מועד קשיח אמיתי. אל תשמור שעה ב-notes. reminder_offset_minutes רק אם המשתמש ביקש במפורש override; אחרת null. reminder_enabled=false רק אם ביקש במפורש בלי תזכורת. אל תיצור שורה חדשה אם כבר קיימת משימה פעילה זהה בדיוק ב-title + due_on + due_at + notes.
 - task.update: id חובה. due_patch=keep לא משנה מועד. due_patch=set מחיל due_on/due_time. due_patch=clear מוחק מועד. reminder_patch=keep או set באותו אופן. plan_patch=keep לא משנה שיבוץ. plan_patch=set שומר planned_date+planned_start_time+planned_end_time בלי לשנות due_at. plan_patch=clear מוציא מהלוז בלי למחוק את המשימה.
 - task.reschedule: id + due_on, ו-due_time אם יש שעה. due_patch=clear מסיר מועד.
 - task.complete / task.reopen / task.delete: id חובה. delete מסמן cancelled
@@ -227,10 +233,18 @@ reminder_offset_minutes=0 פירושו התראה בזמן המשימה. null = 
 אל תבטיח "אזכיר לך" אם כתיבת המשימה נכשלה.
 עד 10 פעולות בפנייה. כשמזהים משימה קיימת השתמש ב-id שלה.
 
-presentation הוא תצוגה בלבד, לא שינוי נתונים.
-אם מבקשים לראות או לסכם משימות קיימות: presentation.type = "task_list" עם task_ids מההקשר, ו-reply קצר בלי רשימת Markdown.
-אם surface=schedule: presentation.type = "schedule_plan".
-אחרת presentation = null.
+presentation הוא כלי תצוגה בלבד, לא Action ולא שינוי נתונים. אתה מחליט מתי להשתמש בו.
+כלים זמינים:
+- task_list: משימות קיימות. task_ids רק מההקשר. reply קצר בלי רשימת Markdown.
+- schedule_plan: הצעת לו״ז. date + items. לכל פריט task_id או title, planned_start, planned_end, ו-anchor.
+- task_suggestions: הצעות למשימות חדשות שעוד לא קיימות. items: title + reason. אינן Tasks עד שהמשתמש מאשר במפורש.
+אם אתה אומר שיש משימות להצגה — החזר task_list.
+אם אתה אומר "הנה הלו״ז" או מציג תוכנית שעות — החזר schedule_plan.
+אם אתה אומר "הנה כמה הצעות" — החזר task_suggestions.
+אל תבטיח תוכן מוצג בלי להחזיר את ה-presentation המתאים.
+אם אין צורך בתצוגה מובנית — presentation = null.
+הצעת לו״ז אינה נשמרת עד שהמשתמש מאשר במפורש. אל תחזיר task.create רק כי הצעת שעות.
+אם המשתמש שואל שאלה על מצב קיים או מבקש הסבר, בלי בקשה חדשה לשינוי נתונים — actions: []. אל תחזור על פעולות מה-turn הקודם.
 
 קיים שדה consequence_updates.
 השתמש ב־consequence_updates רק כאשר למדת או הסקת מידע שימושי חדש לגבי משמעות דחיית Task קיים. אם אין שינוי שימושי, החזר מערך ריק. Consequence אינו שינוי ב־Task עצמו ואינו מוצג למשתמש.
