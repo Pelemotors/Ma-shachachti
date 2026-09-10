@@ -19,6 +19,13 @@ import {
 import { appendTranscript } from "@/lib/audio/recorder-helpers";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { SettingsPanel } from "@/components/settings-panel";
+import {
+  clearActiveChatSession,
+  readActiveChatSession,
+  storedSessionNeedsFallback,
+  writeActiveChatSession,
+} from "@/lib/active-chat-session";
+import { chatHistoryUrl, isSessionId } from "@/lib/chat-sessions";
 import { SchedulePlanCard } from "@/components/schedule-plan-card";
 import { MySchedule } from "@/components/my-schedule";
 import { UpcomingBell } from "@/components/upcoming-bell";
@@ -66,6 +73,7 @@ export function ChatApp() {
   const [savingTask, setSavingTask] = useState(false);
   const [error, setError] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [defaultReminderMinutes, setDefaultReminderMinutes] = useState(
     DEFAULT_REMINDER_MINUTES,
   );
@@ -87,7 +95,17 @@ export function ChatApp() {
         router.replace("/login");
         return;
       }
-      const response = await authFetch("/api/chat");
+      const nextUserId = data.session.user.id;
+      if (alive) setUserId(nextUserId);
+      const preferred = readActiveChatSession(nextUserId);
+      let response = await authFetch(chatHistoryUrl(preferred));
+      if (
+        preferred &&
+        storedSessionNeedsFallback(response.status)
+      ) {
+        clearActiveChatSession(nextUserId);
+        response = await authFetch("/api/chat");
+      }
       if (!alive) return;
       if (response.status === 401) {
         router.replace("/login");
@@ -98,7 +116,10 @@ export function ChatApp() {
       else {
         setMessages(body.messages ?? []);
         setTasks(body.tasks ?? []);
-        if (typeof body.session_id === "string") setSessionId(body.session_id);
+        if (typeof body.session_id === "string" && isSessionId(body.session_id)) {
+          setSessionId(body.session_id);
+          writeActiveChatSession(nextUserId, body.session_id);
+        }
       }
       const prefs = await authFetch("/api/preferences")
         .then((item) => item.json())
@@ -199,7 +220,10 @@ export function ChatApp() {
       },
     ]);
     if (Array.isArray(body.tasks)) setTasks(body.tasks);
-    if (typeof body.session_id === "string") setSessionId(body.session_id);
+    if (typeof body.session_id === "string" && isSessionId(body.session_id)) {
+      setSessionId(body.session_id);
+      if (userId) writeActiveChatSession(userId, body.session_id);
+    }
     setSending(false);
   }
 
@@ -293,12 +317,44 @@ export function ChatApp() {
       return;
     }
     const body = await response.json().catch(() => ({}));
-    if (typeof body.session_id !== "string") {
+    if (!isSessionId(body.session_id)) {
       setError("לא הצלחנו לפתוח שיחה חדשה.");
       return;
     }
     setSessionId(body.session_id);
+    if (userId) writeActiveChatSession(userId, body.session_id);
     setMessages([]);
+    setView("chat");
+  }
+
+  async function openPreviousSession(nextSessionId: string) {
+    if (!isSessionId(nextSessionId)) return;
+    setError("");
+    const response = await authFetch(chatHistoryUrl(nextSessionId)).catch(
+      () => null,
+    );
+    if (!response) {
+      setError("לא הצלחנו לפתוח את השיחה.");
+      return;
+    }
+    if (response.status === 401) {
+      router.replace("/login");
+      return;
+    }
+    if (storedSessionNeedsFallback(response.status)) {
+      if (userId) clearActiveChatSession(userId);
+      setError("השיחה הזו אינה זמינה יותר.");
+      return;
+    }
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setError(body.error ?? "לא הצלחנו לפתוח את השיחה.");
+      return;
+    }
+    setMessages(body.messages ?? []);
+    if (Array.isArray(body.tasks)) setTasks(body.tasks);
+    setSessionId(nextSessionId);
+    if (userId) writeActiveChatSession(userId, nextSessionId);
     setView("chat");
   }
 
@@ -538,7 +594,10 @@ export function ChatApp() {
             <div ref={bottomRef} />
           </div>
         ) : view === "settings" ? (
-          <SettingsPanel />
+          <SettingsPanel
+            currentSessionId={sessionId}
+            onOpenSession={(id) => void openPreviousSession(id)}
+          />
         ) : view === "schedule" ? (
           <MySchedule
             saving={savingTask}

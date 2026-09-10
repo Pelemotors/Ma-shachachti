@@ -8,8 +8,15 @@ import {
   reminderLabel,
 } from "@/lib/reminders";
 import { DevicePermissionsPanel } from "@/components/device-permissions-panel";
+import { PreviousChats } from "@/components/previous-chats";
 
-export function SettingsPanel() {
+export function SettingsPanel({
+  currentSessionId,
+  onOpenSession,
+}: {
+  currentSessionId: string | null;
+  onOpenSession: (sessionId: string) => void;
+}) {
   const [minutes, setMinutes] = useState(DEFAULT_REMINDER_MINUTES);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -56,6 +63,10 @@ export function SettingsPanel() {
     <div className="settings-panel">
       <h1>הגדרות</h1>
       <DevicePermissionsPanel />
+      <PreviousChats
+        currentSessionId={currentSessionId}
+        onOpenSession={onOpenSession}
+      />
       <section className="settings-section">
         <h2>תזכורת ברירת מחדל</h2>
         <p className="muted">

@@ -13,7 +13,9 @@ import { recordActivity } from "@/lib/activity";
 import { parseChatRequest } from "@/lib/chat-request";
 import {
   latestOrCreateChatSession,
+  loadSessionMessages,
   ownChatSession,
+  resolveReadableChatSession,
 } from "@/lib/chat-sessions";
 import {
   replyForPresentation,
@@ -79,20 +81,29 @@ async function trackAi(
 export async function GET(req: Request) {
   try {
     const { db, userId } = await authorize(req);
-    const session = await latestOrCreateChatSession(db, userId);
-    if (!session) throw new HttpError(503, "לא הצלחנו לפתוח שיחה.");
-    const { data, error } = await db
-      .from("chat_messages")
-      .select("id,role,content,created_at")
-      .eq("user_id", userId)
-      .eq("session_id", session.id)
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (error) throw new HttpError(503, "לא הצלחנו לטעון את השיחה.");
-    const messages = ((data ?? []) as StoredMessage[]).slice().reverse();
+    const requested = new URL(req.url).searchParams.get("session_id");
+    const resolved = await resolveReadableChatSession(db, userId, requested);
+    if (!resolved.ok) {
+      if (resolved.status === 400) {
+        throw new HttpError(400, "מזהה השיחה אינו תקין.");
+      }
+      if (resolved.status === 403) {
+        throw new HttpError(403, "שיחת היעד אינה שייכת לחשבון הזה.");
+      }
+      throw new HttpError(503, "לא הצלחנו לפתוח שיחה.");
+    }
+    let messages: StoredMessage[];
+    try {
+      messages = await loadSessionMessages(db, userId, resolved.session.id);
+    } catch {
+      throw new HttpError(503, "לא הצלחנו לטעון את השיחה.");
+    }
     const tasks = await loadTasks(db, userId);
-    return Response.json({ messages, tasks, session_id: session.id });
+    return Response.json({
+      messages,
+      tasks,
+      session_id: resolved.session.id,
+    });
   } catch (error) {
     return jsonError(error);
   }

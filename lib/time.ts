@@ -141,6 +141,19 @@ export function formatClockRange(start: string, end: string | null) {
   return end ? `${start}–${end}` : start;
 }
 
+export function formatSessionWhen(iso: string, now = new Date()) {
+  const stamp = jerusalemParts(iso);
+  const today = todayContext(now).date;
+  const yesterday = addJerusalemDays(today, -1);
+  const day =
+    stamp.date === today
+      ? "היום"
+      : stamp.date === yesterday
+        ? "אתמול"
+        : formatJerusalemDay(stamp.date, "short");
+  return `${day} · ${stamp.time}`;
+}
+
 export function formatJerusalemDay(dueOn: string, month: "short" | "long" = "short") {
   const instant = jerusalemDateTimeToUtc(dueOn, "12:00");
   return new Intl.DateTimeFormat("he-IL", {

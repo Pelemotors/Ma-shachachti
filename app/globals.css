@@ -306,6 +306,50 @@ h1 {
   background: #fff;
   border: 1px solid var(--border);
 }
+.previous-chats {
+  display: grid;
+  gap: 8px;
+}
+.previous-chat {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+  text-align: start;
+  color: inherit;
+}
+.previous-chat.current {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: color-mix(in srgb, var(--primary) 6%, #fff);
+}
+.previous-chat-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.previous-chat-meta {
+  font-size: 13px;
+  color: var(--muted, #667);
+}
+.current-badge {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 14%, #fff);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+.previous-chats-more {
+  justify-self: start;
+}
 .settings-hint {
   margin: 0;
   font-size: 13px;
