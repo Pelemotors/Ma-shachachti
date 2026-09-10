@@ -11,6 +11,14 @@ import { parseChatRequest } from "../lib/chat-request.ts";
 import { CHAT_SURFACES, HOME_SURFACES } from "../lib/home-surfaces.ts";
 import type { MemoryRow, TaskRow } from "../lib/types.ts";
 
+const extras = {
+  due_at: null as string | null,
+  reminder_offset_minutes: null as number | null,
+  reminder_enabled: true,
+  reminder_sent_at: null as string | null,
+  reminder_claimed_at: null as string | null,
+};
+
 const dogTask: TaskRow = {
   id: "11111111-1111-4111-8111-111111111111",
   title: "להזמין אוכל לכלב",
@@ -20,17 +28,20 @@ const dogTask: TaskRow = {
   created_at: "2026-09-10T00:00:00.000Z",
   updated_at: "2026-09-10T00:00:00.000Z",
   completed_at: null,
+  ...extras,
 };
 
 const tomorrowTask: TaskRow = {
   id: "22222222-2222-4222-8222-222222222222",
   title: "יום הורים",
-  notes: "17:00",
+  notes: "",
   status: "open",
   due_on: "2026-09-11",
   created_at: "2026-09-10T00:00:00.000Z",
   updated_at: "2026-09-10T00:00:00.000Z",
   completed_at: null,
+  ...extras,
+  due_at: "2026-09-11T14:00:00.000Z",
 };
 
 const memory: MemoryRow[] = [

@@ -19,6 +19,7 @@ import {
 import { appendTranscript } from "@/lib/audio/recorder-helpers";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import type { ClientPresentation, PresentedTask, TaskRow } from "@/lib/types";
+import { formatTaskWhen } from "@/lib/time";
 
 type ChatMessage = {
   id: string;
@@ -30,28 +31,13 @@ type ChatMessage = {
 
 type View = "home" | "chat" | "tasks";
 
-function formatDue(due: string | null) {
-  if (!due) return "";
-  return new Intl.DateTimeFormat("he-IL", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    timeZone: "Asia/Jerusalem",
-  }).format(new Date(`${due}T12:00:00+03:00`));
+function formatDue(task: { due_on: string | null; due_at?: string | null }) {
+  return formatTaskWhen({ due_on: task.due_on, due_at: task.due_at ?? null });
 }
 
 function formatPresentedMeta(task: PresentedTask) {
-  const due = task.due_on
-    ? new Intl.DateTimeFormat("he-IL", {
-        day: "numeric",
-        month: "long",
-        timeZone: "Asia/Jerusalem",
-      }).format(new Date(`${task.due_on}T12:00:00+03:00`))
-    : "";
-  const timeMatch = (task.notes ?? "").trim().match(/^(\d{1,2}:\d{2})/);
-  const time = timeMatch?.[1] ?? "";
-  if (due && time) return `${due} · ${time}`;
-  if (due) return due;
+  const when = formatTaskWhen(task);
+  if (when) return when;
   const note = (task.notes ?? "").trim();
   if (note && note.length <= 32) return note;
   return "";
@@ -222,6 +208,7 @@ export function ChatApp() {
                       notes: next.notes,
                       status: next.status,
                       due_on: next.due_on,
+                      due_at: next.due_at,
                     }
                   : item;
               }),
@@ -403,8 +390,8 @@ export function ChatApp() {
                     />
                     <div className="task-copy">
                       <span>{task.title}</span>
-                      {task.due_on ? (
-                        <small>{formatDue(task.due_on)}</small>
+                      {formatDue(task) ? (
+                        <small>{formatDue(task)}</small>
                       ) : null}
                     </div>
                   </li>

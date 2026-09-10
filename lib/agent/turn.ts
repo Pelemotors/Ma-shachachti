@@ -4,56 +4,26 @@ import {
 } from "./instructions.ts";
 import type { ChatSurface } from "../home-surfaces.ts";
 import type { AgentPresentation, MemoryRow, TaskRow } from "../types.ts";
+import { TIME_ZONE, dueTimeFromDueAt, todayContext } from "../time.ts";
 
 export { AGENT_TURN_JSON_SCHEMA, parseDecision } from "../action-schema.ts";
-
-export const TIME_ZONE = "Asia/Jerusalem";
-
-function partValue(
-  parts: Intl.DateTimeFormatPart[],
-  type: Intl.DateTimeFormatPartTypes,
-) {
-  return parts.find((part) => part.type === type)?.value ?? "";
-}
-
-function padClock(value: string) {
-  return value.padStart(2, "0");
-}
-
-export function todayContext(now = new Date()) {
-  const dateParts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const clockParts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: TIME_ZONE,
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
-  const weekday = new Intl.DateTimeFormat("he-IL", {
-    timeZone: TIME_ZONE,
-    weekday: "long",
-  }).format(now);
-
-  const date = `${partValue(dateParts, "year")}-${partValue(dateParts, "month")}-${partValue(dateParts, "day")}`;
-  const currentTime = `${padClock(partValue(clockParts, "hour"))}:${padClock(partValue(clockParts, "minute"))}`;
-
-  return {
-    date,
-    weekday,
-    timeZone: TIME_ZONE,
-    currentTime,
-    localDateTime: `${date}T${currentTime}`,
-  };
-}
+export { TIME_ZONE, todayContext };
 
 function formatTask(task: TaskRow) {
-  const due = task.due_on ? ` | due ${task.due_on}` : "";
-  const notes = task.notes ? ` | ${task.notes}` : "";
-  return `- ${task.id} [${task.status}] ${task.title}${due}${notes}`;
+  const clock = dueTimeFromDueAt(task.due_at);
+  const due = task.due_on ? ` | due ${task.due_on}` : " | due none";
+  const time = clock
+    ? ` | at ${clock}`
+    : task.due_on
+      ? " | at none"
+      : "";
+  const reminder = task.due_at
+    ? task.reminder_enabled
+      ? ` | reminder ${task.reminder_offset_minutes ?? "default"}`
+      : " | reminder off"
+    : "";
+  const notes = task.notes ? ` | notes ${task.notes}` : "";
+  return `- ${task.id} [${task.status}] ${task.title}${due}${time}${reminder}${notes}`;
 }
 
 function surfaceInstructions(
@@ -70,7 +40,11 @@ surface=schedule.
 actions: []
 presentation: null
 
-השתמש בשעה הנוכחית, בתאריך הנוכחי, במשימות הפתוחות, בתאריכי יעד, ב-notes, בזיכרון הרלוונטי ובהקשר מהשיחה.
+השתמש בשעה הנוכחית, בתאריך הנוכחי, במשימות הפתוחות, בתאריכי יעד, ב-due_at, בזיכרון הרלוונטי ובהקשר מהשיחה.
+אל תקרא שעה מתוך notes. notes הוא טקסט חופשי בלבד.
+משימה עם due_at היא Fixed Time Task — עוגן בשעה האמיתית. אל תזיז אותה לשעה אחרת רק כחלק מהצעת הלו״ז.
+משימה עם due_on בלי due_at שייכת ליום הזה אבל אין לה שעה קשיחה. אפשר לכתוב אותה כ"במהלך היום" או לשבץ כהצעה, ולהבהיר שהשעה אינה deadline.
+משימה בלי due_on ו-due_at היא backlog גמיש; אפשר להציע אותה סביב העוגנים אם מתאימה.
 בנה תוכנית רק לזמן שנותר מהיום.
 אל תתכנן שעות שכבר עברו. אל תציע פריט שמתחיל לפני ${currentTime} היום.
 משימה שמועד היעד שלה מחר אינה אוטומטית משימה להיום.
@@ -106,9 +80,11 @@ actions: []
 - תאריך נוכחי ושעה נוכחית
 - overdue
 - due בקרוב
+- due_at לדחיפות של Fixed Time Task
 - חשיבות ודחיפות שעולות מהמשימה ומההקשר
 - דברים שהזנחה שלהם עלולה ליצור בעיה
 - memory והקשר שיחה רלוונטיים
+עדיין אין לבנות לו״ז ואין להציע שעות ביצוע.
 
 משימות בית יומיומיות רגילות אינן צריכות להופיע סתם כי הן קיימות.
 הן כן יכולות לעלות אם הדחייה שלהן כבר יוצרת נזק, לחץ או בעיה ממשית.
@@ -193,15 +169,16 @@ export function buildInstructions(input: {
 אם המשתמש רק מודה או מאשר בלי בקשה חדשה לשינוי נתונים — החזר actions: [] ואל תחזור על הפעולה הקודמת.
 
 פעולות זמינות:
-- task.create: title חובה. due_on רק YYYY-MM-DD. שעה, אם חשובה, ב-notes. אין תזכורות ואין שעת התראה. אל תיצור שורה חדשה אם כבר קיימת משימה פעילה זהה בדיוק ב-title + due_on + notes. דמיון בכותרת אינו כפילות.
-- task.update: id חובה, וגם title/notes/due_on לפי הצורך
-- task.reschedule: id + due_on
+- task.create: title חובה. due_on = YYYY-MM-DD או null. due_time = HH:mm או null. due_on=null ו-due_time=null = בלי מועד. due_on בלי due_time = תאריך בלבד. due_on+due_time = Fixed Time; המערכת ממירה ל-due_at לפי Asia/Jerusalem. אסור due_time בלי due_on. אל תשמור שעה ב-notes. reminder_offset_minutes רק אם המשתמש ביקש במפורש override; אחרת null. reminder_enabled=false רק אם ביקש במפורש בלי תזכורת. אל תיצור שורה חדשה אם כבר קיימת משימה פעילה זהה בדיוק ב-title + due_on + due_at + notes.
+- task.update: id חובה. due_patch=keep לא משנה מועד. due_patch=set מחיל due_on/due_time. due_patch=clear מוחק מועד. reminder_patch=keep או set באותו אופן.
+- task.reschedule: id + due_on, ו-due_time אם יש שעה. due_patch=clear מסיר מועד.
 - task.complete / task.reopen / task.delete: id חובה. delete מסמן cancelled
 - memory.upsert: content חובה, kind=preference|fact, confidence=low|medium|high. id רק לעדכון קיים
 - memory.remove: id חובה
 
-אין reminder.create, אין חיפוש באינטרנט, אין שמירת שעה כשדה נפרד.
-אם מבקשים תזכורת לשעה — שמור משימה לתאריך אם מתאים, וכתוב ב-reply שאין התראה לשעה.
+אין reminder.create נפרד. תזכורת שייכת למשימה. אתה לא שולח Push בעצמך.
+אל תמציא שעה למשימה שיש לה רק תאריך.
+אל תבטיח "אזכיר לך" אם כתיבת המשימה נכשלה.
 עד 10 פעולות בפנייה. כשמזהים משימה קיימת השתמש ב-id שלה.
 
 presentation הוא תצוגה בלבד, לא שינוי נתונים.

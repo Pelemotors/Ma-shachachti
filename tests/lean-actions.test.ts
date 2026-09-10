@@ -28,6 +28,11 @@ function createAction(
     id: null,
     notes: null,
     due_on: null,
+    due_time: null,
+    due_patch: null,
+    reminder_enabled: null,
+    reminder_offset_minutes: null,
+    reminder_patch: null,
     kind: null,
     content: null,
     confidence: null,
@@ -41,6 +46,7 @@ type TaskRec = {
   title: string;
   notes: string;
   due_on: string | null;
+  due_at: string | null;
   status: string;
 };
 
@@ -68,6 +74,7 @@ function tasksDb(rows: TaskRec[]) {
             title: String(payload.title),
             notes: String(payload.notes ?? ""),
             due_on: (payload.due_on as string | null) ?? null,
+            due_at: (payload.due_at as string | null) ?? null,
             status: "open",
           };
           rows.push(created);
@@ -226,6 +233,7 @@ test("existing exact open task is not inserted again", async () => {
     id: "task-1",
     title: "לקנות חלב",
     due_on: "2026-09-11",
+    due_time: null,
     alreadyExists: true,
   });
   const reply = composeReply("הוספתי לך את המשימה", [result]);

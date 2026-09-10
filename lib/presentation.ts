@@ -8,6 +8,7 @@ function toPresentedTask(task: TaskRow): PresentedTask {
     notes: task.notes,
     status: task.status,
     due_on: task.due_on,
+    due_at: task.due_at,
   };
 }
 

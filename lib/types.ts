@@ -1,6 +1,8 @@
 export type TaskStatus = "open" | "done" | "cancelled";
 export type MemoryKind = "preference" | "fact";
 export type MemoryConfidence = "low" | "medium" | "high";
+export type DuePatch = "keep" | "set" | "clear";
+export type ReminderPatch = "keep" | "set";
 
 export type TaskRow = {
   id: string;
@@ -8,6 +10,11 @@ export type TaskRow = {
   notes: string;
   status: TaskStatus;
   due_on: string | null;
+  due_at: string | null;
+  reminder_offset_minutes: number | null;
+  reminder_enabled: boolean;
+  reminder_sent_at: string | null;
+  reminder_claimed_at: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -41,6 +48,11 @@ export type AgentAction = {
   title: string | null;
   notes: string | null;
   due_on: string | null;
+  due_time: string | null;
+  due_patch: DuePatch | null;
+  reminder_enabled: boolean | null;
+  reminder_offset_minutes: number | null;
+  reminder_patch: ReminderPatch | null;
   kind: MemoryKind | null;
   content: string | null;
   confidence: MemoryConfidence | null;
@@ -53,6 +65,7 @@ export type ActionResult =
       id?: string;
       title?: string | null;
       due_on?: string | null;
+      due_time?: string | null;
       alreadyExists?: boolean;
     }
   | {
@@ -73,6 +86,7 @@ export type PresentedTask = {
   notes: string;
   status: TaskStatus;
   due_on: string | null;
+  due_at: string | null;
 };
 
 export type ClientPresentation = {

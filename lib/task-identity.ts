@@ -6,6 +6,7 @@ export type ExactTaskFields = {
   title: string;
   notes?: string | null;
   due_on?: string | null;
+  due_at?: string | null;
   status?: string;
 };
 
@@ -14,6 +15,7 @@ export function exactTaskFields(fields: ExactTaskFields) {
     title: normalizeExactText(fields.title),
     notes: normalizeExactText(fields.notes ?? ""),
     due_on: fields.due_on ?? null,
+    due_at: fields.due_at ?? null,
   };
 }
 
@@ -27,6 +29,7 @@ export function isExactOpenDuplicate(
   return (
     left.title === right.title &&
     left.notes === right.notes &&
-    left.due_on === right.due_on
+    left.due_on === right.due_on &&
+    left.due_at === right.due_at
   );
 }

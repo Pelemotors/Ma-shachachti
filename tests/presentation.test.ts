@@ -11,9 +11,14 @@ const missingId = "33333333-3333-4333-8333-333333333333";
 const ownTask: TaskRow = {
   id: ownId,
   title: "יום הורים לפלא",
-  notes: "17:00",
+  notes: "",
   status: "open",
   due_on: "2026-10-23",
+  due_at: "2026-10-23T14:00:00.000Z",
+  reminder_offset_minutes: null,
+  reminder_enabled: true,
+  reminder_sent_at: null,
+  reminder_claimed_at: null,
   created_at: "2026-09-10T00:00:00.000Z",
   updated_at: "2026-09-10T00:00:00.000Z",
   completed_at: null,
@@ -53,9 +58,10 @@ test("task_list with valid ids is accepted", () => {
       {
         id: ownId,
         title: "יום הורים לפלא",
-        notes: "17:00",
+        notes: "",
         status: "open",
         due_on: "2026-10-23",
+        due_at: "2026-10-23T14:00:00.000Z",
       },
     ],
   });
@@ -99,7 +105,7 @@ test("the model cannot set title or date itself", () => {
   );
   assert.equal(resolved?.tasks[0]?.title, "יום הורים לפלא");
   assert.equal(resolved?.tasks[0]?.due_on, "2026-10-23");
-  assert.equal(resolved?.tasks[0]?.notes, "17:00");
+  assert.equal(resolved?.tasks[0]?.notes, "");
   assert.equal(resolved?.tasks[0]?.status, "open");
 });
 

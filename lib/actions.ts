@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { inspectActions } from "./action-schema.ts";
 import { exactTaskFields, isExactOpenDuplicate } from "./task-identity.ts";
+import { dueTimeFromDueAt, resolveTaskDeadline } from "./time.ts";
 import type {
   ActionResult,
   ActionType,
@@ -21,6 +22,7 @@ function ok(
     id?: string;
     title?: string | null;
     due_on?: string | null;
+    due_time?: string | null;
     alreadyExists?: boolean;
   } = {},
 ): ActionResult {
@@ -30,12 +32,48 @@ function ok(
 async function ownTask(db: Db, userId: string, id: string) {
   const { data, error } = await db
     .from("tasks")
-    .select("id")
+    .select(
+      "id,due_on,due_at,reminder_enabled,reminder_offset_minutes,reminder_sent_at,reminder_claimed_at",
+    )
     .eq("user_id", userId)
     .eq("id", id)
     .maybeSingle();
-  if (error || !data) return false;
-  return true;
+  if (error || !data) return null;
+  return data as Pick<
+    TaskRow,
+    | "id"
+    | "due_on"
+    | "due_at"
+    | "reminder_enabled"
+    | "reminder_offset_minutes"
+    | "reminder_sent_at"
+    | "reminder_claimed_at"
+  >;
+}
+
+function reminderResetIfNeeded(
+  previous: {
+    due_at: string | null;
+    reminder_enabled: boolean;
+    reminder_offset_minutes: number | null;
+  },
+  next: {
+    due_at: string | null;
+    reminder_enabled: boolean;
+    reminder_offset_minutes: number | null;
+  },
+) {
+  const dueChanged = previous.due_at !== next.due_at;
+  const offsetChanged =
+    previous.reminder_offset_minutes !== next.reminder_offset_minutes;
+  const reenabled = !previous.reminder_enabled && next.reminder_enabled;
+  if (dueChanged || offsetChanged || reenabled) {
+    return {
+      reminder_sent_at: null,
+      reminder_claimed_at: null,
+    };
+  }
+  return {};
 }
 
 async function ownMemory(db: Db, userId: string, id: string) {
@@ -59,14 +97,22 @@ export async function executeAction(
   switch (action.type) {
     case "task.create": {
       if (!action.title) return fail(action.type, "חסר שם למשימה.");
+      const deadline = resolveTaskDeadline(action.due_on, action.due_time);
+      if (!deadline.ok) return fail(action.type, deadline.error);
+      const reminderEnabled = action.reminder_enabled !== false;
+      const reminderOffset =
+        action.reminder_patch === "set" || action.reminder_offset_minutes != null
+          ? action.reminder_offset_minutes
+          : null;
       const fields = exactTaskFields({
         title: action.title,
         notes: action.notes,
-        due_on: action.due_on,
+        due_on: deadline.due_on,
+        due_at: deadline.due_at,
       });
       const { data: openRows, error: lookupError } = await db
         .from("tasks")
-        .select("id,title,notes,due_on,status")
+        .select("id,title,notes,due_on,due_at,status")
         .eq("user_id", userId)
         .eq("status", "open")
         .limit(80);
@@ -80,6 +126,7 @@ export async function executeAction(
           id: existing.id as string,
           title: fields.title,
           due_on: fields.due_on,
+          due_time: dueTimeFromDueAt(fields.due_at),
           alreadyExists: true,
         });
       }
@@ -90,6 +137,9 @@ export async function executeAction(
           title: fields.title,
           notes: fields.notes,
           due_on: fields.due_on,
+          due_at: fields.due_at,
+          reminder_enabled: reminderEnabled,
+          reminder_offset_minutes: reminderOffset,
           status: "open",
           updated_at: now,
         })
@@ -101,17 +151,54 @@ export async function executeAction(
         id: data.id as string,
         title: fields.title,
         due_on: fields.due_on,
+        due_time: deadline.due_time,
       });
     }
     case "task.update": {
       if (!action.id) return fail(action.type, "חסר מזהה משימה.");
-      if (!(await ownTask(db, userId, action.id)))
-        return fail(action.type, "המשימה לא נמצאה.");
+      const current = await ownTask(db, userId, action.id);
+      if (!current) return fail(action.type, "המשימה לא נמצאה.");
       const patch: Record<string, unknown> = { updated_at: now };
       if (action.title) patch.title = action.title;
       if (action.notes != null) patch.notes = action.notes;
-      if (action.due_on !== undefined && action.due_on !== null)
-        patch.due_on = action.due_on;
+      let nextDueAt = current.due_at;
+      let nextDueOn = current.due_on;
+      if (action.due_patch === "clear") {
+        nextDueOn = null;
+        nextDueAt = null;
+        patch.due_on = null;
+        patch.due_at = null;
+      } else if (action.due_patch === "set") {
+        const deadline = resolveTaskDeadline(action.due_on, action.due_time);
+        if (!deadline.ok) return fail(action.type, deadline.error);
+        nextDueOn = deadline.due_on;
+        nextDueAt = deadline.due_at;
+        patch.due_on = deadline.due_on;
+        patch.due_at = deadline.due_at;
+      }
+      let nextEnabled = current.reminder_enabled;
+      let nextOffset = current.reminder_offset_minutes;
+      if (action.reminder_patch === "set") {
+        nextEnabled = action.reminder_enabled !== false;
+        nextOffset = action.reminder_offset_minutes;
+        patch.reminder_enabled = nextEnabled;
+        patch.reminder_offset_minutes = nextOffset;
+      }
+      Object.assign(
+        patch,
+        reminderResetIfNeeded(
+          {
+            due_at: current.due_at,
+            reminder_enabled: current.reminder_enabled,
+            reminder_offset_minutes: current.reminder_offset_minutes,
+          },
+          {
+            due_at: nextDueAt,
+            reminder_enabled: nextEnabled,
+            reminder_offset_minutes: nextOffset,
+          },
+        ),
+      );
       const { error } = await db
         .from("tasks")
         .update(patch)
@@ -121,24 +208,47 @@ export async function executeAction(
       return ok(action.type, {
         id: action.id,
         title: action.title,
-        due_on: action.due_on,
+        due_on: nextDueOn,
+        due_time: dueTimeFromDueAt(nextDueAt),
       });
     }
     case "task.reschedule": {
-      if (!action.id || !action.due_on)
-        return fail(action.type, "חסרים מזהה או תאריך.");
-      if (!(await ownTask(db, userId, action.id)))
-        return fail(action.type, "המשימה לא נמצאה.");
+      if (!action.id) return fail(action.type, "חסר מזהה משימה.");
+      const current = await ownTask(db, userId, action.id);
+      if (!current) return fail(action.type, "המשימה לא נמצאה.");
+      const deadline =
+        action.due_patch === "clear"
+          ? resolveTaskDeadline(null, null)
+          : resolveTaskDeadline(action.due_on, action.due_time);
+      if (!deadline.ok) return fail(action.type, deadline.error);
+      const patch: Record<string, unknown> = {
+        due_on: deadline.due_on,
+        due_at: deadline.due_at,
+        updated_at: now,
+        ...reminderResetIfNeeded(
+          {
+            due_at: current.due_at,
+            reminder_enabled: current.reminder_enabled,
+            reminder_offset_minutes: current.reminder_offset_minutes,
+          },
+          {
+            due_at: deadline.due_at,
+            reminder_enabled: current.reminder_enabled,
+            reminder_offset_minutes: current.reminder_offset_minutes,
+          },
+        ),
+      };
       const { error } = await db
         .from("tasks")
-        .update({ due_on: action.due_on, updated_at: now })
+        .update(patch)
         .eq("user_id", userId)
         .eq("id", action.id);
       if (error) return fail(action.type, "לא הצלחנו לשנות את התאריך.");
       return ok(action.type, {
         id: action.id,
         title: action.title,
-        due_on: action.due_on,
+        due_on: deadline.due_on,
+        due_time: deadline.due_time,
       });
     }
     case "task.complete": {
@@ -260,7 +370,9 @@ export async function runRequestedActions(
 export async function loadTasks(db: Db, userId: string): Promise<TaskRow[]> {
   const { data, error } = await db
     .from("tasks")
-    .select("id,title,notes,status,due_on,created_at,updated_at,completed_at")
+    .select(
+      "id,title,notes,status,due_on,due_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,created_at,updated_at,completed_at",
+    )
     .eq("user_id", userId)
     .neq("status", "cancelled")
     .order("created_at", { ascending: false })
