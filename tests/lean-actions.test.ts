@@ -33,6 +33,7 @@ function createAction(
     reminder_enabled: null,
     reminder_offset_minutes: null,
     reminder_patch: null,
+    silent: null,
     kind: null,
     content: null,
     confidence: null,

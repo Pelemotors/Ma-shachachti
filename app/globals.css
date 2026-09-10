@@ -448,6 +448,15 @@ h1 {
 .tasks-empty {
   padding: 18px 6px;
 }
+.chat-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 2px 8px;
+}
+.danger-text {
+  color: #8a3434;
+  margin: 0 2px 12px;
+}
 .task-list {
   list-style: none;
   margin: 0;

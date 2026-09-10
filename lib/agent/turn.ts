@@ -173,10 +173,11 @@ export function buildInstructions(input: {
 - task.update: id חובה. due_patch=keep לא משנה מועד. due_patch=set מחיל due_on/due_time. due_patch=clear מוחק מועד. reminder_patch=keep או set באותו אופן.
 - task.reschedule: id + due_on, ו-due_time אם יש שעה. due_patch=clear מסיר מועד.
 - task.complete / task.reopen / task.delete: id חובה. delete מסמן cancelled
-- memory.upsert: content חובה, kind=preference|fact, confidence=low|medium|high. id רק לעדכון קיים
+- memory.upsert: content חובה, kind=preference|fact, confidence=low|medium|high. id רק לעדכון קיים. silent=true ללמידה יזומה ברקע. silent=false רק אם המשתמש ביקש במפורש לזכור.
 - memory.remove: id חובה
 
 אין reminder.create נפרד. תזכורת שייכת למשימה. אתה לא שולח Push בעצמך.
+reminder_offset_minutes=0 פירושו התראה בזמן המשימה. null = ברירת המחדל של המשתמש. אל תחליף 0 ב-default.
 אל תמציא שעה למשימה שיש לה רק תאריך.
 אל תבטיח "אזכיר לך" אם כתיבת המשימה נכשלה.
 עד 10 פעולות בפנייה. כשמזהים משימה קיימת השתמש ב-id שלה.

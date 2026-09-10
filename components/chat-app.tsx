@@ -62,6 +62,7 @@ export function ChatApp() {
   const [sending, setSending] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
   const [error, setError] = useState("");
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [defaultReminderMinutes, setDefaultReminderMinutes] = useState(
     DEFAULT_REMINDER_MINUTES,
   );
@@ -94,6 +95,7 @@ export function ChatApp() {
       else {
         setMessages(body.messages ?? []);
         setTasks(body.tasks ?? []);
+        if (typeof body.session_id === "string") setSessionId(body.session_id);
       }
       const prefs = await authFetch("/api/preferences")
         .then((item) => item.json())
@@ -161,7 +163,11 @@ export function ChatApp() {
     const response = await authFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(surface ? { message, surface } : { message }),
+      body: JSON.stringify({
+        message,
+        surface,
+        session_id: sessionId,
+      }),
     }).catch(() => null);
 
     if (!response) {
@@ -190,6 +196,7 @@ export function ChatApp() {
       },
     ]);
     if (Array.isArray(body.tasks)) setTasks(body.tasks);
+    if (typeof body.session_id === "string") setSessionId(body.session_id);
     setSending(false);
   }
 
@@ -257,6 +264,54 @@ export function ChatApp() {
       );
     }
     return true;
+  }
+
+  async function startNewChat() {
+    setError("");
+    const response = await authFetch("/api/chat/session", { method: "POST" }).catch(
+      () => null,
+    );
+    if (!response?.ok) {
+      setError("לא הצלחנו לפתוח שיחה חדשה.");
+      return;
+    }
+    const body = await response.json().catch(() => ({}));
+    if (typeof body.session_id !== "string") {
+      setError("לא הצלחנו לפתוח שיחה חדשה.");
+      return;
+    }
+    setSessionId(body.session_id);
+    setMessages([]);
+    setView("chat");
+  }
+
+  async function clearAllTasks() {
+    if (
+      !window.confirm(
+        "לנקות את כל המשימות?\nכל המשימות הפתוחות והמשימות שבוצעו יוסרו מהרשימה.",
+      )
+    ) {
+      return;
+    }
+    const previous = tasks;
+    setError("");
+    setSavingTask(true);
+    const response = await authFetch("/api/tasks/clear", { method: "POST" }).catch(
+      () => null,
+    );
+    setSavingTask(false);
+    if (!response?.ok) {
+      setTasks(previous);
+      setError("לא הצלחנו לנקות את המשימות.");
+      return;
+    }
+    const body = await response.json().catch(() => ({}));
+    if (!Array.isArray(body.tasks)) {
+      setTasks(previous);
+      setError("לא הצלחנו לנקות את המשימות.");
+      return;
+    }
+    setTasks(body.tasks);
   }
 
   async function addTask(event: FormEvent) {
@@ -348,6 +403,16 @@ export function ChatApp() {
           </div>
         ) : view === "chat" ? (
           <div className="messages" aria-live="polite">
+            <div className="chat-toolbar">
+              <button
+                className="text-button"
+                type="button"
+                disabled={sending}
+                onClick={() => void startNewChat()}
+              >
+                שיחה חדשה
+              </button>
+            </div>
             {messages.length === 0 ? (
               <div className="empty-chat">
                 <div className="brand-mark">מ׳</div>
@@ -427,6 +492,14 @@ export function ChatApp() {
                 +
               </button>
             </form>
+            <button
+              className="text-button danger-text"
+              type="button"
+              disabled={savingTask}
+              onClick={() => void clearAllTasks()}
+            >
+              נקה את כל המשימות
+            </button>
             {error ? <div className="error-box">{error}</div> : null}
             {openTasks.length === 0 ? (
               <p className="muted tasks-empty">

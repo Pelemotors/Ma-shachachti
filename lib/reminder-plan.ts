@@ -38,7 +38,7 @@ export function planTaskReminder(
     due_at: task.due_at,
     reminder_enabled: task.reminder_enabled,
     reminder_offset_minutes: task.reminder_offset_minutes,
-    default_reminder_minutes: defaultMinutes || DEFAULT_REMINDER_MINUTES,
+    default_reminder_minutes: defaultMinutes ?? DEFAULT_REMINDER_MINUTES,
   });
   if (offset == null) {
     return {

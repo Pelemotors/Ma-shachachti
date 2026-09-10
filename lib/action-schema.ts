@@ -34,6 +34,7 @@ export const ActionSchema = z.object({
   kind: z.enum(["preference", "fact"]).nullable().optional(),
   content: z.string().trim().min(1).max(500).nullable().optional(),
   confidence: z.enum(["low", "medium", "high"]).nullable().optional(),
+  silent: z.boolean().nullable().optional(),
 });
 
 function nullable(schema: Record<string, unknown>) {
@@ -66,6 +67,7 @@ export const AGENT_TURN_JSON_SCHEMA = {
           "kind",
           "content",
           "confidence",
+          "silent",
         ],
         properties: {
           type: {
@@ -97,6 +99,7 @@ export const AGENT_TURN_JSON_SCHEMA = {
             type: "string",
             enum: ["low", "medium", "high"],
           }),
+          silent: nullable({ type: "boolean" }),
         },
       },
     },
@@ -179,6 +182,7 @@ export function toAgentAction(data: z.infer<typeof ActionSchema>): AgentAction {
     kind: data.kind ?? null,
     content: data.content ?? null,
     confidence: data.confidence ?? null,
+    silent: data.silent ?? null,
   };
 }
 
@@ -263,6 +267,7 @@ function successLine(result: Extract<ActionResult, { ok: true }>) {
     case "task.delete":
       return `הסרתי את המשימה${title}.`;
     case "memory.upsert":
+      if (result.silent) return "";
       return "שמרתי את זה לזיכרון האישי.";
     case "memory.remove":
       return "הסרתי את הפריט מהזיכרון האישי.";
@@ -293,6 +298,7 @@ function conversationalLines(text: string) {
 export function composeReply(llmReply: string, results: ActionResult[]) {
   const facts = results
     .map((result) => (result.ok ? successLine(result) : failureLine(result)))
+    .filter((line) => line.trim().length > 0)
     .join("\n")
     .trim();
   const talk = conversationalLines(llmReply)

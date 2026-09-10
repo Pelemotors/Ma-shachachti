@@ -56,6 +56,7 @@ export type AgentAction = {
   kind: MemoryKind | null;
   content: string | null;
   confidence: MemoryConfidence | null;
+  silent: boolean | null;
 };
 
 export type ActionResult =
@@ -67,6 +68,7 @@ export type ActionResult =
       due_on?: string | null;
       due_time?: string | null;
       alreadyExists?: boolean;
+      silent?: boolean;
     }
   | {
       ok: false;

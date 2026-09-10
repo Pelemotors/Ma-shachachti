@@ -8,8 +8,14 @@ import {
   parseDecision,
   surfaceInputHint,
 } from "@/lib/agent/turn";
+import { recordActivity } from "@/lib/activity";
 import { parseChatRequest } from "@/lib/chat-request";
+import {
+  latestOrCreateChatSession,
+  ownChatSession,
+} from "@/lib/chat-sessions";
 import { resolveTaskListPresentation } from "@/lib/presentation";
+import { createServiceClient } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -50,34 +56,66 @@ function jsonError(error: unknown) {
   );
 }
 
+async function trackAi(
+  userId: string,
+  eventType: "ai.success" | "ai.failure",
+  metadata: Record<string, unknown>,
+) {
+  try {
+    await recordActivity(createServiceClient(), {
+      ownerId: userId,
+      eventType,
+      metadata,
+    });
+  } catch {
+    /* telemetry must not break chat */
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const { db, userId } = await authorize(req);
+    const session = await latestOrCreateChatSession(db, userId);
+    if (!session) throw new HttpError(503, "לא הצלחנו לפתוח שיחה.");
     const { data, error } = await db
       .from("chat_messages")
       .select("id,role,content,created_at")
       .eq("user_id", userId)
+      .eq("session_id", session.id)
       .order("created_at", { ascending: false })
       .limit(100);
 
     if (error) throw new HttpError(503, "לא הצלחנו לטעון את השיחה.");
     const messages = ((data ?? []) as StoredMessage[]).slice().reverse();
     const tasks = await loadTasks(db, userId);
-    return Response.json({ messages, tasks });
+    return Response.json({ messages, tasks, session_id: session.id });
   } catch (error) {
     return jsonError(error);
   }
 }
 
 export async function POST(req: Request) {
+  const started = Date.now();
   try {
     const { db, userId } = await authorize(req);
     const parsed = parseChatRequest(await req.json().catch(() => null));
     if (!parsed.ok) throw new HttpError(parsed.status, parsed.error);
-    const { message, surface } = parsed.request;
+    const { message, surface, session_id: requestedSession } = parsed.request;
+
+    let sessionId = requestedSession;
+    if (sessionId) {
+      if (!(await ownChatSession(db, userId, sessionId))) {
+        throw new HttpError(403, "שיחת היעד אינה שייכת לחשבון הזה.");
+      }
+    } else {
+      const session = await latestOrCreateChatSession(db, userId);
+      if (!session) throw new HttpError(503, "לא הצלחנו לפתוח שיחה.");
+      sessionId = session.id;
+    }
 
     const { error: userSaveError } = await db.from("chat_messages").insert({
       user_id: userId,
+      session_id: sessionId,
       role: "user",
       content: message,
     });
@@ -87,6 +125,7 @@ export async function POST(req: Request) {
       .from("chat_messages")
       .select("role,content,created_at")
       .eq("user_id", userId)
+      .eq("session_id", sessionId)
       .order("created_at", { ascending: false })
       .limit(24);
     if (historyError)
@@ -136,8 +175,14 @@ export async function POST(req: Request) {
     });
 
     const raw = await response.text();
+    const latencyMs = Date.now() - started;
 
     if (!response.ok) {
+      await trackAi(userId, "ai.failure", {
+        status: response.status,
+        latencyMs,
+        code: response.status === 429 ? "rate_limited" : "upstream_error",
+      });
       console.error("OpenAI Lean chat upstream error", {
         status: response.status,
         model,
@@ -151,14 +196,24 @@ export async function POST(req: Request) {
     try {
       data = JSON.parse(raw) as OpenAIResponse;
     } catch {
+      await trackAi(userId, "ai.failure", {
+        latencyMs,
+        code: "invalid_json",
+      });
       throw new HttpError(502, "הסוכן החזיר תשובה לא תקינה.");
     }
 
     const extracted = extractText(data);
-    if (!extracted) throw new HttpError(502, "הסוכן לא החזיר תשובה.");
+    if (!extracted) {
+      await trackAi(userId, "ai.failure", { latencyMs, code: "empty" });
+      throw new HttpError(502, "הסוכן לא החזיר תשובה.");
+    }
 
     const decision = parseDecision(extracted);
-    if (!decision.ok) throw new HttpError(502, "הסוכן החזיר תשובה לא תקינה.");
+    if (!decision.ok) {
+      await trackAi(userId, "ai.failure", { latencyMs, code: "parse" });
+      throw new HttpError(502, "הסוכן החזיר תשובה לא תקינה.");
+    }
     const scoped = applySurfaceTurnPolicy({
       surface,
       actions: decision.actions,
@@ -176,7 +231,12 @@ export async function POST(req: Request) {
 
     const { data: saved, error: assistantSaveError } = await db
       .from("chat_messages")
-      .insert({ user_id: userId, role: "assistant", content: reply })
+      .insert({
+        user_id: userId,
+        session_id: sessionId,
+        role: "assistant",
+        content: reply,
+      })
       .select("id,created_at")
       .single();
     if (assistantSaveError || !saved) {
@@ -186,12 +246,14 @@ export async function POST(req: Request) {
       );
     }
 
+    await trackAi(userId, "ai.success", { latencyMs });
     return Response.json({
       reply,
       id: saved.id,
       created_at: saved.created_at,
       tasks: nextTasks,
       presentation,
+      session_id: sessionId,
     });
   } catch (error) {
     return jsonError(error);

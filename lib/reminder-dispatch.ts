@@ -96,7 +96,9 @@ export async function dispatchDueReminders(
   const defaults = new Map(
     (prefs ?? []).map((row) => [
       row.user_id as string,
-      Number(row.default_reminder_minutes) || DEFAULT_REMINDER_MINUTES,
+      Number.isFinite(Number(row.default_reminder_minutes))
+        ? Number(row.default_reminder_minutes)
+        : DEFAULT_REMINDER_MINUTES,
     ]),
   );
 

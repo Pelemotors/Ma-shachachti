@@ -37,3 +37,17 @@ export async function authorize(req: Request) {
 
   return { db, userId: data.user.id };
 }
+
+export async function authorizeAdmin(req: Request) {
+  const auth = await authorize(req);
+  const { data, error } = await auth.db
+    .from("user_roles")
+    .select("role,approved")
+    .eq("user_id", auth.userId)
+    .maybeSingle();
+  if (error) throw new HttpError(503, "לא הצלחנו לבדוק את הרשאת המנהל.");
+  if (data?.role !== "admin" || data.approved !== true) {
+    throw new HttpError(403, "אין הרשאת מנהל.");
+  }
+  return auth;
+}

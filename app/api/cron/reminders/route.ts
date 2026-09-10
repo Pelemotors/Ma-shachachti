@@ -1,3 +1,4 @@
+import { recordActivity } from "@/lib/activity";
 import { HttpError } from "@/lib/server-auth";
 import { authorizeCron, createServiceClient } from "@/lib/supabase-admin";
 import { dispatchDueReminders } from "@/lib/reminder-dispatch";
@@ -15,8 +16,21 @@ function jsonError(error: unknown) {
 
 async function run(req: Request) {
   authorizeCron(req);
-  const summary = await dispatchDueReminders(createServiceClient());
-  return Response.json({ ok: true, ...summary });
+  const db = createServiceClient();
+  try {
+    const summary = await dispatchDueReminders(db);
+    await recordActivity(db, {
+      eventType: "cron.reminders.success",
+      metadata: summary,
+    });
+    return Response.json({ ok: true, ...summary });
+  } catch (error) {
+    await recordActivity(db, {
+      eventType: "cron.reminders.failure",
+      metadata: { error: error instanceof Error ? error.message : "failed" },
+    });
+    throw error;
+  }
 }
 
 export async function GET(req: Request) {

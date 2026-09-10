@@ -1,7 +1,7 @@
 export const REMINDER_GRACE_MS = 2 * 60 * 60 * 1000;
 export const REMINDER_CLAIM_STALE_MS = 5 * 60 * 1000;
 export const DEFAULT_REMINDER_MINUTES = 30;
-export const REMINDER_MINUTE_OPTIONS = [10, 30, 60, 180, 1440] as const;
+export const REMINDER_MINUTE_OPTIONS = [0, 10, 30, 60, 180, 1440] as const;
 
 export type ReminderMinuteOption = (typeof REMINDER_MINUTE_OPTIONS)[number];
 
@@ -28,6 +28,7 @@ export function formatTaskReminder(input: {
 }
 
 export function reminderLabel(minutes: number) {
+  if (minutes === 0) return "בזמן המשימה";
   if (minutes === 10) return "10 דקות לפני";
   if (minutes === 30) return "30 דקות לפני";
   if (minutes === 60) return "שעה לפני";

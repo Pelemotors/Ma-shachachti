@@ -24,6 +24,7 @@ function ok(
     due_on?: string | null;
     due_time?: string | null;
     alreadyExists?: boolean;
+    silent?: boolean;
   } = {},
 ): ActionResult {
   return { ok: true, type, ...extra };
@@ -304,8 +305,8 @@ export async function executeAction(
           })
           .eq("user_id", userId)
           .eq("id", action.id);
-        if (error) return fail(action.type, "לא הצלחנו לעדכן את הזיכרון.");
-        return ok(action.type, { id: action.id });
+        if (error)         return fail(action.type, "לא הצלחנו לעדכן את הזיכרון.");
+        return ok(action.type, { id: action.id, silent: action.silent === true });
       }
       const { data, error } = await db
         .from("agent_memory")
@@ -320,7 +321,10 @@ export async function executeAction(
         .single();
       if (error || !data)
         return fail(action.type, "לא הצלחנו לשמור את הזיכרון.");
-      return ok(action.type, { id: data.id as string });
+      return ok(action.type, {
+        id: data.id as string,
+        silent: action.silent === true,
+      });
     }
     case "memory.remove": {
       if (!action.id) return fail(action.type, "חסר מזהה זיכרון.");
@@ -390,4 +394,15 @@ export async function loadMemory(db: Db, userId: string): Promise<MemoryRow[]> {
     .limit(40);
   if (error) throw error;
   return (data ?? []) as MemoryRow[];
+}
+
+export async function clearUserTasks(db: Db, userId: string) {
+  const now = new Date().toISOString();
+  const { error } = await db
+    .from("tasks")
+    .update({ status: "cancelled", updated_at: now })
+    .eq("user_id", userId)
+    .in("status", ["open", "done"]);
+  if (error) throw error;
+  return loadTasks(db, userId);
 }
