@@ -1,6 +1,16 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { authorize, HttpError } from "@/lib/server-auth";
+import {
+  executeActions,
+  groundReply,
+  loadMemory,
+  loadTasks,
+  parseActions,
+} from "@/lib/actions";
+import {
+  AGENT_TURN_JSON_SCHEMA,
+  buildInstructions,
+  parseDecision,
+} from "@/lib/agent/turn";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -13,29 +23,18 @@ type StoredMessage = {
 };
 
 type OpenAIResponse = {
-  status?: string;
   output?: Array<{
     type?: string;
     content?: Array<{ type?: string; text?: string }>;
   }>;
 };
 
-let cachedInstructions: string | null = null;
-
-async function instructions() {
-  if (!cachedInstructions) {
-    cachedInstructions = await readFile(
-      join(process.cwd(), "lib/agent/INSTRUCTIONS.he.md"),
-      "utf8",
-    );
-  }
-  return `${cachedInstructions}\n\n## מצב המוצר כרגע — Lean V1\nבשלב זה קיימת שיחה בלבד. אין לך עדיין כלים לשנות משימות, זיכרון, קניות, לו״ז או כל נתון אחר. אל תטען ששמרת, מחקת, עדכנת, תזמנת או ביצעת פעולה שאינה קיימת. אפשר לייעץ, לשאול, לחשוב ולשוחח כרגיל.`;
-}
-
 function extractText(data: OpenAIResponse) {
   return (data.output ?? [])
     .flatMap((item) => item.content ?? [])
-    .filter((part) => part.type === "output_text" && typeof part.text === "string")
+    .filter(
+      (part) => part.type === "output_text" && typeof part.text === "string",
+    )
     .map((part) => part.text)
     .join("\n")
     .trim();
@@ -45,8 +44,11 @@ function jsonError(error: unknown) {
   if (error instanceof HttpError) {
     return Response.json({ error: error.message }, { status: error.status });
   }
-  console.error("Lean chat error", error);
-  return Response.json({ error: "הסוכן לא הצליח לענות כרגע. אפשר לנסות שוב." }, { status: 500 });
+  console.error("Lean chat error");
+  return Response.json(
+    { error: "הסוכן לא הצליח לענות כרגע. אפשר לנסות שוב." },
+    { status: 500 },
+  );
 }
 
 export async function GET(req: Request) {
@@ -61,7 +63,8 @@ export async function GET(req: Request) {
 
     if (error) throw new HttpError(503, "לא הצלחנו לטעון את השיחה.");
     const messages = ((data ?? []) as StoredMessage[]).slice().reverse();
-    return Response.json({ messages });
+    const tasks = await loadTasks(db, userId);
+    return Response.json({ messages, tasks });
   } catch (error) {
     return jsonError(error);
   }
@@ -71,7 +74,8 @@ export async function POST(req: Request) {
   try {
     const { db, userId } = await authorize(req);
     const body = await req.json().catch(() => null);
-    const message = typeof body?.message === "string" ? body.message.trim() : "";
+    const message =
+      typeof body?.message === "string" ? body.message.trim() : "";
     if (!message) throw new HttpError(400, "ההודעה ריקה.");
     if (message.length > 8000) throw new HttpError(400, "ההודעה ארוכה מדי.");
 
@@ -88,13 +92,31 @@ export async function POST(req: Request) {
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(24);
-    if (historyError) throw new HttpError(503, "לא הצלחנו לטעון את ההקשר לשיחה.");
+    if (historyError)
+      throw new HttpError(503, "לא הצלחנו לטעון את ההקשר לשיחה.");
+
+    const [tasks, memory] = await Promise.all([
+      loadTasks(db, userId),
+      loadMemory(db, userId),
+    ]);
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new HttpError(503, "חיבור ה-AI עדיין לא הוגדר.");
     const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-luna";
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const openaiInput = (recent ?? [])
+      .slice()
+      .reverse()
+      .map((item) => ({ role: item.role, content: item.content }));
+    const openaiBase = {
+      model,
+      store: false,
+      instructions: buildInstructions({ tasks, memory }),
+      input: openaiInput,
+      max_output_tokens: 1400,
+    };
+
+    let response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -102,21 +124,39 @@ export async function POST(req: Request) {
       },
       signal: AbortSignal.timeout(30_000),
       body: JSON.stringify({
-        model,
-        store: false,
-        instructions: await instructions(),
-        input: (recent ?? [])
-          .slice()
-          .reverse()
-          .map((item) => ({ role: item.role, content: item.content })),
-        max_output_tokens: 1400,
+        ...openaiBase,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "agent_turn",
+            strict: true,
+            schema: AGENT_TURN_JSON_SCHEMA,
+          },
+        },
       }),
     });
 
-    const raw = await response.text();
+    let raw = await response.text();
+    if (!response.ok && response.status === 400) {
+      response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify(openaiBase),
+      });
+      raw = await response.text();
+    }
+
     if (!response.ok) {
-      console.error("OpenAI Lean chat upstream error", { status: response.status, model });
-      if (response.status === 429) throw new HttpError(503, "הסוכן עמוס כרגע. אפשר לנסות שוב בעוד רגע.");
+      console.error("OpenAI Lean chat upstream error", {
+        status: response.status,
+        model,
+      });
+      if (response.status === 429)
+        throw new HttpError(503, "הסוכן עמוס כרגע. אפשר לנסות שוב בעוד רגע.");
       throw new HttpError(502, "לא הצלחנו לקבל תשובה מהסוכן.");
     }
 
@@ -127,7 +167,13 @@ export async function POST(req: Request) {
       throw new HttpError(502, "הסוכן החזיר תשובה לא תקינה.");
     }
 
-    const reply = extractText(data);
+    const extracted = extractText(data);
+    if (!extracted) throw new HttpError(502, "הסוכן לא החזיר תשובה.");
+
+    const decision = parseDecision(extracted);
+    const actions = parseActions(decision.actions);
+    const results = await executeActions(db, userId, actions);
+    const reply = groundReply(decision.reply, results);
     if (!reply) throw new HttpError(502, "הסוכן לא החזיר תשובה.");
 
     const { data: saved, error: assistantSaveError } = await db
@@ -136,10 +182,19 @@ export async function POST(req: Request) {
       .select("id,created_at")
       .single();
     if (assistantSaveError || !saved) {
-      throw new HttpError(503, "קיבלנו תשובה מהסוכן אבל לא הצלחנו לשמור אותה. אפשר לנסות שוב.");
+      throw new HttpError(
+        503,
+        "קיבלנו תשובה מהסוכן אבל לא הצלחנו לשמור אותה. אפשר לנסות שוב.",
+      );
     }
 
-    return Response.json({ reply, id: saved.id, created_at: saved.created_at });
+    const nextTasks = await loadTasks(db, userId);
+    return Response.json({
+      reply,
+      id: saved.id,
+      created_at: saved.created_at,
+      tasks: nextTasks,
+    });
   } catch (error) {
     return jsonError(error);
   }

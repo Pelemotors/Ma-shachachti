@@ -2,8 +2,9 @@ import type { NextConfig } from "next";
 
 const config: NextConfig = {
   poweredByHeader: false,
+  agentRules: false,
   outputFileTracingIncludes: {
-    "/api/chat": ["./lib/agent/INSTRUCTIONS.he.md"],
+    "/api/chat": ["./lib/agent/instructions.ts"],
   },
   async headers() {
     return [

@@ -10,13 +10,16 @@
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "npm run typecheck"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@fontsource/heebo": "5.3.0",
     "@supabase/supabase-js": "2.115.0",
     "next": "16.3.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zod": "4.6.1"
   },
   "devDependencies": {
     "@types/node": "26.4.1",

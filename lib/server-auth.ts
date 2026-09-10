@@ -23,7 +23,8 @@ export async function authorize(req: Request) {
   });
 
   const { data, error } = await db.auth.getUser(token);
-  if (error || !data.user) throw new HttpError(401, "ההתחברות הסתיימה. יש להתחבר שוב.");
+  if (error || !data.user)
+    throw new HttpError(401, "ההתחברות הסתיימה. יש להתחבר שוב.");
 
   const { data: access, error: accessError } = await db
     .from("user_roles")
