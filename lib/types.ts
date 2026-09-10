@@ -53,6 +53,7 @@ export type ActionResult =
       id?: string;
       title?: string | null;
       due_on?: string | null;
+      alreadyExists?: boolean;
     }
   | {
       ok: false;
@@ -60,3 +61,21 @@ export type ActionResult =
       error: string;
       detail?: string;
     };
+
+export type AgentPresentation = {
+  type: "task_list";
+  task_ids: string[];
+} | null;
+
+export type PresentedTask = {
+  id: string;
+  title: string;
+  notes: string;
+  status: TaskStatus;
+  due_on: string | null;
+};
+
+export type ClientPresentation = {
+  type: "task_list";
+  tasks: PresentedTask[];
+};

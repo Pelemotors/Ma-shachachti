@@ -1,12 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { inspectActions } from "./action-schema";
+import { inspectActions } from "./action-schema.ts";
+import { exactTaskFields, isExactOpenDuplicate } from "./task-identity.ts";
 import type {
   ActionResult,
   ActionType,
   AgentAction,
   MemoryRow,
   TaskRow,
-} from "./types";
+} from "./types.ts";
 
 type Db = SupabaseClient;
 
@@ -16,7 +17,12 @@ function fail(type: ActionType, error: string): ActionResult {
 
 function ok(
   type: ActionType,
-  extra: { id?: string; title?: string | null; due_on?: string | null } = {},
+  extra: {
+    id?: string;
+    title?: string | null;
+    due_on?: string | null;
+    alreadyExists?: boolean;
+  } = {},
 ): ActionResult {
   return { ok: true, type, ...extra };
 }
@@ -53,13 +59,37 @@ export async function executeAction(
   switch (action.type) {
     case "task.create": {
       if (!action.title) return fail(action.type, "חסר שם למשימה.");
+      const fields = exactTaskFields({
+        title: action.title,
+        notes: action.notes,
+        due_on: action.due_on,
+      });
+      const { data: openRows, error: lookupError } = await db
+        .from("tasks")
+        .select("id,title,notes,due_on,status")
+        .eq("user_id", userId)
+        .eq("status", "open")
+        .limit(80);
+      if (lookupError)
+        return fail(action.type, "לא הצלחנו לבדוק אם המשימה כבר קיימת.");
+      const existing = (openRows ?? []).find((row) =>
+        isExactOpenDuplicate(row, fields),
+      );
+      if (existing) {
+        return ok(action.type, {
+          id: existing.id as string,
+          title: fields.title,
+          due_on: fields.due_on,
+          alreadyExists: true,
+        });
+      }
       const { data, error } = await db
         .from("tasks")
         .insert({
           user_id: userId,
-          title: action.title,
-          notes: action.notes ?? "",
-          due_on: action.due_on,
+          title: fields.title,
+          notes: fields.notes,
+          due_on: fields.due_on,
           status: "open",
           updated_at: now,
         })
@@ -69,8 +99,8 @@ export async function executeAction(
         return fail(action.type, "לא הצלחנו ליצור את המשימה.");
       return ok(action.type, {
         id: data.id as string,
-        title: action.title,
-        due_on: action.due_on,
+        title: fields.title,
+        due_on: fields.due_on,
       });
     }
     case "task.update": {

@@ -4,6 +4,7 @@ import {
   type ActionResult,
   type ActionType,
   type AgentAction,
+  type AgentPresentation,
 } from "./types.ts";
 
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -28,7 +29,7 @@ function nullable(schema: Record<string, unknown>) {
 export const AGENT_TURN_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "actions"],
+  required: ["reply", "actions", "presentation"],
   properties: {
     reply: { type: "string" },
     actions: {
@@ -65,8 +66,34 @@ export const AGENT_TURN_JSON_SCHEMA = {
         },
       },
     },
+    presentation: {
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "task_ids"],
+          properties: {
+            type: { type: "string", enum: ["task_list"] },
+            task_ids: {
+              type: "array",
+              maxItems: 20,
+              items: { type: "string", pattern: UUID_RE.source },
+            },
+          },
+        },
+        { type: "null" },
+      ],
+    },
   },
 } as const;
+
+export const AgentPresentationSchema = z.union([
+  z.object({
+    type: z.literal("task_list"),
+    task_ids: z.array(z.string()).max(20),
+  }),
+  z.null(),
+]);
 
 function isActionType(value: unknown): value is ActionType {
   return (
@@ -172,6 +199,9 @@ function successLine(result: Extract<ActionResult, { ok: true }>) {
   const title = result.title ? ` "${result.title}"` : "";
   switch (result.type) {
     case "task.create":
+      if (result.alreadyExists) {
+        return title ? `המשימה${title} כבר קיימת.` : "המשימה כבר קיימת.";
+      }
       return due
         ? `שמרתי את המשימה${title} לתאריך ${due}.`
         : `שמרתי את המשימה${title}.`;
@@ -198,7 +228,8 @@ function failureLine(result: Extract<ActionResult, { ok: false }>) {
   return result.error;
 }
 
-const EXECUTION_CLAIM_RE = /שמרתי|הוספתי|עדכנתי|מחקתי|סימנתי|קבעתי|אזכיר/;
+const EXECUTION_CLAIM_RE =
+  /שמרתי|הוספתי|עדכנתי|מחקתי|סימנתי|דחיתי|קבעתי|הסרתי|אזכיר/;
 
 function claimsExecution(text: string) {
   return EXECUTION_CLAIM_RE.test(text);
@@ -232,14 +263,21 @@ export function parseDecision(text: string) {
     const parsed = JSON.parse(trimmed) as {
       reply?: unknown;
       actions?: unknown;
+      presentation?: unknown;
     };
     if (typeof parsed.reply !== "string" || !Array.isArray(parsed.actions)) {
       return { ok: false as const };
     }
+    const presentationResult = AgentPresentationSchema.safeParse(
+      parsed.presentation === undefined ? null : parsed.presentation,
+    );
     return {
       ok: true as const,
       reply: parsed.reply.trim(),
       actions: parsed.actions,
+      presentation: (presentationResult.success
+        ? presentationResult.data
+        : null) as AgentPresentation,
     };
   } catch {
     return { ok: false as const };

@@ -43,9 +43,10 @@ export function buildInstructions(input: {
 החזר JSON בלבד לפי הסכימה.
 שדה reply הוא שיחה בלבד: הסבר, שאלה, או גבול תחום. אל תכתוב בו שפעולה כבר נשמרה.
 אם צריך לשנות נתונים — שים זאת ב-actions. הקוד יאשר למשתמש רק אחרי ביצוע אמיתי.
+אם המשתמש רק מודה או מאשר בלי בקשה חדשה לשינוי נתונים — החזר actions: [] ואל תחזור על הפעולה הקודמת.
 
 פעולות זמינות:
-- task.create: title חובה. due_on רק YYYY-MM-DD. שעה, אם חשובה, ב-notes. אין תזכורות ואין שעת התראה.
+- task.create: title חובה. due_on רק YYYY-MM-DD. שעה, אם חשובה, ב-notes. אין תזכורות ואין שעת התראה. אל תיצור שורה חדשה אם כבר קיימת משימה פעילה זהה בדיוק ב-title + due_on + notes. דמיון בכותרת אינו כפילות.
 - task.update: id חובה, וגם title/notes/due_on לפי הצורך
 - task.reschedule: id + due_on
 - task.complete / task.reopen / task.delete: id חובה. delete מסמן cancelled
@@ -55,6 +56,10 @@ export function buildInstructions(input: {
 אין reminder.create, אין חיפוש באינטרנט, אין שמירת שעה כשדה נפרד.
 אם מבקשים תזכורת לשעה — שמור משימה לתאריך אם מתאים, וכתוב ב-reply שאין התראה לשעה.
 עד 10 פעולות בפנייה. כשמזהים משימה קיימת השתמש ב-id שלה.
+
+presentation הוא תצוגה בלבד, לא שינוי נתונים.
+אם מבקשים לראות או לסכם משימות קיימות: presentation.type = "task_list" עם task_ids מההקשר, ו-reply קצר בלי רשימת Markdown.
+אחרת presentation = null.
 
 ## הקשר עכשיו
 היום: ${weekday} ${date} (${timeZone})
