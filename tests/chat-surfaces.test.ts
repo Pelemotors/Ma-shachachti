@@ -17,6 +17,8 @@ const extras = {
   reminder_enabled: true,
   reminder_sent_at: null as string | null,
   reminder_claimed_at: null as string | null,
+  planned_start_at: null as string | null,
+  planned_end_at: null as string | null,
 };
 
 const dogTask: TaskRow = {
@@ -166,7 +168,7 @@ test("schedule instructions ask for a conversational plan and keep actions empty
   });
   assert.match(text, /הוראת turn נוכחי: הצעת לו״ז להיום/);
   assert.match(text, /actions: \[\]/);
-  assert.match(text, /presentation: null/);
+  assert.match(text, /presentation.type = "schedule_plan"/);
   assert.match(text, /אל תתכנן שעות שכבר עברו/);
   assert.match(text, /אל תציע פריט שמתחיל לפני 20:50 היום/);
   assert.match(text, /אינה אוטומטית משימה להיום/);
@@ -207,6 +209,23 @@ test("schedule surface drops task.create and other mutations", () => {
   assert.deepEqual(created.actions, []);
   assert.equal(created.presentation, null);
   assert.deepEqual(updated.actions, []);
+  const plan = applySurfaceTurnPolicy({
+    surface: "schedule",
+    actions: [createAction],
+    presentation: {
+      type: "schedule_plan",
+      date: "2026-09-10",
+      items: [
+        {
+          task_id: dogTask.id,
+          planned_start: "21:00",
+          planned_end: "21:15",
+        },
+      ],
+    },
+  });
+  assert.equal(plan.presentation?.type, "schedule_plan");
+  assert.deepEqual(plan.actions, []);
 });
 
 test("existing tasks stay unchanged after a schedule proposal turn", () => {

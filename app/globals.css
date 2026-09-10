@@ -320,8 +320,8 @@ h1 {
 
 .bottom-nav {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 7px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
   padding: 8px 2px 2px;
 }
 .bottom-nav button {
@@ -329,7 +329,7 @@ h1 {
   border-radius: 12px;
   background: transparent;
   color: #74777d;
-  font-size: 13px;
+  font-size: 11px;
 }
 .bottom-nav .active {
   color: var(--primary);
@@ -752,6 +752,101 @@ h1 {
   place-items: center;
   text-align: center;
   color: var(--muted);
+}
+
+.perm-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+.perm-row p {
+  margin: 4px 0 0;
+}
+.bell-wrap {
+  position: relative;
+}
+.bell-button {
+  position: relative;
+}
+.bell-badge {
+  position: absolute;
+  top: 2px;
+  inset-inline-end: 2px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 4px;
+}
+.bell-panel {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + 8px);
+  width: min(280px, 78vw);
+  padding: 12px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(40, 30, 20, 0.12);
+  z-index: 8;
+  display: grid;
+  gap: 8px;
+}
+.bell-item {
+  display: grid;
+  gap: 2px;
+}
+.bell-item small {
+  color: var(--muted);
+}
+.schedule-plan,
+.my-schedule {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+.my-schedule {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+.schedule-plan-kicker,
+.schedule-time,
+.schedule-plan em {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: normal;
+}
+.schedule-plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.schedule-plan-list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--border);
+}
+.schedule-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.schedule-nav button {
+  background: transparent;
+  min-height: 40px;
 }
 
 @media (max-width: 600px) {

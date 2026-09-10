@@ -31,6 +31,10 @@ export const ActionSchema = z.object({
     .nullable()
     .optional(),
   reminder_patch: z.enum(["keep", "set"]).nullable().optional(),
+  plan_patch: z.enum(["keep", "set", "clear"]).nullable().optional(),
+  planned_date: z.string().regex(DATE_RE).nullable().optional(),
+  planned_start_time: z.string().regex(TIME_RE).nullable().optional(),
+  planned_end_time: z.string().regex(TIME_RE).nullable().optional(),
   kind: z.enum(["preference", "fact"]).nullable().optional(),
   content: z.string().trim().min(1).max(500).nullable().optional(),
   confidence: z.enum(["low", "medium", "high"]).nullable().optional(),
@@ -64,6 +68,10 @@ export const AGENT_TURN_JSON_SCHEMA = {
           "reminder_enabled",
           "reminder_offset_minutes",
           "reminder_patch",
+          "plan_patch",
+          "planned_date",
+          "planned_start_time",
+          "planned_end_time",
           "kind",
           "content",
           "confidence",
@@ -93,6 +101,19 @@ export const AGENT_TURN_JSON_SCHEMA = {
             type: "string",
             enum: ["keep", "set"],
           }),
+          plan_patch: nullable({
+            type: "string",
+            enum: ["keep", "set", "clear"],
+          }),
+          planned_date: nullable({ type: "string", pattern: DATE_RE.source }),
+          planned_start_time: nullable({
+            type: "string",
+            pattern: TIME_RE.source,
+          }),
+          planned_end_time: nullable({
+            type: "string",
+            pattern: TIME_RE.source,
+          }),
           kind: nullable({ type: "string", enum: ["preference", "fact"] }),
           content: nullable({ type: "string", minLength: 1, maxLength: 500 }),
           confidence: nullable({
@@ -118,6 +139,32 @@ export const AGENT_TURN_JSON_SCHEMA = {
             },
           },
         },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "date", "items"],
+          properties: {
+            type: { type: "string", enum: ["schedule_plan"] },
+            date: { type: "string", pattern: DATE_RE.source },
+            items: {
+              type: "array",
+              maxItems: 20,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["task_id", "planned_start", "planned_end"],
+                properties: {
+                  task_id: { type: "string", pattern: UUID_RE.source },
+                  planned_start: { type: "string", pattern: TIME_RE.source },
+                  planned_end: nullable({
+                    type: "string",
+                    pattern: TIME_RE.source,
+                  }),
+                },
+              },
+            },
+          },
+        },
         { type: "null" },
       ],
     },
@@ -128,6 +175,19 @@ export const AgentPresentationSchema = z.union([
   z.object({
     type: z.literal("task_list"),
     task_ids: z.array(z.string()).max(20),
+  }),
+  z.object({
+    type: z.literal("schedule_plan"),
+    date: z.string().regex(DATE_RE),
+    items: z
+      .array(
+        z.object({
+          task_id: z.string().uuid(),
+          planned_start: z.string().regex(TIME_RE),
+          planned_end: z.string().regex(TIME_RE).nullable(),
+        }),
+      )
+      .max(20),
   }),
   z.null(),
 ]);
@@ -179,6 +239,10 @@ export function toAgentAction(data: z.infer<typeof ActionSchema>): AgentAction {
         ? null
         : data.reminder_offset_minutes,
     reminder_patch: data.reminder_patch ?? null,
+    plan_patch: data.plan_patch ?? null,
+    planned_date: data.planned_date ?? null,
+    planned_start_time: data.planned_start_time ?? null,
+    planned_end_time: data.planned_end_time ?? null,
     kind: data.kind ?? null,
     content: data.content ?? null,
     confidence: data.confidence ?? null,

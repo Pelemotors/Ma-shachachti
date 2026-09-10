@@ -7,32 +7,9 @@ import {
   REMINDER_MINUTE_OPTIONS,
   reminderLabel,
 } from "@/lib/reminders";
-import { usePushNotifications } from "@/hooks/use-push-notifications";
-import type { PushUiState } from "@/lib/push-client";
-
-function statusCopy(state: PushUiState) {
-  if (state === "unsupported") {
-    return "התראות Push אינן נתמכות במכשיר הזה";
-  }
-  if (state === "denied") {
-    return "ההתראות חסומות בהגדרות הדפדפן/המכשיר";
-  }
-  if (state === "granted") {
-    return "התראות פעילות במכשיר הזה";
-  }
-  if (state === "granted-unsubscribed") {
-    return "הרשאה קיימת, ההתראות עדיין לא הופעלו";
-  }
-  return "התראות עדיין לא אושרו";
-}
-
-function actionLabel(state: PushUiState) {
-  if (state === "granted-unsubscribed") return "הפעל התראות";
-  return "אפשר התראות";
-}
+import { DevicePermissionsPanel } from "@/components/device-permissions-panel";
 
 export function SettingsPanel() {
-  const push = usePushNotifications();
   const [minutes, setMinutes] = useState(DEFAULT_REMINDER_MINUTES);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -75,32 +52,10 @@ export function SettingsPanel() {
     }
   }
 
-  const showButton =
-    push.state === "default" || push.state === "granted-unsubscribed";
-
   return (
     <div className="settings-panel">
       <h1>הגדרות</h1>
-      <section className="settings-section">
-        <h2>התראות ותזכורות</h2>
-        <p className={`push-status ${push.state}`}>
-          <span aria-hidden="true">
-            {push.state === "granted" ? "🔔" : "🔕"}
-          </span>
-          {statusCopy(push.state)}
-        </p>
-        {showButton ? (
-          <button
-            className="settings-action"
-            type="button"
-            disabled={push.busy}
-            onClick={() => void push.enable()}
-          >
-            {actionLabel(push.state)}
-          </button>
-        ) : null}
-        {push.error ? <p className="error-box">{push.error}</p> : null}
-      </section>
+      <DevicePermissionsPanel />
       <section className="settings-section">
         <h2>תזכורת ברירת מחדל</h2>
         <p className="muted">

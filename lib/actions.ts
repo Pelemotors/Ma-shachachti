@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { inspectActions } from "./action-schema.ts";
 import { exactTaskFields, isExactOpenDuplicate } from "./task-identity.ts";
-import { dueTimeFromDueAt, resolveTaskDeadline } from "./time.ts";
+import { DATE_RE, TIME_RE, dueTimeFromDueAt, jerusalemDateTimeToUtc, resolveTaskDeadline } from "./time.ts";
 import type {
   ActionResult,
   ActionType,
@@ -34,7 +34,7 @@ async function ownTask(db: Db, userId: string, id: string) {
   const { data, error } = await db
     .from("tasks")
     .select(
-      "id,due_on,due_at,reminder_enabled,reminder_offset_minutes,reminder_sent_at,reminder_claimed_at",
+      "id,due_on,due_at,reminder_enabled,reminder_offset_minutes,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at",
     )
     .eq("user_id", userId)
     .eq("id", id)
@@ -49,6 +49,8 @@ async function ownTask(db: Db, userId: string, id: string) {
     | "reminder_offset_minutes"
     | "reminder_sent_at"
     | "reminder_claimed_at"
+    | "planned_start_at"
+    | "planned_end_at"
   >;
 }
 
@@ -75,6 +77,32 @@ function reminderResetIfNeeded(
     };
   }
   return {};
+}
+
+function resolvePlannedWindow(
+  date: string | null | undefined,
+  startTime: string | null | undefined,
+  endTime: string | null | undefined,
+):
+  | { ok: true; start: string; end: string | null }
+  | { ok: false; error: string } {
+  const day = date?.trim() || null;
+  const start = startTime?.trim() || null;
+  const end = endTime?.trim() || null;
+  if (!day || !DATE_RE.test(day) || !start || !TIME_RE.test(start)) {
+    return { ok: false, error: "חסרה שעת שיבוץ תקינה." };
+  }
+  if (end && !TIME_RE.test(end)) {
+    return { ok: false, error: "שעת הסיום אינה תקינה." };
+  }
+  if (end && end <= start) {
+    return { ok: false, error: "שעת הסיום צריכה להיות אחרי שעת ההתחלה." };
+  }
+  return {
+    ok: true,
+    start: jerusalemDateTimeToUtc(day, start).toISOString(),
+    end: end ? jerusalemDateTimeToUtc(day, end).toISOString() : null,
+  };
 }
 
 async function ownMemory(db: Db, userId: string, id: string) {
@@ -184,6 +212,19 @@ export async function executeAction(
         nextOffset = action.reminder_offset_minutes;
         patch.reminder_enabled = nextEnabled;
         patch.reminder_offset_minutes = nextOffset;
+      }
+      if (action.plan_patch === "clear") {
+        patch.planned_start_at = null;
+        patch.planned_end_at = null;
+      } else if (action.plan_patch === "set") {
+        const planned = resolvePlannedWindow(
+          action.planned_date,
+          action.planned_start_time,
+          action.planned_end_time,
+        );
+        if (!planned.ok) return fail(action.type, planned.error);
+        patch.planned_start_at = planned.start;
+        patch.planned_end_at = planned.end;
       }
       Object.assign(
         patch,
@@ -375,7 +416,7 @@ export async function loadTasks(db: Db, userId: string): Promise<TaskRow[]> {
   const { data, error } = await db
     .from("tasks")
     .select(
-      "id,title,notes,status,due_on,due_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,created_at,updated_at,completed_at",
+      "id,title,notes,status,due_on,due_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,created_at,updated_at,completed_at",
     )
     .eq("user_id", userId)
     .neq("status", "cancelled")
@@ -404,5 +445,55 @@ export async function clearUserTasks(db: Db, userId: string) {
     .eq("user_id", userId)
     .in("status", ["open", "done"]);
   if (error) throw error;
+  return loadTasks(db, userId);
+}
+
+export async function loadScheduleTasks(db: Db, userId: string) {
+  const { data, error } = await db
+    .from("tasks")
+    .select(
+      "id,title,notes,status,due_on,due_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,created_at,updated_at,completed_at",
+    )
+    .eq("user_id", userId)
+    .neq("status", "cancelled")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return (data ?? []) as TaskRow[];
+}
+
+export async function saveTaskPlans(
+  db: Db,
+  userId: string,
+  date: string,
+  items: Array<{
+    task_id: string;
+    planned_start: string;
+    planned_end: string | null;
+  }>,
+) {
+  if (!DATE_RE.test(date)) throw new Error("invalid_date");
+  const now = new Date().toISOString();
+  for (const item of items.slice(0, 20)) {
+    if (!(await ownTask(db, userId, item.task_id))) {
+      throw new Error("forbidden_task");
+    }
+    const planned = resolvePlannedWindow(
+      date,
+      item.planned_start,
+      item.planned_end,
+    );
+    if (!planned.ok) throw new Error(planned.error);
+    const { error } = await db
+      .from("tasks")
+      .update({
+        planned_start_at: planned.start,
+        planned_end_at: planned.end,
+        updated_at: now,
+      })
+      .eq("user_id", userId)
+      .eq("id", item.task_id);
+    if (error) throw error;
+  }
   return loadTasks(db, userId);
 }

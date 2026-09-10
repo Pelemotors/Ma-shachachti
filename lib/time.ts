@@ -130,6 +130,17 @@ export function resolveTaskDeadline(
   };
 }
 
+export function addJerusalemDays(date: string, days: number) {
+  const noon = jerusalemDateTimeToUtc(date, "12:00");
+  return jerusalemParts(
+    new Date(noon.getTime() + days * 24 * 60 * 60 * 1000),
+  ).date;
+}
+
+export function formatClockRange(start: string, end: string | null) {
+  return end ? `${start}–${end}` : start;
+}
+
 export function formatJerusalemDay(dueOn: string, month: "short" | "long" = "short") {
   const instant = jerusalemDateTimeToUtc(dueOn, "12:00");
   return new Intl.DateTimeFormat("he-IL", {

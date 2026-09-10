@@ -3,6 +3,7 @@ export type MemoryKind = "preference" | "fact";
 export type MemoryConfidence = "low" | "medium" | "high";
 export type DuePatch = "keep" | "set" | "clear";
 export type ReminderPatch = "keep" | "set";
+export type PlanPatch = "keep" | "set" | "clear";
 
 export type TaskRow = {
   id: string;
@@ -15,6 +16,8 @@ export type TaskRow = {
   reminder_enabled: boolean;
   reminder_sent_at: string | null;
   reminder_claimed_at: string | null;
+  planned_start_at: string | null;
+  planned_end_at: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -53,6 +56,10 @@ export type AgentAction = {
   reminder_enabled: boolean | null;
   reminder_offset_minutes: number | null;
   reminder_patch: ReminderPatch | null;
+  plan_patch: PlanPatch | null;
+  planned_date: string | null;
+  planned_start_time: string | null;
+  planned_end_time: string | null;
   kind: MemoryKind | null;
   content: string | null;
   confidence: MemoryConfidence | null;
@@ -77,10 +84,23 @@ export type ActionResult =
       detail?: string;
     };
 
-export type AgentPresentation = {
-  type: "task_list";
-  task_ids: string[];
-} | null;
+export type AgentScheduleItem = {
+  task_id: string;
+  planned_start: string;
+  planned_end: string | null;
+};
+
+export type AgentPresentation =
+  | {
+      type: "task_list";
+      task_ids: string[];
+    }
+  | {
+      type: "schedule_plan";
+      date: string;
+      items: AgentScheduleItem[];
+    }
+  | null;
 
 export type PresentedTask = {
   id: string;
@@ -91,7 +111,23 @@ export type PresentedTask = {
   due_at: string | null;
 };
 
-export type ClientPresentation = {
-  type: "task_list";
-  tasks: PresentedTask[];
+export type PresentedScheduleItem = {
+  task_id: string;
+  title: string;
+  status: TaskStatus;
+  planned_start: string;
+  planned_end: string | null;
+  fixed: boolean;
 };
+
+export type ClientPresentation =
+  | {
+      type: "task_list";
+      tasks: PresentedTask[];
+    }
+  | {
+      type: "schedule_plan";
+      date: string;
+      saved: boolean;
+      items: PresentedScheduleItem[];
+    };

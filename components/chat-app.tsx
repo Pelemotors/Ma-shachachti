@@ -19,6 +19,9 @@ import {
 import { appendTranscript } from "@/lib/audio/recorder-helpers";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { SettingsPanel } from "@/components/settings-panel";
+import { SchedulePlanCard } from "@/components/schedule-plan-card";
+import { MySchedule } from "@/components/my-schedule";
+import { UpcomingBell } from "@/components/upcoming-bell";
 import type { ClientPresentation, PresentedTask, TaskRow } from "@/lib/types";
 import { formatTaskWhen } from "@/lib/time";
 import {
@@ -37,7 +40,7 @@ type ChatMessage = {
   presentation?: ClientPresentation | null;
 };
 
-type View = "home" | "chat" | "tasks" | "settings";
+type View = "home" | "chat" | "tasks" | "schedule" | "settings";
 
 function formatDue(task: { due_on: string | null; due_at?: string | null }) {
   return formatTaskWhen({ due_on: task.due_on, due_at: task.due_at ?? null });
@@ -239,27 +242,41 @@ export function ChatApp() {
       setTasks(nextTasks);
       setMessages((current) =>
         current.map((message) => {
-          if (message.presentation?.type !== "task_list") return message;
           const byId = new Map(nextTasks.map((task) => [task.id, task]));
-          return {
-            ...message,
-            presentation: {
-              type: "task_list",
-              tasks: message.presentation.tasks.map((item) => {
-                const next = byId.get(item.id);
-                return next
-                  ? {
-                      id: next.id,
-                      title: next.title,
-                      notes: next.notes,
-                      status: next.status,
-                      due_on: next.due_on,
-                      due_at: next.due_at,
-                    }
-                  : item;
-              }),
-            },
-          };
+          if (message.presentation?.type === "task_list") {
+            return {
+              ...message,
+              presentation: {
+                type: "task_list",
+                tasks: message.presentation.tasks.map((item) => {
+                  const next = byId.get(item.id);
+                  return next
+                    ? {
+                        id: next.id,
+                        title: next.title,
+                        notes: next.notes,
+                        status: next.status,
+                        due_on: next.due_on,
+                        due_at: next.due_at,
+                      }
+                    : item;
+                }),
+              },
+            };
+          }
+          if (message.presentation?.type === "schedule_plan") {
+            return {
+              ...message,
+              presentation: {
+                ...message.presentation,
+                items: message.presentation.items.map((item) => {
+                  const next = byId.get(item.task_id);
+                  return next ? { ...item, title: next.title, status: next.status } : item;
+                }),
+              },
+            };
+          }
+          return message;
         }),
       );
     }
@@ -314,6 +331,40 @@ export function ChatApp() {
     setTasks(body.tasks);
   }
 
+  async function savePlan(messageId: string, plan: Extract<ClientPresentation, { type: "schedule_plan" }>) {
+    setSavingTask(true);
+    setError("");
+    const response = await authFetch("/api/tasks/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: plan.date,
+        items: plan.items.map((item) => ({
+          task_id: item.task_id,
+          planned_start: item.planned_start,
+          planned_end: item.planned_end,
+        })),
+      }),
+    }).catch(() => null);
+    setSavingTask(false);
+    if (!response?.ok) {
+      setError("לא הצלחנו לשמור את הלוז.");
+      return;
+    }
+    const body = await response.json().catch(() => ({}));
+    if (Array.isArray(body.tasks)) setTasks(body.tasks);
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId && message.presentation?.type === "schedule_plan"
+          ? {
+              ...message,
+              presentation: { ...message.presentation, saved: true },
+            }
+          : message,
+      ),
+    );
+  }
+
   async function addTask(event: FormEvent) {
     event.preventDefault();
     const title = newTitle.trim();
@@ -352,11 +403,14 @@ export function ChatApp() {
             <span>
               {view === "tasks"
                 ? "המשימות שלך"
-                : view === "settings"
+                : view === "schedule"
+                  ? "הלוז שלי"
+                  : view === "settings"
                   ? "הגדרות"
                   : "הסוכן האישי שלך"}
             </span>
           </div>
+          <UpcomingBell />
           <button
             className="icon-button settings-button"
             type="button"
@@ -441,15 +495,11 @@ export function ChatApp() {
                               <button
                                 className={`task-check${done ? " checked" : ""}`}
                                 type="button"
-                                aria-label={
-                                  done
-                                    ? task.title
-                                    : `סימון ${task.title} כבוצע`
-                                }
-                                disabled={savingTask || done}
+                                aria-label={task.title}
+                                disabled={savingTask}
                                 onClick={() =>
                                   void runTaskAction({
-                                    type: "task.complete",
+                                    type: done ? "task.reopen" : "task.complete",
                                     id: task.id,
                                   })
                                 }
@@ -463,6 +513,22 @@ export function ChatApp() {
                         })}
                       </ul>
                     ) : null}
+                    {message.role === "assistant" &&
+                    message.presentation?.type === "schedule_plan" ? (
+                      <SchedulePlanCard
+                        plan={message.presentation}
+                        saving={savingTask}
+                        onToggle={(id, done) =>
+                          void runTaskAction({
+                            type: done ? "task.reopen" : "task.complete",
+                            id,
+                          })
+                        }
+                        onSave={() =>
+                          void savePlan(message.id, message.presentation as Extract<ClientPresentation, { type: "schedule_plan" }>)
+                        }
+                      />
+                    ) : null}
                   </div>
                 </div>
               ))
@@ -473,6 +539,16 @@ export function ChatApp() {
           </div>
         ) : view === "settings" ? (
           <SettingsPanel />
+        ) : view === "schedule" ? (
+          <MySchedule
+            saving={savingTask}
+            onToggle={(id, done) =>
+              void runTaskAction({
+                type: done ? "task.reopen" : "task.complete",
+                id,
+              })
+            }
+          />
         ) : (
           <div className="tasks-panel">
             <form className="task-create" onSubmit={addTask}>
@@ -647,6 +723,13 @@ export function ChatApp() {
               onClick={() => setView("tasks")}
             >
               משימות
+            </button>
+            <button
+              className={view === "schedule" ? "active" : undefined}
+              type="button"
+              onClick={() => setView("schedule")}
+            >
+              הלוז שלי
             </button>
             <button disabled type="button">
               קניות

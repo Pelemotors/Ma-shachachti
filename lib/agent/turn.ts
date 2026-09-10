@@ -38,7 +38,8 @@ surface=schedule.
 אל תשמור, תיצור, תשנה, תדחה, תשלים או תמחק שום משימה רק משום שהיא שולבה בלו״ז.
 ברירת המחדל ב-turn הזה:
 actions: []
-presentation: null
+החזר presentation.type = "schedule_plan" עם date של היום ו-items של task_id + planned_start + planned_end.
+reply קצר בלבד. אל תכתוב את הלו״ז כרשימת Markdown בתוך reply.
 
 השתמש בשעה הנוכחית, בתאריך הנוכחי, במשימות הפתוחות, בתאריכי יעד, ב-due_at, בזיכרון הרלוונטי ובהקשר מהשיחה.
 אל תקרא שעה מתוך notes. notes הוא טקסט חופשי בלבד.
@@ -52,16 +53,11 @@ presentation: null
 אל תמציא התחייבויות, משימות או אילוצים שאינם קיימים בהקשר.
 אם אין מספיק מידע, עדיין הצע גרסה ראשונית סבירה ואז שאל מה לשנות.
 
-התשובה היא הצעה שיחתית בלבד.
+זו הצעת לו״ז בלבד. היא אינה נשמרת עד שהמשתמש לוחץ "שמור ללוז שלי" או מבקש במפורש לשמור.
 אסור לכתוב ששמרת, עדכנת, הזזת או הוספת משהו רק בגלל הלחיצה על "צור לי לו״ז להיום".
-זה לו״ז שעון להמשך היום, לא רשימת עדיפויות למחר.
-כל פריט בשורה נפרדת: שעה ואז משימה.
-בלי Markdown, בלי **bold**, בלי bullets ובלי ספרור 1. 2. 3.
-התחל ממשפט שמזכיר את השעה עכשיו, למשל:
-בהתחשב בזה שעכשיו ${currentTime}, הייתי מסדר את המשך הערב כך:
-ואז שורות שעון.
-אחרי הלו״ז אפשר לשאול בקצרה אם להזיז משהו.
-רק אם בהודעה הבאה המשתמש יבקש במפורש לשנות נתונים — אז יהיו זמינים actions רגילים.
+משימה עם due_at חייבת להופיע ב-planned_start של אותה שעה. אל תשבץ אותה בשעה אחרת.
+אל תציע פריט שמתחיל לפני ${currentTime} היום.
+reply: משפט אחד או שניים. בלי Markdown, בלי **bold**, בלי שמות משימות שכבר יופיעו בכרטיסים.
 `;
   }
 
@@ -120,10 +116,18 @@ export function applySurfaceTurnPolicy(input: {
   presentation: AgentPresentation;
 }): { actions: unknown[]; presentation: AgentPresentation } {
   if (input.surface === "schedule") {
-    return { actions: [], presentation: null };
+    return {
+      actions: [],
+      presentation:
+        input.presentation?.type === "schedule_plan" ? input.presentation : null,
+    };
   }
   if (input.surface === "forgotten") {
-    return { actions: [], presentation: input.presentation };
+    return {
+      actions: [],
+      presentation:
+        input.presentation?.type === "task_list" ? input.presentation : null,
+    };
   }
   return {
     actions: input.actions,
@@ -138,7 +142,7 @@ export function surfaceInputHint(
   if (!surface) return "";
   const { currentTime, date, timeZone } = todayContext(now);
   if (surface === "schedule") {
-    return `הקשר ל-turn הזה בלבד: surface=schedule. עכשיו ${currentTime}, ${date}, ${timeZone}. הצע לו״ז שעון להמשך היום בלבד, בלי לשנות משימות ובלי Markdown.\n\n`;
+    return `הקשר ל-turn הזה בלבד: surface=schedule. עכשיו ${currentTime}, ${date}, ${timeZone}. הצע לו״ז להמשך היום ב-presentation.schedule_plan בלבד. בלי לשנות משימות ובלי Markdown.\n\n`;
   }
   if (surface === "forgotten") {
     return `הקשר ל-turn הזה בלבד: surface=forgotten. עכשיו ${currentTime}, ${date}, ${timeZone}. הצף מספר קטן של דברים חשובים עכשיו. בלי לו״ז, בלי שעות ביצוע, בלי לשנות משימות. reply קצר ו-presentation.task_list.\n\n`;
@@ -170,7 +174,7 @@ export function buildInstructions(input: {
 
 פעולות זמינות:
 - task.create: title חובה. due_on = YYYY-MM-DD או null. due_time = HH:mm או null. due_on=null ו-due_time=null = בלי מועד. due_on בלי due_time = תאריך בלבד. due_on+due_time = Fixed Time; המערכת ממירה ל-due_at לפי Asia/Jerusalem. אסור due_time בלי due_on. אל תשמור שעה ב-notes. reminder_offset_minutes רק אם המשתמש ביקש במפורש override; אחרת null. reminder_enabled=false רק אם ביקש במפורש בלי תזכורת. אל תיצור שורה חדשה אם כבר קיימת משימה פעילה זהה בדיוק ב-title + due_on + due_at + notes.
-- task.update: id חובה. due_patch=keep לא משנה מועד. due_patch=set מחיל due_on/due_time. due_patch=clear מוחק מועד. reminder_patch=keep או set באותו אופן.
+- task.update: id חובה. due_patch=keep לא משנה מועד. due_patch=set מחיל due_on/due_time. due_patch=clear מוחק מועד. reminder_patch=keep או set באותו אופן. plan_patch=keep לא משנה שיבוץ. plan_patch=set שומר planned_date+planned_start_time+planned_end_time בלי לשנות due_at. plan_patch=clear מוציא מהלוז בלי למחוק את המשימה.
 - task.reschedule: id + due_on, ו-due_time אם יש שעה. due_patch=clear מסיר מועד.
 - task.complete / task.reopen / task.delete: id חובה. delete מסמן cancelled
 - memory.upsert: content חובה, kind=preference|fact, confidence=low|medium|high. id רק לעדכון קיים. silent=true ללמידה יזומה ברקע. silent=false רק אם המשתמש ביקש במפורש לזכור.
@@ -184,6 +188,7 @@ reminder_offset_minutes=0 פירושו התראה בזמן המשימה. null = 
 
 presentation הוא תצוגה בלבד, לא שינוי נתונים.
 אם מבקשים לראות או לסכם משימות קיימות: presentation.type = "task_list" עם task_ids מההקשר, ו-reply קצר בלי רשימת Markdown.
+אם surface=schedule: presentation.type = "schedule_plan".
 אחרת presentation = null.
 
 ## הקשר עכשיו

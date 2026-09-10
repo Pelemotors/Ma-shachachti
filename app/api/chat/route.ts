@@ -14,7 +14,10 @@ import {
   latestOrCreateChatSession,
   ownChatSession,
 } from "@/lib/chat-sessions";
-import { resolveTaskListPresentation } from "@/lib/presentation";
+import {
+  replyForPresentation,
+  resolveAgentPresentation,
+} from "@/lib/presentation";
 import { createServiceClient } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
@@ -220,14 +223,16 @@ export async function POST(req: Request) {
       presentation: decision.presentation,
     });
     const results = await runRequestedActions(db, userId, scoped.actions);
-    const reply = composeReply(decision.reply, results);
-    if (!reply) throw new HttpError(502, "הסוכן לא החזיר תשובה.");
-
     const nextTasks = await loadTasks(db, userId);
-    const presentation = resolveTaskListPresentation(
+    const presentation = resolveAgentPresentation(
       scoped.presentation,
       nextTasks,
     );
+    const reply = replyForPresentation(
+      composeReply(decision.reply, results),
+      presentation,
+    );
+    if (!reply) throw new HttpError(502, "הסוכן לא החזיר תשובה.");
 
     const { data: saved, error: assistantSaveError } = await db
       .from("chat_messages")
