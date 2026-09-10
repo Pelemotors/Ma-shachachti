@@ -15,6 +15,40 @@ export const ALLOWED_AUDIO_TYPES = [
   "audio/wav",
 ] as const;
 
+/** Safari/iOS often only supports mp4; Chrome prefers webm. */
+export const RECORDER_MIME_CANDIDATES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4;codecs=mp4a.40.2",
+  "audio/mp4",
+  "audio/ogg;codecs=opus",
+  "audio/ogg",
+] as const;
+
+export function pickRecorderMimeType(
+  isSupported: (type: string) => boolean,
+): string | undefined {
+  return RECORDER_MIME_CANDIDATES.find((type) => isSupported(type));
+}
+
+export function recordedMimeBase(mime: string): string {
+  const raw = mime.split(";")[0]?.trim().toLowerCase() ?? "";
+  return raw === "video/mp4" ? "audio/mp4" : raw;
+}
+
+export function normalizeRecordedBlobType(
+  mime: string,
+  fallback = "audio/webm",
+): string {
+  const base = recordedMimeBase(mime);
+  if ((ALLOWED_AUDIO_TYPES as readonly string[]).includes(base)) return base;
+  const fromFallback = recordedMimeBase(fallback);
+  if ((ALLOWED_AUDIO_TYPES as readonly string[]).includes(fromFallback)) {
+    return fromFallback;
+  }
+  return "audio/mp4";
+}
+
 export function canStartRecording(
   phase: RecorderPhase,
   startLocked: boolean,
@@ -69,7 +103,7 @@ export function inspectTranscriptionAudio(input: {
   if (input.contentLength > 10_500_000 || input.size > 10_000_000) {
     return { ok: false, status: 413, error: "ההקלטה ארוכה מדי." };
   }
-  const mime = input.mime.split(";")[0]?.trim() ?? "";
+  const mime = recordedMimeBase(input.mime);
   if (
     !(ALLOWED_AUDIO_TYPES as readonly string[]).includes(mime) ||
     mime.length === 0

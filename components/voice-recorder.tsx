@@ -34,25 +34,30 @@ export function VoiceRecorder(props: {
 }) {
   const rec = useAudioRecorder();
   const [playing, setPlaying] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const objectUrl = useRef<string | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
-      audioRef.current?.pause();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (objectUrl.current) {
-      URL.revokeObjectURL(objectUrl.current);
-      objectUrl.current = null;
+    if (!rec.blob) {
+      setPreviewUrl(null);
+      setPlaying(false);
+      return;
     }
-    audioRef.current?.pause();
+    const url = URL.createObjectURL(rec.blob);
+    setPreviewUrl(url);
     setPlaying(false);
-    if (rec.blob) objectUrl.current = URL.createObjectURL(rec.blob);
+    return () => URL.revokeObjectURL(url);
   }, [rec.blob]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (previewUrl) audio.src = previewUrl;
+    else {
+      audio.removeAttribute("src");
+      audio.load();
+    }
+  }, [previewUrl]);
 
   async function handleStart() {
     if (!props.enabled) {
@@ -68,20 +73,17 @@ export function VoiceRecorder(props: {
   }
 
   function togglePlay() {
-    if (!objectUrl.current) return;
-    if (!audioRef.current) {
-      audioRef.current = new Audio(objectUrl.current);
-      audioRef.current.onended = () => setPlaying(false);
-    } else if (audioRef.current.src !== objectUrl.current) {
-      audioRef.current.src = objectUrl.current;
-    }
+    const audio = audioRef.current;
+    if (!audio || !previewUrl) return;
     if (playing) {
-      audioRef.current.pause();
+      audio.pause();
       setPlaying(false);
-    } else {
-      void audioRef.current.play();
-      setPlaying(true);
+      return;
     }
+    void audio.play().then(
+      () => setPlaying(true),
+      () => setPlaying(false),
+    );
   }
 
   if (rec.phase === "idle" || (rec.phase === "error" && !rec.blob)) {
@@ -191,6 +193,13 @@ export function VoiceRecorder(props: {
       <span className="voice-recorder__clock">
         {formatRecordingClock(rec.seconds)}
       </span>
+      <audio
+        ref={audioRef}
+        className="voice-recorder__player"
+        playsInline
+        preload="metadata"
+        onEnded={() => setPlaying(false)}
+      />
       {rec.phase === "error" && rec.error ? (
         <span className="voice-recorder__error" role="alert">
           {rec.error}

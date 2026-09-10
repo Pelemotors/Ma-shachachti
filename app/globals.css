@@ -559,6 +559,16 @@ h1 {
   border-radius: 22px;
   padding: 4px 6px;
 }
+.voice-recorder--preview {
+  position: relative;
+}
+.voice-recorder__player {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
 .voice {
   display: flex;
   align-items: center;

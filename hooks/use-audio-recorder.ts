@@ -8,6 +8,8 @@ import {
   canSendTranscript,
   canStartRecording,
   emptyLevels,
+  normalizeRecordedBlobType,
+  pickRecorderMimeType,
   shouldKeepBlobAfterTranscribe,
 } from "@/lib/audio/recorder-helpers";
 
@@ -24,17 +26,7 @@ export {
 const MIC_BLOCKED_HE = "המיקרופון חסום. אפשר לשנות זאת בהרשאות.";
 const UNSUPPORTED_HE = "הקלטה קולית לא נתמכת בדפדפן הזה.";
 const TRANSCRIBE_FAILED_HE = "לא הצלחנו לתמלל. אפשר לנסות שוב.";
-
-async function microphoneDenied() {
-  try {
-    const status = await navigator.permissions.query({
-      name: "microphone" as PermissionName,
-    });
-    return status.state === "denied";
-  } catch {
-    return false;
-  }
-}
+const EMPTY_RECORDING_HE = "ההקלטה ריקה. אפשר לנסות שוב.";
 
 export function useAudioRecorder() {
   const [phase, setPhase] = useState<RecorderPhase>("idle");
@@ -135,11 +127,6 @@ export function useAudioRecorder() {
       ) {
         throw new Error(UNSUPPORTED_HE);
       }
-      if (await microphoneDenied()) {
-        setPhase("error");
-        setError(MIC_BLOCKED_HE);
-        return;
-      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (cancelled.current) {
         stream.getTracks().forEach((track) => track.stop());
@@ -152,13 +139,14 @@ export function useAudioRecorder() {
         (window as unknown as { webkitAudioContext: typeof AudioContext })
           .webkitAudioContext;
       const ctx = new Ctx();
+      if (ctx.state === "suspended") await ctx.resume();
       audioCtx.current = ctx;
       const source = ctx.createMediaStreamSource(stream);
       const node = ctx.createAnalyser();
       node.fftSize = 256;
       source.connect(node);
       analyser.current = node;
-      const mime = ["audio/webm", "audio/mp4", "audio/ogg"].find((type) =>
+      const mime = pickRecorderMimeType((type) =>
         MediaRecorder.isTypeSupported(type),
       );
       const rec = new MediaRecorder(
@@ -180,14 +168,23 @@ export function useAudioRecorder() {
           setPhase("idle");
           return;
         }
-        const recorded = new Blob(chunks.current, {
-          type: rec.mimeType || "audio/webm",
-        });
+        const type = normalizeRecordedBlobType(rec.mimeType, mime ?? "");
+        const recorded = new Blob(chunks.current, { type });
         chunks.current = [];
+        if (!recorded.size) {
+          setBlob(null);
+          setPhase("error");
+          setError(EMPTY_RECORDING_HE);
+          return;
+        }
         setBlob(recorded);
         setPhase("preview");
       };
-      rec.start(250);
+      try {
+        rec.start(250);
+      } catch {
+        rec.start();
+      }
       setSeconds(0);
       setPhase("recording");
       startLevelLoop();

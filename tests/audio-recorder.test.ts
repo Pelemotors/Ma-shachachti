@@ -8,6 +8,9 @@ import {
   emptyLevels,
   formatRecordingClock,
   inspectTranscriptionAudio,
+  normalizeRecordedBlobType,
+  pickRecorderMimeType,
+  recordedMimeBase,
   shouldKeepBlobAfterTranscribe,
   transcriptionModelFromEnv,
   type RecorderPhase,
@@ -94,10 +97,26 @@ test("transcription audio mime and size are validated", () => {
   const invalid = inspectTranscriptionAudio({
     contentLength: 12,
     size: 12,
-    mime: "video/mp4",
+    mime: "video/avi",
   });
   assert.equal(invalid.ok, false);
   if (!invalid.ok) assert.equal(invalid.status, 400);
+  const safari = inspectTranscriptionAudio({
+    contentLength: 12,
+    size: 12,
+    mime: "video/mp4",
+  });
+  assert.equal(safari.ok, true);
+  if (safari.ok) {
+    assert.equal(safari.mime, "audio/mp4");
+    assert.equal(safari.filename, "recording.mp4");
+  }
+  const emptyMime = inspectTranscriptionAudio({
+    contentLength: 12,
+    size: 12,
+    mime: "",
+  });
+  assert.equal(emptyMime.ok, false);
   const large = inspectTranscriptionAudio({
     contentLength: 11_000_000,
     size: 11_000_000,
@@ -105,6 +124,27 @@ test("transcription audio mime and size are validated", () => {
   });
   assert.equal(large.ok, false);
   if (!large.ok) assert.equal(large.status, 413);
+});
+
+test("Safari MediaRecorder mime types are normalized without inventing a model", () => {
+  assert.equal(recordedMimeBase("video/mp4"), "audio/mp4");
+  assert.equal(recordedMimeBase("audio/mp4;codecs=mp4a.40.2"), "audio/mp4");
+  assert.equal(recordedMimeBase("audio/webm;codecs=opus"), "audio/webm");
+  assert.equal(normalizeRecordedBlobType("video/mp4"), "audio/mp4");
+  assert.equal(normalizeRecordedBlobType("", "audio/mp4"), "audio/mp4");
+  assert.equal(normalizeRecordedBlobType("", "audio/webm;codecs=opus"), "audio/webm");
+  assert.equal(
+    pickRecorderMimeType((type) => type === "audio/mp4"),
+    "audio/mp4",
+  );
+  assert.equal(
+    pickRecorderMimeType((type) => type.startsWith("audio/webm")),
+    "audio/webm;codecs=opus",
+  );
+  assert.equal(
+    pickRecorderMimeType(() => false),
+    undefined,
+  );
 });
 
 test("transcription model is not invented when missing", () => {
