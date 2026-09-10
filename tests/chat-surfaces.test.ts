@@ -19,6 +19,8 @@ const extras = {
   reminder_claimed_at: null as string | null,
   planned_start_at: null as string | null,
   planned_end_at: null as string | null,
+  reschedule_count: 0,
+  last_rescheduled_at: null as string | null,
 };
 
 const dogTask: TaskRow = {
@@ -129,6 +131,17 @@ test("schedule input hint is turn context only and carries Jerusalem time", () =
   assert.match(hint, /20:50/);
   assert.match(hint, /Asia\/Jerusalem/);
   assert.doesNotMatch(hint, /צור לי לו״ז להיום/);
+});
+
+test("forgotten input hint stays short and does not rank tasks", () => {
+  const hint = surfaceInputHint("forgotten", eveningUtc);
+  assert.match(hint, /surface=forgotten/);
+  assert.match(hint, /20:50/);
+  assert.match(hint, /2026-09-10/);
+  assert.match(hint, /עד 6/);
+  assert.match(hint, /presentation.task_list/);
+  assert.doesNotMatch(hint, /אם נדחה 3 פעמים/);
+  assert.doesNotMatch(hint, /High תמיד/);
 });
 
 test("schedule surface is parsed separately from a regular chat message", () => {
@@ -259,23 +272,35 @@ test("forgotten surface drops mutations but may keep a task_list", () => {
     surface: "forgotten",
     now: eveningUtc,
   });
-  assert.match(text, /הוראת turn נוכחי: מה שכחתי\?/);
-  assert.match(text, /אין לבנות לו״ז/);
-  assert.match(text, /אין להציע שעות ביצוע/);
-  assert.match(text, /actions: \[\]/);
-  assert.match(text, /presentation.type = "task_list"/);
+  assert.match(text, /הוראת Turn נוכחי: מה שכחתי\?/);
+  assert.match(text, /אל תבנה לו״ז/);
+  assert.match(text, /אל תציע שעות ביצוע/);
+  assert.match(text, /0 ל־6 משימות/);
+  assert.match(text, /consequence_updates/);
+  assert.match(text, /presentation.type="task_list"/);
   assert.doesNotMatch(text, /הוראת turn נוכחי: הצעת לו״ז להיום/);
 
   const scoped = applySurfaceTurnPolicy({
     surface: "forgotten",
     actions: [createAction, updateAction],
     presentation: { type: "task_list", task_ids: [tomorrowTask.id] },
+    consequence_updates: [
+      {
+        task_id: dogTask.id,
+        severity: "medium",
+        reason: "המשך דחייה עלול להביא למחסור באוכל",
+        confidence: "medium",
+        basis: { kind: "inferred" },
+        valid_until: null,
+      },
+    ],
   });
   assert.deepEqual(scoped.actions, []);
   assert.deepEqual(scoped.presentation, {
     type: "task_list",
     task_ids: [tomorrowTask.id],
   });
+  assert.equal(scoped.consequence_updates.length, 1);
 });
 
 test("regular chat is unchanged by the surface policy", () => {

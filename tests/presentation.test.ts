@@ -21,6 +21,8 @@ const ownTask: TaskRow = {
   reminder_claimed_at: null,
   planned_start_at: null,
   planned_end_at: null,
+  reschedule_count: 0,
+  last_rescheduled_at: null,
   created_at: "2026-09-10T00:00:00.000Z",
   updated_at: "2026-09-10T00:00:00.000Z",
   completed_at: null,
@@ -32,10 +34,14 @@ test("presentation null is accepted", () => {
       reply: "אין רשימה להציג.",
       actions: [],
       presentation: null,
+      consequence_updates: [],
     }),
   );
   assert.equal(parsed.ok, true);
-  if (parsed.ok) assert.equal(parsed.presentation, null);
+  if (parsed.ok) {
+    assert.equal(parsed.presentation, null);
+    assert.deepEqual(parsed.consequence_updates, []);
+  }
   assert.equal(resolveTaskListPresentation(null, [ownTask]), null);
 });
 
@@ -163,5 +169,6 @@ test("agent turn schema requires presentation", () => {
     "reply",
     "actions",
     "presentation",
+    "consequence_updates",
   ]);
 });

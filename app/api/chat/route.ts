@@ -1,6 +1,7 @@
 import { authorize, HttpError } from "@/lib/server-auth";
 import { composeReply } from "@/lib/action-schema";
 import { loadMemory, loadTasks, runRequestedActions } from "@/lib/actions";
+import { loadConsequences, persistConsequenceUpdates } from "@/lib/consequences";
 import {
   AGENT_TURN_JSON_SCHEMA,
   applySurfaceTurnPolicy,
@@ -138,6 +139,11 @@ export async function POST(req: Request) {
       loadTasks(db, userId),
       loadMemory(db, userId),
     ]);
+    const consequences = await loadConsequences(
+      db,
+      userId,
+      tasks.filter((task) => task.status === "open").map((task) => task.id),
+    );
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new HttpError(503, "חיבור ה-AI עדיין לא הוגדר.");
@@ -163,7 +169,12 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model,
         store: false,
-        instructions: buildInstructions({ tasks, memory, surface }),
+        instructions: buildInstructions({
+          tasks,
+          memory,
+          consequences,
+          surface,
+        }),
         input: openaiInput,
         max_output_tokens: 1400,
         text: {
@@ -221,12 +232,16 @@ export async function POST(req: Request) {
       surface,
       actions: decision.actions,
       presentation: decision.presentation,
+      consequence_updates: decision.consequence_updates,
     });
     const results = await runRequestedActions(db, userId, scoped.actions);
+    await persistConsequenceUpdates(db, userId, scoped.consequence_updates);
     const nextTasks = await loadTasks(db, userId);
     const presentation = resolveAgentPresentation(
       scoped.presentation,
       nextTasks,
+      new Date(),
+      surface,
     );
     const reply = replyForPresentation(
       composeReply(decision.reply, results),

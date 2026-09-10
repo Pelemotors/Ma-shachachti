@@ -3,13 +3,18 @@ import {
   AGENT_CONTRACT_VERSION,
 } from "./instructions.ts";
 import type { ChatSurface } from "../home-surfaces.ts";
-import type { AgentPresentation, MemoryRow, TaskRow } from "../types.ts";
+import type {
+  AgentPresentation,
+  ConsequenceRow,
+  MemoryRow,
+  TaskRow,
+} from "../types.ts";
 import { TIME_ZONE, dueTimeFromDueAt, todayContext } from "../time.ts";
 
 export { AGENT_TURN_JSON_SCHEMA, parseDecision } from "../action-schema.ts";
 export { TIME_ZONE, todayContext };
 
-function formatTask(task: TaskRow) {
+function formatTask(task: TaskRow, consequence?: ConsequenceRow) {
   const clock = dueTimeFromDueAt(task.due_at);
   const due = task.due_on ? ` | due ${task.due_on}` : " | due none";
   const time = clock
@@ -23,7 +28,15 @@ function formatTask(task: TaskRow) {
       : " | reminder off"
     : "";
   const notes = task.notes ? ` | notes ${task.notes}` : "";
-  return `- ${task.id} [${task.status}] ${task.title}${due}${time}${reminder}${notes}`;
+  const created = ` | created_at ${task.created_at}`;
+  const reschedules = ` | reschedule_count ${task.reschedule_count ?? 0}`;
+  const lastRescheduled = task.last_rescheduled_at
+    ? ` | last_rescheduled_at ${task.last_rescheduled_at}`
+    : " | last_rescheduled_at none";
+  const consequenceText = consequence
+    ? ` | consequence severity=${consequence.severity} confidence=${consequence.confidence} basis=${consequence.basis.kind} valid_until=${consequence.valid_until ?? "null"} updated_at=${consequence.updated_at} reason=${consequence.reason}`
+    : " | consequence none";
+  return `- ${task.id} [${task.status}] ${task.title}${due}${time}${reminder}${notes}${created}${reschedules}${lastRescheduled}${consequenceText}`;
 }
 
 function surfaceInstructions(
@@ -63,37 +76,52 @@ reply: משפט אחד או שניים. בלי Markdown, בלי **bold**, בלי
 
   if (surface === "forgotten") {
     return `
-## הוראת turn נוכחי: מה שכחתי?
-surface=forgotten.
-המטרה היא להציף למשתמש מספר קטן של דברים שחשוב שיראה עכשיו.
-אין לבנות לו״ז.
-אין להציע שעות ביצוע.
-אין לשנות Tasks.
-ברירת המחדל ב-turn הזה:
-actions: []
-
-בחר מתוך המשימות הקיימות את הדברים שהכי ראוי להציף עכשיו, בהתחשב ב:
-- תאריך נוכחי ושעה נוכחית
-- overdue
-- due בקרוב
-- due_at לדחיפות של Fixed Time Task
-- חשיבות ודחיפות שעולות מהמשימה ומההקשר
-- דברים שהזנחה שלהם עלולה ליצור בעיה
-- memory והקשר שיחה רלוונטיים
-עדיין אין לבנות לו״ז ואין להציע שעות ביצוע.
-
-משימות בית יומיומיות רגילות אינן צריכות להופיע סתם כי הן קיימות.
-הן כן יכולות לעלות אם הדחייה שלהן כבר יוצרת נזק, לחץ או בעיה ממשית.
-הצג מספר קטן וממוקד, בדרך כלל 1–4 משימות, לא dump של כל הרשימה.
-
+### הוראת Turn נוכחי: מה שכחתי?
+\`surface=forgotten\`
+המטרה שלך ב־Turn הזה היא לענות:
+**„מתוך כל מה שאני יודע על המשתמש ועל הדברים שנמצאים בניהול — מה הכי חשוב שלא יפספס עכשיו?”**
+זה אינו מסך משימות ואינו לו״ז.
+אל תבנה לו״ז.
+אל תציע שעות ביצוע.
+אל תשנה Tasks כתוצאה מעצם הלחיצה.
+בחן את התמונה הכוללת שהמערכת סיפקה לך:
+* המשימות הפתוחות
+* מועדים ושעות
+* גיל המשימות
+* היסטוריית שינויי מועד
+* Consequences קיימים
+* Memory
+* השיחה וההקשר הרלוונטיים
+* היום והשעה הנוכחיים
+החלט בעצמך מה באמת ראוי להצפה עכשיו.
+אתה יכול להתחשב בין היתר ב:
+* deadline או Fixed Time שמתקרבים
+* overdue
+* השלכה משמעותית של המשך דחייה
+* דחיות או שינויי מועד חוזרים
+* משהו שחוסם דבר אחר
+* משהו שסביר שנשכח
+* רלוונטיות מיוחדת לרגע הנוכחי
+* מידע אישי והקשר מהשיחה
+אלה שיקולים, לא נוסחה ולא תנאי סף.
+Task ללא Consequence עדיין יכול להיות חשוב ולהיבחר.
+Task עם Consequence גבוה אינו חייב להיבחר אם יש דברים חשובים יותר.
+משימת בית שגרתית לא צריכה להופיע רק משום שהיא קיימת.
+היא כן יכולה להופיע אם מההקשר עולה שהמשך הדחייה שלה כבר יוצר או צפוי ליצור בעיה ממשית.
+הקטגוריה של המשימה אינה קובעת את החשיבות שלה.
+בחר רק דברים שבאמת ראויים לתשומת לב עכשיו.
+אפשר לבחור בין 0 ל־6 משימות.
+אין חובה למלא את המכסה.
 כאשר נבחרות משימות:
-השתמש ב-presentation.type = "task_list" עם task_ids בלבד.
-ה-reply שמעל ה-presentation צריך להיות משפט אחד או שניים לכל היותר.
-אל תכתוב בתוך reply מחדש את שמות כל המשימות, מספרי 1,2,3, תאריכים שכבר מוצגים בכרטיס, bullets, Markdown, **bold**, או פירוט ארוך של הרשימה.
-אסור מצב שבו אותה משימה מופיעה גם כרשימת טקסט וגם ככרטיס מתחת.
-
-אם אין משהו שבאמת ראוי להציף:
-אמור זאת בפשטות, presentation = null, ואל תבחר משימות בכוח.
+החזר \`presentation.type="task_list"\` עם \`task_ids\` של המשימות שבחרת.
+ה־reply צריך להיות קצר — משפט אחד או שניים לכל היותר.
+אל תחזור בתוך ה־reply על שמות המשימות שכבר יוצגו בכרטיסים.
+אל תיצור רשימת טקסט כפולה.
+אם אין שום דבר שבאמת ראוי להצפה:
+החזר \`presentation=null\` וענה בקצרה ובטבעיות.
+במהלך אותו Turn, אם בחנת Task קיים והמידע הזמין משנה באופן ממשי את ה־Consequence שלו, אתה רשאי להחזיר גם \`consequence_updates\`.
+אין חובה ליצור או לעדכן Consequence לכל Task שאתה רואה.
+Consequence הוא כלי עזר להבנה ולא משימת תחזוקה שאתה חייב להשלים.
 `;
   }
 
@@ -114,12 +142,21 @@ export function applySurfaceTurnPolicy(input: {
   surface: ChatSurface | null;
   actions: unknown[];
   presentation: AgentPresentation;
-}): { actions: unknown[]; presentation: AgentPresentation } {
+  consequence_updates?: unknown;
+}): {
+  actions: unknown[];
+  presentation: AgentPresentation;
+  consequence_updates: unknown[];
+} {
+  const consequence_updates = Array.isArray(input.consequence_updates)
+    ? input.consequence_updates
+    : [];
   if (input.surface === "schedule") {
     return {
       actions: [],
       presentation:
         input.presentation?.type === "schedule_plan" ? input.presentation : null,
+      consequence_updates,
     };
   }
   if (input.surface === "forgotten") {
@@ -127,11 +164,13 @@ export function applySurfaceTurnPolicy(input: {
       actions: [],
       presentation:
         input.presentation?.type === "task_list" ? input.presentation : null,
+      consequence_updates,
     };
   }
   return {
     actions: input.actions,
     presentation: input.presentation,
+    consequence_updates,
   };
 }
 
@@ -145,7 +184,7 @@ export function surfaceInputHint(
     return `הקשר ל-turn הזה בלבד: surface=schedule. עכשיו ${currentTime}, ${date}, ${timeZone}. הצע לו״ז להמשך היום ב-presentation.schedule_plan בלבד. בלי לשנות משימות ובלי Markdown.\n\n`;
   }
   if (surface === "forgotten") {
-    return `הקשר ל-turn הזה בלבד: surface=forgotten. עכשיו ${currentTime}, ${date}, ${timeZone}. הצף מספר קטן של דברים חשובים עכשיו. בלי לו״ז, בלי שעות ביצוע, בלי לשנות משימות. reply קצר ו-presentation.task_list.\n\n`;
+    return `הקשר ל-turn הזה בלבד: surface=forgotten. עכשיו ${currentTime}, ${date}, ${timeZone}. בחר עד 6 דברים שבאמת חשוב להציף. בלי לו״ז, בלי שעות ביצוע, בלי Task mutations. reply קצר + presentation.task_list כאשר יש בחירה.\n\n`;
   }
   return `הקשר ל-turn הזה בלבד: surface=free-time. עכשיו ${currentTime}. הצע מה מתאים לזמן הפנוי, בלי לשנות משימות אלא אם ביקשו במפורש.\n\n`;
 }
@@ -153,6 +192,7 @@ export function surfaceInputHint(
 export function buildInstructions(input: {
   tasks: TaskRow[];
   memory: MemoryRow[];
+  consequences?: Map<string, ConsequenceRow>;
   surface?: ChatSurface | null;
   now?: Date;
 }) {
@@ -162,6 +202,7 @@ export function buildInstructions(input: {
   const open = input.tasks.filter((task) => task.status === "open");
   const done = input.tasks.filter((task) => task.status === "done").slice(0, 8);
   const surface = input.surface ?? null;
+  const consequences = input.consequences ?? new Map<string, ConsequenceRow>();
 
   return `${AGENT_INSTRUCTIONS}
 
@@ -191,6 +232,14 @@ presentation הוא תצוגה בלבד, לא שינוי נתונים.
 אם surface=schedule: presentation.type = "schedule_plan".
 אחרת presentation = null.
 
+קיים שדה consequence_updates.
+השתמש ב־consequence_updates רק כאשר למדת או הסקת מידע שימושי חדש לגבי משמעות דחיית Task קיים. אם אין שינוי שימושי, החזר מערך ריק. Consequence אינו שינוי ב־Task עצמו ואינו מוצג למשתמש.
+כל Consequence Update צריך להכיל: task_id, severity, reason, confidence, basis, valid_until.
+basis הוא אובייקט סגור: { "kind": "explicit" | "mixed" | "inferred" }.
+valid_until יהיה null כאשר אין תוקף ברור.
+אל תמציא תאריך תוקף.
+אין temporary IDs. Task חדש שנוצר באותו Turn מקבל Consequence רק ב־Turn עתידי.
+
 ## הקשר עכשיו
 היום: ${weekday} ${date}
 השעה עכשיו: ${currentTime}
@@ -199,10 +248,10 @@ presentation הוא תצוגה בלבד, לא שינוי נתונים.
 גרסת חוזה: ${AGENT_CONTRACT_VERSION}
 
 משימות פתוחות:
-${open.length ? open.map(formatTask).join("\n") : "- אין"}
+${open.length ? open.map((task) => formatTask(task, consequences.get(task.id))).join("\n") : "- אין"}
 
 הושלמו לאחרונה:
-${done.length ? done.map(formatTask).join("\n") : "- אין"}
+${done.length ? done.map((task) => formatTask(task)).join("\n") : "- אין"}
 
 זיכרון אישי:
 ${

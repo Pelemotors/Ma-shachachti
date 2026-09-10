@@ -4,7 +4,7 @@ const md = readFileSync("lib/agent/INSTRUCTIONS.he.md", "utf8")
   .replace(/\r\n/g, "\n")
   .trimEnd();
 
-const src = `export const AGENT_CONTRACT_VERSION = "2026-09-10-lean-task-list";
+const src = `export const AGENT_CONTRACT_VERSION = "2026-09-11-consequences";
 
 // Bundled on purpose. Do not read INSTRUCTIONS.he.md at runtime.
 export const AGENT_INSTRUCTIONS = ${JSON.stringify(md)};

@@ -21,6 +21,7 @@ function toPresentedTask(task: TaskRow): PresentedTask {
 export function resolveTaskListPresentation(
   presentation: unknown,
   tasks: TaskRow[],
+  options: { max?: number; openOnly?: boolean } = {},
 ): Extract<ClientPresentation, { type: "task_list" }> | null {
   if (
     !presentation ||
@@ -35,13 +36,16 @@ export function resolveTaskListPresentation(
   const byId = new Map(tasks.map((task) => [task.id, task]));
   const seen = new Set<string>();
   const resolved: PresentedTask[] = [];
+  const max = options.max ?? 20;
 
-  for (const value of raw.task_ids.slice(0, 20)) {
+  for (const value of raw.task_ids) {
+    if (resolved.length >= max) break;
     if (typeof value !== "string" || !UUID_RE.test(value) || seen.has(value)) {
       continue;
     }
     const task = byId.get(value);
     if (!task || task.status === "cancelled") continue;
+    if (options.openOnly && task.status !== "open") continue;
     seen.add(value);
     resolved.push(toPresentedTask(task));
   }
@@ -125,6 +129,7 @@ export function resolveAgentPresentation(
   presentation: unknown,
   tasks: TaskRow[],
   now = new Date(),
+  surface: string | null = null,
 ): ClientPresentation | null {
   if (
     presentation &&
@@ -134,7 +139,10 @@ export function resolveAgentPresentation(
   ) {
     return resolveSchedulePlanPresentation(presentation, tasks, now);
   }
-  return resolveTaskListPresentation(presentation, tasks);
+  return resolveTaskListPresentation(presentation, tasks, {
+    max: surface === "forgotten" ? 6 : 20,
+    openOnly: surface === "forgotten",
+  });
 }
 
 export function forgottenFallback(count: number) {

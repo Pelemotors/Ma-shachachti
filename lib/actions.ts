@@ -34,7 +34,7 @@ async function ownTask(db: Db, userId: string, id: string) {
   const { data, error } = await db
     .from("tasks")
     .select(
-      "id,due_on,due_at,reminder_enabled,reminder_offset_minutes,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at",
+      "id,due_on,due_at,reminder_enabled,reminder_offset_minutes,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at",
     )
     .eq("user_id", userId)
     .eq("id", id)
@@ -51,6 +51,8 @@ async function ownTask(db: Db, userId: string, id: string) {
     | "reminder_claimed_at"
     | "planned_start_at"
     | "planned_end_at"
+    | "reschedule_count"
+    | "last_rescheduled_at"
   >;
 }
 
@@ -263,6 +265,8 @@ export async function executeAction(
           ? resolveTaskDeadline(null, null)
           : resolveTaskDeadline(action.due_on, action.due_time);
       if (!deadline.ok) return fail(action.type, deadline.error);
+      const dueChanged =
+        current.due_on !== deadline.due_on || current.due_at !== deadline.due_at;
       const patch: Record<string, unknown> = {
         due_on: deadline.due_on,
         due_at: deadline.due_at,
@@ -280,6 +284,10 @@ export async function executeAction(
           },
         ),
       };
+      if (dueChanged) {
+        patch.reschedule_count = (current.reschedule_count ?? 0) + 1;
+        patch.last_rescheduled_at = now;
+      }
       const { error } = await db
         .from("tasks")
         .update(patch)
@@ -416,7 +424,7 @@ export async function loadTasks(db: Db, userId: string): Promise<TaskRow[]> {
   const { data, error } = await db
     .from("tasks")
     .select(
-      "id,title,notes,status,due_on,due_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,created_at,updated_at,completed_at",
+      "id,title,notes,status,due_on,due_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at,created_at,updated_at,completed_at",
     )
     .eq("user_id", userId)
     .neq("status", "cancelled")
@@ -452,7 +460,7 @@ export async function loadScheduleTasks(db: Db, userId: string) {
   const { data, error } = await db
     .from("tasks")
     .select(
-      "id,title,notes,status,due_on,due_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,created_at,updated_at,completed_at",
+      "id,title,notes,status,due_on,due_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at,created_at,updated_at,completed_at",
     )
     .eq("user_id", userId)
     .neq("status", "cancelled")

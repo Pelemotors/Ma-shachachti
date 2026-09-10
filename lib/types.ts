@@ -18,9 +18,55 @@ export type TaskRow = {
   reminder_claimed_at: string | null;
   planned_start_at: string | null;
   planned_end_at: string | null;
+  reschedule_count: number;
+  last_rescheduled_at: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+};
+
+export const CONSEQUENCE_SEVERITIES = [
+  "none",
+  "low",
+  "medium",
+  "high",
+  "critical",
+] as const;
+export type ConsequenceSeverity = (typeof CONSEQUENCE_SEVERITIES)[number];
+
+export const CONSEQUENCE_CONFIDENCES = ["low", "medium", "high"] as const;
+export type ConsequenceConfidence = (typeof CONSEQUENCE_CONFIDENCES)[number];
+
+export const CONSEQUENCE_BASIS_KINDS = [
+  "explicit",
+  "mixed",
+  "inferred",
+] as const;
+export type ConsequenceBasisKind = (typeof CONSEQUENCE_BASIS_KINDS)[number];
+
+export type ConsequenceBasis = {
+  kind: ConsequenceBasisKind;
+};
+
+export type ConsequenceRow = {
+  task_id: string;
+  user_id: string;
+  severity: ConsequenceSeverity;
+  reason: string;
+  confidence: ConsequenceConfidence;
+  basis: ConsequenceBasis;
+  valid_until: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ConsequenceUpdate = {
+  task_id: string;
+  severity: ConsequenceSeverity;
+  reason: string;
+  confidence: ConsequenceConfidence;
+  basis: ConsequenceBasis;
+  valid_until: string | null;
 };
 
 export type MemoryRow = {

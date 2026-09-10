@@ -48,7 +48,7 @@ function nullable(schema: Record<string, unknown>) {
 export const AGENT_TURN_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "actions", "presentation"],
+  required: ["reply", "actions", "presentation", "consequence_updates"],
   properties: {
     reply: { type: "string" },
     actions: {
@@ -167,6 +167,49 @@ export const AGENT_TURN_JSON_SCHEMA = {
         },
         { type: "null" },
       ],
+    },
+    consequence_updates: {
+      type: "array",
+      maxItems: 20,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "task_id",
+          "severity",
+          "reason",
+          "confidence",
+          "basis",
+          "valid_until",
+        ],
+        properties: {
+          task_id: { type: "string", pattern: UUID_RE.source },
+          severity: {
+            type: "string",
+            enum: ["none", "low", "medium", "high", "critical"],
+          },
+          reason: { type: "string", minLength: 1, maxLength: 280 },
+          confidence: {
+            type: "string",
+            enum: ["low", "medium", "high"],
+          },
+          basis: {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind"],
+            properties: {
+              kind: {
+                type: "string",
+                enum: ["explicit", "mixed", "inferred"],
+              },
+            },
+          },
+          valid_until: nullable({
+            type: "string",
+            pattern: DATE_RE.source,
+          }),
+        },
+      },
     },
   },
 } as const;
@@ -384,6 +427,7 @@ export function parseDecision(text: string) {
       reply?: unknown;
       actions?: unknown;
       presentation?: unknown;
+      consequence_updates?: unknown;
     };
     if (typeof parsed.reply !== "string" || !Array.isArray(parsed.actions)) {
       return { ok: false as const };
@@ -398,6 +442,9 @@ export function parseDecision(text: string) {
       presentation: (presentationResult.success
         ? presentationResult.data
         : null) as AgentPresentation,
+      consequence_updates: Array.isArray(parsed.consequence_updates)
+        ? parsed.consequence_updates
+        : [],
     };
   } catch {
     return { ok: false as const };
