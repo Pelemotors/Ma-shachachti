@@ -11,16 +11,18 @@ import {
 import { useRouter } from "next/navigation";
 import { authFetch, supabase } from "@/lib/supabase-browser";
 import { seasonForDate } from "@/lib/season";
-import type { TaskRow } from "@/lib/types";
+import { greetingForDate, HOME_SURFACES } from "@/lib/home-surfaces";
+import type { ClientPresentation, PresentedTask, TaskRow } from "@/lib/types";
 
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  presentation?: ClientPresentation | null;
 };
 
-type View = "chat" | "tasks";
+type View = "home" | "chat" | "tasks";
 
 function formatDue(due: string | null) {
   if (!due) return "";
@@ -32,9 +34,26 @@ function formatDue(due: string | null) {
   }).format(new Date(`${due}T12:00:00+03:00`));
 }
 
+function formatPresentedMeta(task: PresentedTask) {
+  const due = task.due_on
+    ? new Intl.DateTimeFormat("he-IL", {
+        day: "numeric",
+        month: "long",
+        timeZone: "Asia/Jerusalem",
+      }).format(new Date(`${task.due_on}T12:00:00+03:00`))
+    : "";
+  const timeMatch = (task.notes ?? "").trim().match(/^(\d{1,2}:\d{2})/);
+  const time = timeMatch?.[1] ?? "";
+  if (due && time) return `${due} · ${time}`;
+  if (due) return due;
+  const note = (task.notes ?? "").trim();
+  if (note && note.length <= 32) return note;
+  return "";
+}
+
 export function ChatApp() {
   const router = useRouter();
-  const [view, setView] = useState<View>("chat");
+  const [view, setView] = useState<View>("home");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [text, setText] = useState("");
@@ -93,13 +112,10 @@ export function ChatApp() {
     [tasks],
   );
 
-  async function send(event?: FormEvent) {
-    event?.preventDefault();
-    const message = text.trim();
+  async function sendMessage(message: string) {
     if (!message || sending) return;
 
     setError("");
-    setText("");
     setSending(true);
     const optimistic: ChatMessage = {
       id: `local-${Date.now()}`,
@@ -138,10 +154,23 @@ export function ChatApp() {
         role: "assistant",
         content: body.reply,
         created_at: body.created_at ?? new Date().toISOString(),
+        presentation: body.presentation ?? null,
       },
     ]);
     if (Array.isArray(body.tasks)) setTasks(body.tasks);
     setSending(false);
+  }
+
+  async function send(event?: FormEvent) {
+    event?.preventDefault();
+    const message = text.trim();
+    if (!message) return;
+    setText("");
+    await sendMessage(message);
+  }
+
+  function openSurface(objective: string) {
+    void sendMessage(objective);
   }
 
   async function runTaskAction(action: Record<string, unknown>) {
@@ -155,18 +184,46 @@ export function ChatApp() {
     setSavingTask(false);
     if (!response) {
       setError("לא הצלחנו לעדכן את המשימה.");
-      return;
+      return false;
     }
     if (response.status === 401) {
       router.replace("/login");
-      return;
+      return false;
     }
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       setError(body.error ?? "לא הצלחנו לעדכן את המשימה.");
-      return;
+      return false;
     }
-    if (Array.isArray(body.tasks)) setTasks(body.tasks);
+    if (Array.isArray(body.tasks)) {
+      const nextTasks = body.tasks as TaskRow[];
+      setTasks(nextTasks);
+      setMessages((current) =>
+        current.map((message) => {
+          if (message.presentation?.type !== "task_list") return message;
+          const byId = new Map(nextTasks.map((task) => [task.id, task]));
+          return {
+            ...message,
+            presentation: {
+              type: "task_list",
+              tasks: message.presentation.tasks.map((item) => {
+                const next = byId.get(item.id);
+                return next
+                  ? {
+                      id: next.id,
+                      title: next.title,
+                      notes: next.notes,
+                      status: next.status,
+                      due_on: next.due_on,
+                    }
+                  : item;
+              }),
+            },
+          };
+        }),
+      );
+    }
+    return true;
   }
 
   async function addTask(event: FormEvent) {
@@ -211,7 +268,33 @@ export function ChatApp() {
           </button>
         </header>
 
-        {view === "chat" ? (
+        {view === "home" ? (
+          <div className="home-panel">
+            <p className="home-tagline">הבית שלך, בקצב שלך</p>
+            <h1 className="home-greeting">
+              {greetingForDate()}
+              <span>.</span>
+            </h1>
+            <p className="home-prompt">מה יעזור לך עכשיו?</p>
+            <div className="home-actions">
+              {HOME_SURFACES.map((surface) => (
+                <button
+                  key={surface.id}
+                  className={`home-action ${surface.primary ? "primary" : "secondary"}`}
+                  type="button"
+                  disabled={sending}
+                  onClick={() => openSurface(surface.objective)}
+                >
+                  <span className="copy">
+                    <strong>{surface.title}</strong>
+                    <small>{surface.subtitle}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+            {error ? <div className="error-box">{error}</div> : null}
+          </div>
+        ) : view === "chat" ? (
           <div className="messages" aria-live="polite">
             {messages.length === 0 ? (
               <div className="empty-chat">
@@ -225,7 +308,45 @@ export function ChatApp() {
             ) : (
               messages.map((message) => (
                 <div key={message.id} className={`message-row ${message.role}`}>
-                  <div className="bubble">{message.content}</div>
+                  <div className="bubble">
+                    <p className="bubble-text">{message.content}</p>
+                    {message.role === "assistant" &&
+                    message.presentation?.type === "task_list" ? (
+                      <ul className="chat-task-list">
+                        {message.presentation.tasks.map((task) => {
+                          const meta = formatPresentedMeta(task);
+                          const done = task.status !== "open";
+                          return (
+                            <li
+                              key={task.id}
+                              className={done ? "done" : undefined}
+                            >
+                              <button
+                                className={`task-check${done ? " checked" : ""}`}
+                                type="button"
+                                aria-label={
+                                  done
+                                    ? task.title
+                                    : `סימון ${task.title} כבוצע`
+                                }
+                                disabled={savingTask || done}
+                                onClick={() =>
+                                  void runTaskAction({
+                                    type: "task.complete",
+                                    id: task.id,
+                                  })
+                                }
+                              />
+                              <div className="task-copy">
+                                <span>{task.title}</span>
+                                {meta ? <small>{meta}</small> : null}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                  </div>
                 </div>
               ))
             )}
@@ -327,7 +448,11 @@ export function ChatApp() {
             </button>
           </form>
           <nav className="bottom-nav" aria-label="ניווט ראשי">
-            <button disabled type="button">
+            <button
+              className={view === "home" ? "active" : undefined}
+              type="button"
+              onClick={() => setView("home")}
+            >
               בית
             </button>
             <button

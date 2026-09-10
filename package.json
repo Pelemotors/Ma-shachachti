@@ -8,7 +8,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/lean-actions.test.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
     "lint": "npm run typecheck"
   },
   "engines": {

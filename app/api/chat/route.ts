@@ -6,6 +6,7 @@ import {
   buildInstructions,
   parseDecision,
 } from "@/lib/agent/turn";
+import { resolveTaskListPresentation } from "@/lib/presentation";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -156,6 +157,12 @@ export async function POST(req: Request) {
     const reply = composeReply(decision.reply, results);
     if (!reply) throw new HttpError(502, "הסוכן לא החזיר תשובה.");
 
+    const nextTasks = await loadTasks(db, userId);
+    const presentation = resolveTaskListPresentation(
+      decision.presentation,
+      nextTasks,
+    );
+
     const { data: saved, error: assistantSaveError } = await db
       .from("chat_messages")
       .insert({ user_id: userId, role: "assistant", content: reply })
@@ -168,12 +175,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const nextTasks = await loadTasks(db, userId);
     return Response.json({
       reply,
       id: saved.id,
       created_at: saved.created_at,
       tasks: nextTasks,
+      presentation,
     });
   } catch (error) {
     return jsonError(error);
