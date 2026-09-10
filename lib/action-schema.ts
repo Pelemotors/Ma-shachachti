@@ -198,12 +198,32 @@ function failureLine(result: Extract<ActionResult, { ok: false }>) {
   return result.error;
 }
 
+const EXECUTION_CLAIM_RE = /שמרתי|הוספתי|עדכנתי|מחקתי|סימנתי|קבעתי|אזכיר/;
+
+function claimsExecution(text: string) {
+  return EXECUTION_CLAIM_RE.test(text);
+}
+
+function conversationalParts(text: string) {
+  return text
+    .split(/\n+/)
+    .flatMap((block) => block.split(/(?<=[.!?])\s+/))
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && !claimsExecution(part));
+}
+
 export function composeReply(llmReply: string, results: ActionResult[]) {
-  if (!results.length) return llmReply.trim();
-  return results
+  const facts = results
     .map((result) => (result.ok ? successLine(result) : failureLine(result)))
     .join("\n")
     .trim();
+  const talk = conversationalParts(llmReply).join(" ").trim();
+
+  if (facts && talk) return `${facts}\n${talk}`;
+  if (facts) return facts;
+  if (talk) return talk;
+  if (claimsExecution(llmReply)) return "לא בוצעה פעולה במערכת.";
+  return llmReply.trim();
 }
 
 export function parseDecision(text: string) {

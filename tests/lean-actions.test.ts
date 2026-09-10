@@ -67,12 +67,32 @@ test("valid task.create is accepted", () => {
   assert.equal(inspected.accepted[0]?.due_on, "2026-10-23");
 });
 
-test("successful result text is built from execution, not from the model", () => {
-  const reply = composeReply("התכוונתי לשמור את זה.", [
+test("empty actions with an execution claim are not shown as success", () => {
+  const reply = composeReply("הוספתי משימה ליום הורים.", []);
+  assert.doesNotMatch(reply, /הוספתי|שמרתי|עדכנתי|מחקתי|סימנתי|קבעתי|אזכיר/);
+  assert.equal(reply, "לא בוצעה פעולה במערכת.");
+});
+
+test("successful action keeps extra conversational text that does not claim execution", () => {
+  const reply = composeReply("אין לי יכולת לקבוע התראה לשעה 17:00.", [
+    {
+      ok: true,
+      type: "task.create",
+      title: "יום הורים",
+      due_on: "2026-10-23",
+    },
+  ]);
+  assert.match(reply, /שמרתי את המשימה "יום הורים" לתאריך 23\/10\/2026/);
+  assert.match(reply, /אין לי יכולת לקבוע התראה לשעה 17:00/);
+});
+
+test("successful result text is built from execution, not from the model claim", () => {
+  const reply = composeReply("הוספתי את זה. אין תזכורת לשעה.", [
     { ok: true, type: "task.create", title: "יום הורים", due_on: "2026-10-23" },
   ]);
   assert.match(reply, /שמרתי את המשימה "יום הורים" לתאריך 23\/10\/2026/);
-  assert.doesNotMatch(reply, /התכוונתי/);
+  assert.match(reply, /אין תזכורת לשעה/);
+  assert.doesNotMatch(reply, /הוספתי/);
 });
 
 test("parseDecision rejects unstructured text", () => {
