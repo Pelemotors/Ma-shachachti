@@ -56,11 +56,12 @@ export async function GET(req: Request) {
       .from("chat_messages")
       .select("id,role,content,created_at")
       .eq("user_id", userId)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(100);
 
     if (error) throw new HttpError(503, "לא הצלחנו לטעון את השיחה.");
-    return Response.json({ messages: (data ?? []) as StoredMessage[] });
+    const messages = ((data ?? []) as StoredMessage[]).slice().reverse();
+    return Response.json({ messages });
   } catch (error) {
     return jsonError(error);
   }
