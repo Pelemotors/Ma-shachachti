@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authFetch } from "@/lib/supabase-browser";
 import {
   SESSION_LIST_PAGE,
   type ChatSessionSummary,
 } from "@/lib/chat-sessions";
 import { formatSessionWhen } from "@/lib/time";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui-states";
 
 function messageCountLabel(count: number) {
   if (count <= 0) return "";
@@ -33,6 +34,8 @@ export function ChatHistoryDrawer({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -63,11 +66,31 @@ export function ChatHistoryDrawer({
 
   useEffect(() => {
     if (!open) return;
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
+    requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLElement>("button")?.focus());
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") onClose();
+      if (event.key === "Tab" && dialogRef.current) {
+        const focusable = Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        );
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (!first || !last) return;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault(); last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); first.focus();
+        }
+      }
     };
     window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      returnFocusRef.current?.focus();
+    };
   }, [open, onClose]);
 
   async function loadMore() {
@@ -93,6 +116,7 @@ export function ChatHistoryDrawer({
   return (
     <div className="history-backdrop" role="presentation" onMouseDown={onClose}>
       <aside
+        ref={dialogRef}
         className="history-drawer"
         role="dialog"
         aria-modal="true"
@@ -101,7 +125,7 @@ export function ChatHistoryDrawer({
       >
         <header className="history-header">
           <h2 id="history-title">השיחות שלי</h2>
-          <button className="icon-button" type="button" aria-label="סגירת היסטוריית השיחות" autoFocus onClick={onClose}>
+          <button className="icon-button" type="button" aria-label="סגירת היסטוריית השיחות" onClick={onClose}>
             ×
           </button>
         </header>
@@ -115,9 +139,9 @@ export function ChatHistoryDrawer({
         >
           שיחה חדשה
         </button>
-      {loading ? <p className="muted">טוען שיחות…</p> : null}
+      {loading ? <LoadingState label="טוען שיחות…" compact /> : null}
       {!loading && sessions.length === 0 ? (
-        <p className="muted">אין עדיין שיחות קודמות.</p>
+        <EmptyState title="אין עדיין שיחות קודמות" />
       ) : null}
       <div className="previous-chats">
         {sessions.map((session) => {
@@ -161,7 +185,7 @@ export function ChatHistoryDrawer({
           הצג עוד
         </button>
       ) : null}
-      {error ? <div className="error-box">{error}</div> : null}
+      {error ? <ErrorState message={error} /> : null}
       </aside>
     </div>
   );

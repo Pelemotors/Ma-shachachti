@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { authFetch } from "@/lib/supabase-browser";
 import type { RecordingRow } from "@/lib/recordings";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui-states";
 
 const STATUS_HE: Record<RecordingRow["status"], string> = {
   uploading: "מעלה",
@@ -107,7 +108,7 @@ export function RecordingBank() {
   }
 
   if (loading) {
-    return <div className="recording-bank muted">טוען הקלטות…</div>;
+    return <div className="recording-bank"><LoadingState label="טוען הקלטות…" /></div>;
   }
 
   return (
@@ -122,18 +123,13 @@ export function RecordingBank() {
         </button>
       </div>
       {error ? (
-        <div className="error-box" role="alert">
-          {error}{" "}
-          <button type="button" onClick={() => void load()}>
-            נסה שוב
-          </button>
-        </div>
+        <ErrorState message={error} onRetry={() => void load()} />
       ) : null}
       {recordings.length === 0 ? (
-        <div className="recording-bank__empty">
-          <strong>אין עדיין הקלטות</strong>
-          <p>הקלטות קוליות מהשיחה יופיעו כאן.</p>
-        </div>
+        <EmptyState
+          title="אין עדיין הקלטות"
+          description="הקלטות קוליות מהשיחה יופיעו כאן."
+        />
       ) : (
         <ul className="recording-list">
           {recordings.map((recording) => (

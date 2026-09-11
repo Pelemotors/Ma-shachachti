@@ -11,6 +11,7 @@ import { DevicePermissionsPanel } from "@/components/device-permissions-panel";
 import { MemoryLearning } from "@/components/memory-learning";
 import type { Season } from "@/lib/season";
 import type { UserProfile } from "@/lib/user-profile";
+import { LoadingState } from "@/components/ui-states";
 
 const SEASON_LABELS: Record<Season, string> = {
   spring: "אביב",
@@ -38,16 +39,25 @@ export function SettingsPanel({
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [preferencesLoading, setPreferencesLoading] = useState(true);
+  const [preferencesLoadFailed, setPreferencesLoadFailed] = useState(false);
+  const [preferencesReload, setPreferencesReload] = useState(0);
 
   useEffect(() => {
+    setPreferencesLoading(true);
+    setPreferencesLoadFailed(false);
     void authFetch("/api/preferences")
       .then((response) => response.json())
       .then((body) => {
         const value = Number(body.default_reminder_minutes);
         if (REMINDER_MINUTE_OPTIONS.includes(value as never)) setMinutes(value);
       })
-      .catch(() => setError("לא הצלחנו לטעון את כל ההגדרות."));
-  }, []);
+      .catch(() => {
+        setPreferencesLoadFailed(true);
+        setError("לא הצלחנו לטעון את כל ההגדרות.");
+      })
+      .finally(() => setPreferencesLoading(false));
+  }, [preferencesReload]);
 
   async function saveProfile() {
     setSaving(true);
@@ -91,6 +101,12 @@ export function SettingsPanel({
   return (
     <div className="settings-panel">
       <h1>הגדרות</h1>
+      {preferencesLoading ? <LoadingState label="טוען הגדרות…" compact /> : null}
+      {preferencesLoadFailed ? (
+        <button className="text-button" type="button" onClick={() => setPreferencesReload((value) => value + 1)}>
+          נסה לטעון שוב
+        </button>
+      ) : null}
 
       <section className="settings-section" aria-labelledby="profile-title">
         <h2 id="profile-title">פרופיל</h2>

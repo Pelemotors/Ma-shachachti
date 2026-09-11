@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { authFetch } from "@/lib/supabase-browser";
 import type { MemoryRow, MemorySource } from "@/lib/types";
+import { EmptyState, LoadingState } from "@/components/ui-states";
 
 const SOURCE_LABELS: Record<MemorySource, string> = {
   user: "נוסף על ידך",
@@ -19,6 +20,7 @@ export function MemoryLearning() {
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState<Retry | null>(null);
+  const [reload, setReload] = useState(0);
   const newIds = useRef(new Set<string>());
 
   async function request(body: Record<string, unknown>) {
@@ -34,6 +36,9 @@ export function MemoryLearning() {
 
   useEffect(() => {
     let alive = true;
+    setLoading(true);
+    setError("");
+    setRetry(null);
     void authFetch("/api/memories")
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
@@ -48,7 +53,10 @@ export function MemoryLearning() {
         }
       })
       .catch(() => {
-        if (alive) setError("לא הצלחנו לטעון את מה שהסוכן זוכר.");
+        if (alive) {
+          setError("לא הצלחנו לטעון את מה שהסוכן זוכר.");
+          setRetry({ label: "נסה שוב", run: () => setReload((value) => value + 1) });
+        }
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -56,7 +64,7 @@ export function MemoryLearning() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [reload]);
 
   async function mutate(
     body: Record<string, unknown>,
@@ -111,9 +119,9 @@ export function MemoryLearning() {
           הוסף
         </button>
       </form>
-      {loading ? <p className="muted">טוען זיכרונות…</p> : null}
+      {loading ? <LoadingState label="טוען זיכרונות…" compact /> : null}
       {!loading && !memories.length ? (
-        <p className="muted">עדיין אין פרטים שמורים.</p>
+        <EmptyState title="עדיין אין פרטים שמורים" />
       ) : null}
       {groups.map((group) => (
         <div className="memory-group" key={group.source}>

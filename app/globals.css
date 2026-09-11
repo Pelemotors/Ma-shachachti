@@ -52,6 +52,8 @@ html,
 body {
   margin: 0;
   min-height: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 body {
   background: var(--bg);
@@ -71,6 +73,14 @@ button {
 button:disabled {
   cursor: default;
   opacity: 0.45;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 38%, transparent);
+  outline-offset: 2px;
 }
 input,
 textarea {
@@ -245,7 +255,7 @@ h1 {
   background: transparent;
   color: var(--muted);
   padding: 8px;
-  min-height: 40px;
+  min-height: 44px;
 }
 .settings-button {
   color: var(--muted);
@@ -523,6 +533,68 @@ h1 {
   display: grid;
   gap: 12px;
 }
+.home-summary {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+}
+.home-summary h2,
+.home-summary p {
+  margin: 0;
+}
+.home-summary h2 {
+  font-size: 17px;
+}
+.home-summary ol {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.home-summary li {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+.home-summary time {
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.home-summary li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.home-summary-empty {
+  font-size: 14px;
+}
+.home-quick-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.home-quick-links button {
+  display: grid;
+  gap: 2px;
+  min-height: 64px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--text);
+  text-align: start;
+}
+.home-quick-links small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
 .home-action {
   min-height: 86px;
   border-radius: 20px;
@@ -711,15 +783,22 @@ h1 {
   border-bottom: 1px solid var(--border);
 }
 .task-check {
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
-  margin-top: 8px;
+  position: relative;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  margin-top: 0;
+  background: transparent;
+}
+.task-check::after {
+  content: "";
+  position: absolute;
+  inset: 11px;
   border-radius: 7px;
   background: #fff;
   border: 1px solid #b8bbc0;
 }
-.task-check.checked {
+.task-check.checked::after {
   background: var(--primary);
   border-color: var(--primary);
 }
@@ -890,6 +969,7 @@ h1 {
 }
 .retry-button {
   margin-top: 8px;
+  min-height: 44px;
 }
 .mutation-notice {
   margin: 8px 14px;
@@ -1017,7 +1097,7 @@ h1 {
   align-items: center;
   gap: 6px;
   margin-inline-start: auto;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
   border-radius: 16px;
   background: var(--primary);
@@ -1034,7 +1114,7 @@ h1 {
   background: transparent;
   font-size: 14px;
   padding: 5px 0;
-  min-height: 40px;
+  min-height: 44px;
 }
 .icon-button {
   display: inline-flex;
@@ -1118,6 +1198,22 @@ h1 {
   z-index: 8;
   display: grid;
   gap: 8px;
+  max-height: min(70dvh, 520px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.bell-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bell-panel-scroll {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .bell-item {
   display: grid;
@@ -1168,7 +1264,11 @@ h1 {
 }
 .schedule-nav button {
   background: transparent;
-  min-height: 40px;
+  min-height: 44px;
+}
+.lists-panel button {
+  min-width: 44px;
+  min-height: 44px;
 }
 .schedule-surface {
   flex: 1;
@@ -1215,6 +1315,41 @@ h1 {
   font: inherit;
 }
 
+.ui-state {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 28px 16px;
+  color: var(--muted);
+  text-align: center;
+}
+.ui-state.compact {
+  display: flex;
+  justify-content: flex-start;
+  padding: 10px 2px;
+  text-align: start;
+}
+.ui-state p {
+  margin: 0;
+}
+.empty-state strong {
+  color: var(--text);
+}
+.loading-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: loading-pulse 1.1s ease-in-out infinite alternate;
+}
+.state-error {
+  display: grid;
+  gap: 4px;
+}
+@keyframes loading-pulse {
+  to { opacity: 0.3; transform: scale(0.72); }
+}
+
 @media (max-width: 600px) {
   .chat-shell {
     border-inline: 0;
@@ -1224,5 +1359,62 @@ h1 {
   }
   .bubble {
     max-width: 90%;
+  }
+  .bell-panel {
+    position: fixed;
+    inset-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right));
+    top: max(66px, calc(env(safe-area-inset-top) + 58px));
+    width: auto;
+    max-height: calc(100dvh - max(82px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
+  }
+  .history-drawer {
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 360px) {
+  .chat-header {
+    gap: 2px;
+    padding-inline: 6px;
+  }
+  .chat-header > .brand-mark {
+    display: none;
+  }
+  .chat-header-copy span {
+    display: none;
+  }
+  .logout-button {
+    min-width: 44px;
+    min-height: 44px;
+    padding-inline: 3px;
+    font-size: 13px;
+  }
+  .home-panel,
+  .tasks-panel,
+  .agent-surface,
+  .my-schedule,
+  .lists-panel,
+  .recording-bank {
+    padding-inline: 10px;
+  }
+  .composer-wrap {
+    padding-inline: 8px;
+  }
+  .bottom-nav {
+    gap: 1px;
+  }
+  .bottom-nav button {
+    font-size: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

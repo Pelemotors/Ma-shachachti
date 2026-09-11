@@ -12,6 +12,7 @@ import type {
   SurfaceContext,
 } from "@/lib/chat-request";
 import { formatTaskWhen } from "@/lib/time";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui-states";
 
 export type SurfaceTurnState = {
   status: "idle" | "loading" | "success" | "error";
@@ -49,16 +50,11 @@ function SurfaceStatus({
   onRetry: () => void;
 }) {
   if (state.status === "loading") {
-    return <div className="typing">הסוכן חושב…</div>;
+    return <LoadingState label="הסוכן חושב…" compact />;
   }
   if (state.status === "error") {
     return (
-      <div className="error-box" role="alert">
-        <span>{state.error}</span>
-        <button className="retry-button" type="button" onClick={onRetry}>
-          נסה שוב
-        </button>
-      </div>
+      <ErrorState message={state.error} onRetry={onRetry} />
     );
   }
   return null;
@@ -86,7 +82,10 @@ export function FocusSurface({
       state.presentation?.type === "task_list" ? (
         <PresentedTaskList tasks={state.presentation.tasks} />
       ) : state.status === "success" ? (
-        <p className="muted">אין כרגע פריטים שהסוכן בחר להציג.</p>
+        <EmptyState
+          title="אין כרגע פריטים להצגה"
+          description="אפשר לרענן ולבקש מהסוכן לבדוק שוב."
+        />
       ) : null}
       {state.status === "success" ? (
         <button className="text-button" type="button" onClick={run}>

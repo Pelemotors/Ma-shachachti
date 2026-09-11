@@ -13,9 +13,11 @@ import { authFetch, supabase } from "@/lib/supabase-browser";
 import { seasonForDate, type Season } from "@/lib/season";
 import {
   greetingForDate,
+  HOME_QUICK_LINKS,
   HOME_SURFACES,
   type ChatSurface,
 } from "@/lib/home-surfaces";
+import { buildHomeDisplay } from "@/lib/home-display";
 import { appendTranscript } from "@/lib/audio/recorder-helpers";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { SettingsPanel } from "@/components/settings-panel";
@@ -72,6 +74,7 @@ import {
 import { useAgentSurfaces } from "@/hooks/use-agent-surfaces";
 import { ChecklistsView, ShoppingView } from "@/components/lean-lists";
 import { RecordingBank } from "@/components/recording-bank";
+import { EmptyState, LoadingState } from "@/components/ui-states";
 
 type ChatMessage = {
   id: string;
@@ -310,7 +313,8 @@ export function ChatApp() {
   }, [view]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    bottomRef.current?.scrollIntoView({ behavior: reduced ? "auto" : "smooth" });
   }, [messages, sending, view]);
 
   const openTasks = useMemo(
@@ -321,6 +325,7 @@ export function ChatApp() {
     () => tasks.filter((task) => task.status === "done"),
     [tasks],
   );
+  const homeDisplay = useMemo(() => buildHomeDisplay(tasks), [tasks]);
 
   async function sendMessage(
     message: string,
@@ -819,7 +824,9 @@ export function ChatApp() {
   if (loading) {
     return (
       <main className="lean-shell" data-theme={seasonForDate()}>
-        <div className="full-status">טוען את האזור האישי…</div>
+        <div className="full-status">
+          <LoadingState label="טוען את האזור האישי…" />
+        </div>
       </main>
     );
   }
@@ -889,6 +896,26 @@ export function ChatApp() {
               <span>.</span>
             </h1>
             <p className="home-prompt">מה יעזור לך עכשיו?</p>
+            <section className="home-summary" aria-labelledby="home-summary-title">
+              <div>
+                <h2 id="home-summary-title">היום שלך</h2>
+                <p aria-label={`${homeDisplay.completed} מתוך ${homeDisplay.total} הושלמו`}>
+                  הושלמו {homeDisplay.completed} מתוך {homeDisplay.total}
+                </p>
+              </div>
+              {homeDisplay.chronological.length ? (
+                <ol aria-label="הפריטים הבאים לפי שעה">
+                  {homeDisplay.chronological.map((item) => (
+                    <li key={item.id}>
+                      <time dateTime={item.instant}>{item.time}</time>
+                      <span>{item.title}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="muted home-summary-empty">אין עוד פריטים עם שעה להיום.</p>
+              )}
+            </section>
             <div className="home-actions">
               {HOME_SURFACES.map((surface) => (
                 <button
@@ -905,6 +932,14 @@ export function ChatApp() {
                 </button>
               ))}
             </div>
+            <nav className="home-quick-links" aria-label="קיצורי דרך">
+              {HOME_QUICK_LINKS.map((item) => (
+                <button key={item.id} type="button" onClick={() => openView(item.id)}>
+                  <strong>{item.title}</strong>
+                  <small>{item.subtitle}</small>
+                </button>
+              ))}
+            </nav>
             {error ? <div className="error-box">{error}</div> : null}
           </div>
         ) : view === "chat" ? (
@@ -920,14 +955,10 @@ export function ChatApp() {
               </button>
             </div>
             {messages.length === 0 ? (
-              <div className="empty-chat">
-                <div className="brand-mark">מ׳</div>
-                <h2>מה יושב לך בראש?</h2>
-                <p>
-                  אפשר לבקש להוסיף משימה, להזיז תאריך, או פשוט לשוחח. הסוכן שומר
-                  ומעדכן במקומך.
-                </p>
-              </div>
+              <EmptyState
+                title="מה יושב לך בראש?"
+                description="אפשר לבקש להוסיף משימה, להזיז תאריך, או פשוט לשוחח. אותו סוכן אישי שומר ומעדכן במקומך."
+              />
             ) : (
               messages.map((message) => (
                 <div key={message.id} className={`message-row ${message.role}`}>

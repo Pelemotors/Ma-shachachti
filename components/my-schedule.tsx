@@ -5,6 +5,7 @@ import { authFetch } from "@/lib/supabase-browser";
 import { FIXED_TIME_LABEL } from "@/lib/schedule";
 import { addJerusalemDays, formatClockRange, formatJerusalemDay, todayContext } from "@/lib/time";
 import type { TaskRow } from "@/lib/types";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui-states";
 
 type Timed = TaskRow & { start: string; end: string | null; fixed: boolean };
 
@@ -18,6 +19,7 @@ export function MySchedule(props: {
   const [timed, setTimed] = useState<Timed[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -47,7 +49,7 @@ export function MySchedule(props: {
     return () => {
       alive = false;
     };
-  }, [props.date, props.saving]);
+  }, [props.date, props.saving, reload]);
 
   return (
     <div className="my-schedule">
@@ -67,7 +69,8 @@ export function MySchedule(props: {
           חזרה להיום
         </button>
       ) : null}
-      {error ? <p className="error-box">{error}</p> : null}
+      {loading ? <LoadingState label="טוען את הלוז…" compact /> : null}
+      {error ? <ErrorState message={error} onRetry={() => setReload((value) => value + 1)} /> : null}
       <ul className="schedule-plan-list">
         {timed.map((item) => {
           const done = item.status !== "open";
@@ -103,7 +106,10 @@ export function MySchedule(props: {
         })}
       </ul>
       {!loading && !timed.length && !error ? (
-        <p className="muted">אין משימות משובצות בלו״ז ליום הזה.</p>
+        <EmptyState
+          title="אין פריטים משובצים"
+          description="אין משימות עם שעה בלו״ז ליום הזה."
+        />
       ) : null}
     </div>
   );

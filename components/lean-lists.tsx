@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { authFetch } from "@/lib/supabase-browser";
 import type { Checklist, ShoppingItem } from "@/lib/lists";
 import { OptimisticMutationLayer, type OptimisticFailure } from "@/lib/optimistic-mutation";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui-states";
 
 async function post<T>(url: string, body: unknown, key: string): Promise<T[]> {
   const response = await authFetch(url, {
@@ -21,7 +22,17 @@ export function ShoppingView(props: {
 }) {
   const [items, setItems] = useState<ShoppingItem[]>([]);
   const [title, setTitle] = useState("");
-  useEffect(() => { void authFetch("/api/shopping").then((r) => r.json()).then((body) => setItems(body.shopping ?? [])); }, []);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  async function load() {
+    setLoading(true); setLoadError("");
+    const response = await authFetch("/api/shopping").catch(() => null);
+    const body = await response?.json().catch(() => ({}));
+    if (!response?.ok || !Array.isArray(body?.shopping)) setLoadError("לא הצלחנו לטעון את רשימת הקניות.");
+    else setItems(body.shopping);
+    setLoading(false);
+  }
+  useEffect(() => { void load(); }, []);
   async function add(event: FormEvent) {
     event.preventDefault();
     const value = title.trim(); if (!value) return;
@@ -46,6 +57,11 @@ export function ShoppingView(props: {
       <input aria-label="פריט קניות חדש" maxLength={200} placeholder="מה צריך לקנות?" value={title} onChange={(e) => setTitle(e.target.value)} />
       <button className="send-button" type="submit" disabled={!title.trim()}>+</button>
     </form>
+    {loading ? <LoadingState label="טוען את רשימת הקניות…" compact /> : null}
+    {loadError ? <ErrorState message={loadError} onRetry={() => void load()} /> : null}
+    {!loading && !loadError && items.length === 0 ? (
+      <EmptyState title="רשימת הקניות ריקה" description="אפשר להוסיף את הפריט הראשון למעלה." />
+    ) : null}
     <ul className="task-list">
       {items.map((item) => <li className={`task-row${item.purchased_at ? " done" : ""}`} key={item.id}>
         <button className={`task-check${item.purchased_at ? " checked" : ""}`} aria-label={`סימון ${item.title}`} onClick={() => void toggle(item)} />
@@ -79,11 +95,22 @@ export function ChecklistsView(props: {
 }) {
   const [lists, setLists] = useState<Checklist[]>([]);
   const [text, setText] = useState("");
-  useEffect(() => {
-    void authFetch("/api/checklists").then((r) => r.json()).then((body) => {
-      const next = (body.checklists ?? []) as Checklist[]; setLists(next);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  async function load() {
+    setLoading(true); setLoadError("");
+    const response = await authFetch("/api/checklists").catch(() => null);
+    const body = await response?.json().catch(() => ({}));
+    if (!response?.ok || !Array.isArray(body?.checklists)) {
+      setLoadError("לא הצלחנו לטעון את הרשימות.");
+    } else {
+      const next = body.checklists as Checklist[]; setLists(next);
       if (props.activeId && !next.some((list) => list.id === props.activeId)) props.onActive(null, true);
-    });
+    }
+    setLoading(false);
+  }
+  useEffect(() => {
+    void load();
   }, []);
   const active = lists.find((list) => list.id === props.activeId) ?? null;
   const mutate = (key: string, optimistic: (value: Checklist[]) => Checklist[], body: unknown) =>
@@ -93,6 +120,11 @@ export function ChecklistsView(props: {
       <input aria-label="רשימה חדשה" maxLength={200} placeholder="שם הרשימה" value={text} onChange={(e) => setText(e.target.value)} />
       <button className="send-button" disabled={!text.trim()}>+</button>
     </form>
+    {loading ? <LoadingState label="טוען רשימות…" compact /> : null}
+    {loadError ? <ErrorState message={loadError} onRetry={() => void load()} /> : null}
+    {!loading && !loadError && lists.length === 0 ? (
+      <EmptyState title="אין עדיין רשימות" description="אפשר ליצור רשימה ראשונה למעלה." />
+    ) : null}
     <ul className="task-list">{lists.map((list, index) => <li className="task-row" key={list.id}>
       <button className="text-button" onClick={() => props.onActive(list.id)}>{list.title} · {list.items.length}</button>
       <button aria-label="העלה רשימה" disabled={index === 0} onClick={() => { const ids = moved(lists.map((x) => x.id), index, -1); void mutate("checklist:reorder", (s) => ids.map((id) => s.find((x) => x.id === id)!), { action: "reorder", ids }); }}>↑</button>
@@ -108,6 +140,7 @@ export function ChecklistsView(props: {
       <input aria-label="פריט חדש ברשימה" maxLength={500} placeholder="פריט חדש" value={text} onChange={(e) => setText(e.target.value)} />
       <button className="send-button" disabled={!text.trim()}>+</button>
     </form>
+    {!active.items.length ? <EmptyState title="הרשימה ריקה" description="אפשר להוסיף פריט ראשון למעלה." /> : null}
     <ul className="task-list">{active.items.map((item, index) => <li className={`task-row${item.checked ? " done" : ""}`} key={item.id}>
       <button className={`task-check${item.checked ? " checked" : ""}`} aria-label={`סימון ${item.text}`} onClick={() => void mutate(`checklist:item:toggle:${item.id}`, (all) => all.map((list) => list.id === active.id ? { ...list, items: list.items.map((row) => row.id === item.id ? { ...row, checked: !row.checked } : row) } : list), { action: "item.toggle", checklist_id: active.id, id: item.id, checked: !item.checked })} />
       <span>{item.text}</span>

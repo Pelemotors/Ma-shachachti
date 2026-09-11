@@ -25,33 +25,38 @@ export function queryNotificationPermission(): NotificationPermission | "unsuppo
 
 export function usePushNotifications() {
   const [state, setState] = useState<PushUiState>("unsupported");
+  const [initialized, setInitialized] = useState(false);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
   const refresh = useCallback(async () => {
-    const supported =
-      typeof window !== "undefined" &&
-      window.isSecureContext &&
-      "Notification" in window &&
-      "serviceWorker" in navigator &&
-      "PushManager" in window;
-    const permission = queryNotificationPermission();
-    const subscription = supported ? await currentPushSubscription() : null;
-    const config = await authFetch("/api/push")
-      .then((response) => response.json())
-      .catch(() => ({}));
-    const deliveryReady = Boolean(config.deliveryReady && config.publicKey);
-    setReady(deliveryReady);
-    setState(
-      notificationUiState({
-        supported,
-        permission,
-        hasSubscription: Boolean(subscription),
-        deliveryReady,
-      }),
-    );
+    try {
+      const supported =
+        typeof window !== "undefined" &&
+        window.isSecureContext &&
+        "Notification" in window &&
+        "serviceWorker" in navigator &&
+        "PushManager" in window;
+      const permission = queryNotificationPermission();
+      const subscription = supported ? await currentPushSubscription() : null;
+      const config = await authFetch("/api/push")
+        .then((response) => response.json())
+        .catch(() => ({}));
+      const deliveryReady = Boolean(config.deliveryReady && config.publicKey);
+      setReady(deliveryReady);
+      setState(
+        notificationUiState({
+          supported,
+          permission,
+          hasSubscription: Boolean(subscription),
+          deliveryReady,
+        }),
+      );
+    } finally {
+      setInitialized(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -183,6 +188,7 @@ export function usePushNotifications() {
 
   return {
     state,
+    initialized,
     ready,
     busy,
     error,

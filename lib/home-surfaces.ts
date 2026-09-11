@@ -36,6 +36,15 @@ export const HOME_SURFACES = [
   primary: boolean;
 }>;
 
+export const HOME_QUICK_LINKS = [
+  { id: "chat", title: "שיחה", subtitle: "לדבר עם אותו סוכן אישי" },
+  { id: "tasks", title: "משימות", subtitle: "כל מה ששמור לביצוע" },
+  { id: "shopping", title: "קניות", subtitle: "רשימת הקניות" },
+  { id: "checklists", title: "רשימות", subtitle: "צ׳קליסטים חוזרים" },
+  { id: "recordings", title: "הקלטות", subtitle: "אודיו ותמלולים" },
+  { id: "settings", title: "הגדרות", subtitle: "פרופיל, זיכרון והרשאות" },
+] as const;
+
 export function isChatSurface(value: unknown): value is ChatSurface {
   return (
     typeof value === "string" &&
