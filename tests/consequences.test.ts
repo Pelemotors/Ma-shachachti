@@ -223,7 +223,7 @@ test("an invalid consequence update is rejected locally", () => {
   );
 });
 
-test("invalid consequence updates do not fail parseDecision", () => {
+test("invalid consequence updates fail the whole decision before mutation", () => {
   const parsed = parseDecision(
     JSON.stringify({
       reply: "הנה מה שחשוב.",
@@ -232,11 +232,7 @@ test("invalid consequence updates do not fail parseDecision", () => {
       consequence_updates: [{ task_id: "bad", severity: "nope" }],
     }),
   );
-  assert.equal(parsed.ok, true);
-  if (parsed.ok) {
-    assert.equal(parsed.presentation?.type, "task_list");
-    assert.equal(parsed.consequence_updates.length, 1);
-  }
+  assert.equal(parsed.ok, false);
 });
 
 test("a valid consequence is upserted and does not create a second row", async () => {

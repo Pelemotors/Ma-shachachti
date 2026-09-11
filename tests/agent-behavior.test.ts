@@ -13,37 +13,31 @@ const schemaSrc = readFileSync(
   "utf8",
 );
 
-test("agent stays a home-operations assistant, not a general chatbot", () => {
+test("agent stays a personal home-operations agent", () => {
   assert.match(
     instructions,
     /הסוכן האישי של המשתמש לניהול הבית והחיים התפעוליים שסביבו/,
   );
-  assert.match(instructions, /אל תהפוך לעוזר כללי/);
+  assert.match(instructions, /להפחית מהמשתמש עומס מחשבתי/);
 });
 
-test("out-of-scope car buying is not answered as product advice", () => {
-  assert.match(instructions, /איזה רכב כדאי לקנות בישראל\?/);
-  assert.match(instructions, /מחוץ לתחום/);
-  assert.match(instructions, /אל תענה תשובה מלאה/);
-  assert.match(instructions, /אל תנסה בכוח למצוא קשר לניהול הבית/);
+test("the agent is the brain and code does not infer intent", () => {
+  assert.match(instructions, /אתה שכבת החשיבה של המערכת/);
+  assert.match(instructions, /הקוד לא אמור להחליט את הדברים האלה במקומך/);
+  assert.match(instructions, /אל תעבוד לפי מילות מפתח בלבד/);
 });
 
-test("operational car test reminder stays in scope", () => {
-  assert.match(instructions, /תזכיר לי לעשות טסט לרכב/);
-  assert.match(instructions, /טיפול, טסט, ביטוח או תיקון/);
+test("runtime capabilities are the source of truth", () => {
+  assert.match(instructions, /היכולות שלך מגיעות מה-Runtime/);
+  assert.match(instructions, /השתמש רק במה שהמערכת באמת פרסמה/);
 });
 
-test("thanks follow-ups must not repeat the previous action", () => {
-  assert.match(instructions, /תודה/);
-  assert.match(instructions, /סבבה/);
-  assert.match(instructions, /אל תחזור על action מה-turn הקודם/);
-  assert.match(instructions, /actions: \[\]/);
+test("no keyword follow-up router exists in execution code", () => {
   assert.doesNotMatch(actionsSrc, /תודה|סבבה|מעולה|אחלה|אוקיי/);
   assert.doesNotMatch(schemaSrc, /תודה|סבבה|מעולה|אחלה|אוקיי/);
 });
 
-test("thinking work is not bounced back to the user", () => {
-  assert.match(instructions, /מה שכחתי\?/);
-  assert.match(instructions, /מה אתה בדרך כלל צריך לעשות\?/);
-  assert.match(instructions, /קודם השתמש במה שכבר קיים/);
+test("clarification is only used when it materially matters", () => {
+  assert.match(instructions, /שאל רק כאשר פרט חסר באמת/);
+  assert.match(instructions, /אל תשאל שוב משהו שכבר ידוע/);
 });

@@ -138,8 +138,8 @@ test("forgotten input hint stays short and does not rank tasks", () => {
   assert.match(hint, /surface=forgotten/);
   assert.match(hint, /20:50/);
   assert.match(hint, /2026-09-10/);
-  assert.match(hint, /עד 6/);
-  assert.match(hint, /presentation.task_list/);
+  assert.match(hint, /ראוי לתשומת לב/);
+  assert.doesNotMatch(hint, /עד 6|0 ל/);
   assert.doesNotMatch(hint, /אם נדחה 3 פעמים/);
   assert.doesNotMatch(hint, /High תמיד/);
 });
@@ -172,23 +172,20 @@ test("schedule surface is parsed separately from a regular chat message", () => 
   }
 });
 
-test("schedule instructions ask for a conversational plan and keep actions empty", () => {
+test("schedule instructions provide context without a reasoning algorithm", () => {
   const text = buildInstructions({
     tasks: [dogTask, tomorrowTask],
     memory,
     surface: "schedule",
     now: eveningUtc,
   });
-  assert.match(text, /הוראת turn נוכחי: הצעת לו״ז להיום/);
-  assert.match(text, /actions: \[\]/);
-  assert.match(text, /presentation.type = "schedule_plan"/);
-  assert.match(text, /אל תתכנן שעות שכבר עברו/);
-  assert.match(text, /אל תציע פריט שמתחיל לפני 20:50 היום/);
-  assert.match(text, /אינה אוטומטית משימה להיום/);
-  assert.doesNotMatch(text, /הוראת turn נוכחי: מה שכחתי\?/);
+  assert.match(text, /surface=schedule/);
+  assert.match(text, /השעה עכשיו 20:50/);
+  assert.match(text, /הצעה אינה נשמרת ללא אישור מפורש/);
+  assert.doesNotMatch(text, /אל תתכנן שעות|אינה אוטומטית משימה/);
 });
 
-test("at 20:50 the schedule turn forbids a 15:00 slot the same day", () => {
+test("schedule context includes the current local time", () => {
   const text = buildInstructions({
     tasks: [dogTask],
     memory: [],
@@ -196,7 +193,7 @@ test("at 20:50 the schedule turn forbids a 15:00 slot the same day", () => {
     now: eveningUtc,
   });
   assert.match(text, /השעה עכשיו: 20:50/);
-  assert.match(text, /אל תציע פריט שמתחיל לפני 20:50 היום/);
+  assert.match(text, /השעה עכשיו 20:50/);
   const utc = utcClock(eveningUtc);
   assert.equal(utc, "17:50");
   assert.ok("20:50" > "15:00");
@@ -274,13 +271,11 @@ test("forgotten surface drops mutations but may keep a task_list", () => {
     surface: "forgotten",
     now: eveningUtc,
   });
-  assert.match(text, /הוראת Turn נוכחי: מה שכחתי\?/);
-  assert.match(text, /אל תבנה לו״ז/);
-  assert.match(text, /אל תציע שעות ביצוע/);
-  assert.match(text, /0 ל־6 משימות/);
+  assert.match(text, /surface=forgotten/);
+  assert.match(text, /ראוי לתשומת לב עכשיו/);
+  assert.doesNotMatch(text, /0 ל־6|בחר עד 6/);
   assert.match(text, /consequence_updates/);
-  assert.match(text, /presentation.type="task_list"/);
-  assert.doesNotMatch(text, /הוראת turn נוכחי: הצעת לו״ז להיום/);
+  assert.doesNotMatch(text, /surface=schedule; המטרה/);
 
   const scoped = applySurfaceTurnPolicy({
     surface: "forgotten",

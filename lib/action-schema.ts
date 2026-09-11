@@ -4,6 +4,7 @@ import {
   type ActionResult,
   type ActionType,
   type AgentAction,
+  type AgentProposal,
   type AgentPresentation,
 } from "./types.ts";
 
@@ -39,7 +40,7 @@ export const ActionSchema = z.object({
   content: z.string().trim().min(1).max(500).nullable().optional(),
   confidence: z.enum(["low", "medium", "high"]).nullable().optional(),
   silent: z.boolean().nullable().optional(),
-});
+}).strict();
 
 function nullable(schema: Record<string, unknown>) {
   return { anyOf: [schema, { type: "null" }] };
@@ -48,7 +49,13 @@ function nullable(schema: Record<string, unknown>) {
 export const AGENT_TURN_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "actions", "presentation", "consequence_updates"],
+  required: [
+    "reply",
+    "actions",
+    "proposal",
+    "presentation",
+    "consequence_updates",
+  ],
   properties: {
     reply: { type: "string" },
     actions: {
@@ -123,6 +130,115 @@ export const AGENT_TURN_JSON_SCHEMA = {
           silent: nullable({ type: "boolean" }),
         },
       },
+    },
+    proposal: {
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["summary", "actions", "expires_in_seconds"],
+          properties: {
+            summary: { type: "string", minLength: 1, maxLength: 500 },
+            actions: {
+              type: "array",
+              minItems: 1,
+              maxItems: 10,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "type",
+                  "id",
+                  "title",
+                  "notes",
+                  "due_on",
+                  "due_time",
+                  "due_patch",
+                  "reminder_enabled",
+                  "reminder_offset_minutes",
+                  "reminder_patch",
+                  "plan_patch",
+                  "planned_date",
+                  "planned_start_time",
+                  "planned_end_time",
+                  "kind",
+                  "content",
+                  "confidence",
+                  "silent",
+                ],
+                properties: {
+                  type: { type: "string", enum: [...ACTION_TYPES] },
+                  id: nullable({ type: "string", pattern: UUID_RE.source }),
+                  title: nullable({
+                    type: "string",
+                    minLength: 1,
+                    maxLength: 200,
+                  }),
+                  notes: nullable({ type: "string", maxLength: 2000 }),
+                  due_on: nullable({
+                    type: "string",
+                    pattern: DATE_RE.source,
+                  }),
+                  due_time: nullable({
+                    type: "string",
+                    pattern: TIME_RE.source,
+                  }),
+                  due_patch: nullable({
+                    type: "string",
+                    enum: ["keep", "set", "clear"],
+                  }),
+                  reminder_enabled: nullable({ type: "boolean" }),
+                  reminder_offset_minutes: nullable({
+                    type: "integer",
+                    minimum: 0,
+                    maximum: 10080,
+                  }),
+                  reminder_patch: nullable({
+                    type: "string",
+                    enum: ["keep", "set"],
+                  }),
+                  plan_patch: nullable({
+                    type: "string",
+                    enum: ["keep", "set", "clear"],
+                  }),
+                  planned_date: nullable({
+                    type: "string",
+                    pattern: DATE_RE.source,
+                  }),
+                  planned_start_time: nullable({
+                    type: "string",
+                    pattern: TIME_RE.source,
+                  }),
+                  planned_end_time: nullable({
+                    type: "string",
+                    pattern: TIME_RE.source,
+                  }),
+                  kind: nullable({
+                    type: "string",
+                    enum: ["preference", "fact"],
+                  }),
+                  content: nullable({
+                    type: "string",
+                    minLength: 1,
+                    maxLength: 500,
+                  }),
+                  confidence: nullable({
+                    type: "string",
+                    enum: ["low", "medium", "high"],
+                  }),
+                  silent: nullable({ type: "boolean" }),
+                },
+              },
+            },
+            expires_in_seconds: nullable({
+              type: "integer",
+              minimum: 60,
+              maximum: 86400,
+            }),
+          },
+        },
+        { type: "null" },
+      ],
     },
     presentation: {
       anyOf: [
@@ -260,7 +376,7 @@ export const AgentPresentationSchema = z.union([
   z.object({
     type: z.literal("task_list"),
     task_ids: z.array(z.string()).max(20),
-  }),
+  }).strict(),
   z.object({
     type: z.literal("schedule_plan"),
     date: z.string().regex(DATE_RE),
@@ -278,10 +394,10 @@ export const AgentPresentationSchema = z.union([
           planned_start: z.string().regex(TIME_RE),
           planned_end: z.string().regex(TIME_RE).nullable(),
           anchor: z.enum(["fixed", "planned"]).nullable().optional(),
-        }),
+        }).strict(),
       )
       .max(20),
-  }),
+  }).strict(),
   z.object({
     type: z.literal("task_suggestions"),
     items: z
@@ -289,12 +405,36 @@ export const AgentPresentationSchema = z.union([
         z.object({
           title: z.string().trim().min(1).max(200),
           reason: z.string().trim().max(200).nullable().optional(),
-        }),
+        }).strict(),
       )
       .max(8),
-  }),
+  }).strict(),
   z.null(),
 ]);
+
+const ConsequenceUpdateSchema = z.object({
+  task_id: z.string().uuid(),
+  severity: z.enum(["none", "low", "medium", "high", "critical"]),
+  reason: z.string().trim().min(1).max(280),
+  confidence: z.enum(["low", "medium", "high"]),
+  basis: z.object({ kind: z.enum(["explicit", "mixed", "inferred"]) }).strict(),
+  valid_until: z.string().regex(DATE_RE).nullable(),
+}).strict();
+
+const AgentProposalSchema = z
+  .object({
+    summary: z.string().trim().min(1).max(500),
+    actions: z.array(ActionSchema).min(1).max(10),
+    expires_in_seconds: z.number().int().min(60).max(86400).nullable().optional(),
+  })
+  .strict()
+  .transform(
+    (proposal): AgentProposal => ({
+      summary: proposal.summary,
+      actions: proposal.actions.map(toAgentAction),
+      expires_in_seconds: proposal.expires_in_seconds ?? null,
+    }),
+  );
 
 function isActionType(value: unknown): value is ActionType {
   return (
@@ -449,7 +589,7 @@ function failureLine(result: Extract<ActionResult, { ok: false }>) {
 const EXECUTION_CLAIM_RE =
   /שמרתי|הוספתי|עדכנתי|מחקתי|סימנתי|דחיתי|קבעתי|הסרתי|אזכיר/;
 
-function claimsExecution(text: string) {
+export function claimsExecution(text: string) {
   return EXECUTION_CLAIM_RE.test(text);
 }
 
@@ -514,26 +654,43 @@ export function parseDecision(text: string) {
     const parsed = JSON.parse(trimmed) as {
       reply?: unknown;
       actions?: unknown;
+      proposal?: unknown;
       presentation?: unknown;
       consequence_updates?: unknown;
     };
     if (typeof parsed.reply !== "string" || !Array.isArray(parsed.actions)) {
       return { ok: false as const };
     }
+    const inspected = inspectActions(parsed.actions);
+    if (inspected.results.length > 0) return { ok: false as const };
     const presentationResult = AgentPresentationSchema.safeParse(
       parsed.presentation === undefined ? null : parsed.presentation,
     );
-    const presentation = presentationResult.success
-      ? normalizePresentation(presentationResult.data)
-      : null;
+    if (!presentationResult.success) return { ok: false as const };
+    const proposalResult =
+      parsed.proposal == null
+        ? { success: true as const, data: null }
+        : AgentProposalSchema.safeParse(parsed.proposal);
+    if (!proposalResult.success) return { ok: false as const };
+    if (proposalResult.data && inspected.accepted.length > 0) {
+      return { ok: false as const };
+    }
+    const consequences = z
+      .array(ConsequenceUpdateSchema)
+      .max(20)
+      .safeParse(
+        parsed.consequence_updates === undefined
+          ? []
+          : parsed.consequence_updates,
+      );
+    if (!consequences.success) return { ok: false as const };
     return {
       ok: true as const,
       reply: parsed.reply.trim(),
-      actions: parsed.actions,
-      presentation,
-      consequence_updates: Array.isArray(parsed.consequence_updates)
-        ? parsed.consequence_updates
-        : [],
+      actions: inspected.accepted,
+      proposal: proposalResult.data,
+      presentation: normalizePresentation(presentationResult.data),
+      consequence_updates: consequences.data,
     };
   } catch {
     return { ok: false as const };

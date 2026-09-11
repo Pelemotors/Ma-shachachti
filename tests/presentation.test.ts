@@ -152,7 +152,7 @@ test("actions and presentation can appear in the same turn", () => {
   assert.equal(parsed.presentation?.type, "task_list");
 });
 
-test("unknown presentation types are ignored without failing the turn", () => {
+test("unknown presentation types fail the decision before execution", () => {
   const parsed = parseDecision(
     JSON.stringify({
       reply: "ספר לי מה אתה יודע על הבית",
@@ -160,14 +160,14 @@ test("unknown presentation types are ignored without failing the turn", () => {
       presentation: { type: "cards", task_ids: [ownId] },
     }),
   );
-  assert.equal(parsed.ok, true);
-  if (parsed.ok) assert.equal(parsed.presentation, null);
+  assert.equal(parsed.ok, false);
 });
 
-test("agent turn schema requires presentation", () => {
+test("agent turn schema requires proposal and presentation", () => {
   assert.deepEqual(AGENT_TURN_JSON_SCHEMA.required, [
     "reply",
     "actions",
+    "proposal",
     "presentation",
     "consequence_updates",
   ]);

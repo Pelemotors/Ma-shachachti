@@ -364,6 +364,8 @@ export async function executeAction(
             content: action.content,
             kind,
             confidence,
+            source: action.silent === true ? "agent" : "user",
+            seen_at: action.silent === true ? null : now,
             updated_at: now,
           })
           .eq("user_id", userId)
@@ -378,6 +380,8 @@ export async function executeAction(
           kind,
           content: action.content,
           confidence,
+          source: action.silent === true ? "agent" : "user",
+          seen_at: action.silent === true ? null : now,
           updated_at: now,
         })
         .select("id")
@@ -451,7 +455,7 @@ export async function loadTasks(db: Db, userId: string): Promise<TaskRow[]> {
 export async function loadMemory(db: Db, userId: string): Promise<MemoryRow[]> {
   const { data, error } = await db
     .from("agent_memory")
-    .select("id,kind,content,confidence,created_at,updated_at")
+    .select("id,kind,content,confidence,source,seen_at,created_at,updated_at")
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
     .limit(40);

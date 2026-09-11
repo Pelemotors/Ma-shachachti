@@ -29,7 +29,12 @@ import { chatHistoryUrl, isSessionId } from "@/lib/chat-sessions";
 import { SchedulePlanCard } from "@/components/schedule-plan-card";
 import { MySchedule } from "@/components/my-schedule";
 import { UpcomingBell } from "@/components/upcoming-bell";
-import type { ClientPresentation, PresentedTask, TaskRow } from "@/lib/types";
+import type {
+  ClientPresentation,
+  ClientProposal,
+  PresentedTask,
+  TaskRow,
+} from "@/lib/types";
 import { formatTaskWhen } from "@/lib/time";
 import {
   DEFAULT_REMINDER_MINUTES,
@@ -45,6 +50,7 @@ type ChatMessage = {
   content: string;
   created_at: string;
   presentation?: ClientPresentation | null;
+  proposal?: ClientProposal | null;
 };
 
 type View = "home" | "chat" | "tasks" | "schedule" | "settings";
@@ -71,6 +77,7 @@ export function ChatApp() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
+  const [proposalBusyId, setProposalBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -173,6 +180,7 @@ export function ChatApp() {
   async function sendMessage(message: string, surface: ChatSurface | null = null) {
     if (!message || sending) return;
 
+    const turnId = crypto.randomUUID();
     setError("");
     setSending(true);
     const optimistic: ChatMessage = {
@@ -191,6 +199,7 @@ export function ChatApp() {
         message,
         surface,
         session_id: sessionId,
+        turn_id: turnId,
       }),
     }).catch(() => null);
 
@@ -217,6 +226,7 @@ export function ChatApp() {
         content: body.reply,
         created_at: body.created_at ?? new Date().toISOString(),
         presentation: body.presentation ?? null,
+        proposal: body.proposal ?? null,
       },
     ]);
     if (Array.isArray(body.tasks)) setTasks(body.tasks);
@@ -237,6 +247,51 @@ export function ChatApp() {
 
   function openSurface(surface: (typeof HOME_SURFACES)[number]) {
     void sendMessage(surface.objective, surface.id);
+  }
+
+  async function respondToProposal(
+    messageId: string,
+    proposal: ClientProposal,
+    action: "approve" | "reject",
+  ) {
+    if (proposalBusyId) return;
+    setError("");
+    setProposalBusyId(proposal.id);
+    const response = await authFetch(`/api/proposals/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: proposal.id }),
+    }).catch(() => null);
+    if (!response) {
+      setError("לא הצלחנו לעדכן את ההצעה. אפשר לנסות שוב.");
+      setProposalBusyId(null);
+      return;
+    }
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setError(body.error ?? "לא הצלחנו לעדכן את ההצעה.");
+      setProposalBusyId(null);
+      return;
+    }
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId && message.proposal?.id === proposal.id
+          ? {
+              ...message,
+              proposal: {
+                ...message.proposal,
+                status: action === "approve" ? "approved" : "rejected",
+                result_reply:
+                  action === "approve"
+                    ? (body.reply ?? message.proposal.result_reply)
+                    : null,
+              },
+            }
+          : message,
+      ),
+    );
+    if (Array.isArray(body.tasks)) setTasks(body.tasks);
+    setProposalBusyId(null);
   }
 
   async function runTaskAction(action: Record<string, unknown>) {
@@ -564,6 +619,54 @@ export function ChatApp() {
                 <div key={message.id} className={`message-row ${message.role}`}>
                   <div className="bubble">
                     <p className="bubble-text">{message.content}</p>
+                    {message.role === "assistant" && message.proposal ? (
+                      <section className="proposal-card" aria-label="הצעה לאישור">
+                        <strong>הצעה לאישור</strong>
+                        <p>{message.proposal.summary}</p>
+                        {message.proposal.status === "pending" ? (
+                          <div className="proposal-actions">
+                            <button
+                              className="settings-action"
+                              type="button"
+                              disabled={proposalBusyId === message.proposal.id}
+                              onClick={() =>
+                                void respondToProposal(
+                                  message.id,
+                                  message.proposal!,
+                                  "approve",
+                                )
+                              }
+                            >
+                              אשר ובצע
+                            </button>
+                            <button
+                              className="text-button"
+                              type="button"
+                              disabled={proposalBusyId === message.proposal.id}
+                              onClick={() =>
+                                void respondToProposal(
+                                  message.id,
+                                  message.proposal!,
+                                  "reject",
+                                )
+                              }
+                            >
+                              דחה
+                            </button>
+                          </div>
+                        ) : (
+                          <small className={`proposal-status ${message.proposal.status}`}>
+                            {message.proposal.status === "approved"
+                              ? message.proposal.result_reply || "ההצעה בוצעה."
+                              : message.proposal.status === "rejected"
+                                ? "ההצעה נדחתה."
+                                : message.proposal.status === "expired"
+                                  ? "תוקף ההצעה פג."
+                                  : "ההצעה בביצוע…"}
+                          </small>
+                        )}
+                      </section>
+                    ) : null}
                     {message.role === "assistant" &&
                     message.presentation?.type === "task_list" ? (
                       <ul className="chat-task-list">

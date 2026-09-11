@@ -1,27 +1,44 @@
 import { authorize, HttpError } from "@/lib/server-auth";
-import { composeReply } from "@/lib/action-schema";
-import { loadMemory, loadTasks, runRequestedActions } from "@/lib/actions";
+import { composeReply, inspectActions } from "@/lib/action-schema";
+import { loadMemory, loadTasks } from "@/lib/actions";
 import { loadConsequences, persistConsequenceUpdates } from "@/lib/consequences";
 import {
-  AGENT_TURN_JSON_SCHEMA,
   applySurfaceTurnPolicy,
   buildInstructions,
-  parseDecision,
   surfaceInputHint,
 } from "@/lib/agent/turn";
+import {
+  AgentUpstreamError,
+  requestAgentDecision,
+} from "@/lib/agent/openai-orchestrator";
+import {
+  claimAgentTurn,
+  completeAgentTurn,
+  failAgentTurn,
+  saveAgentTurnDecision,
+} from "@/lib/agent/turn-receipts";
+import { executeIdempotentActions } from "@/lib/agent/idempotent-actions";
+import {
+  parseStoredDecision,
+  storeValidatedDecision,
+} from "@/lib/agent/stored-decision";
 import { recordActivity } from "@/lib/activity";
 import { parseChatRequest } from "@/lib/chat-request";
 import {
   latestOrCreateChatSession,
   loadSessionMessages,
   ownChatSession,
+  persistTurnMessage,
   resolveReadableChatSession,
 } from "@/lib/chat-sessions";
 import {
   replyForPresentation,
   resolveAgentPresentation,
 } from "@/lib/presentation";
+import { createAgentProposal } from "@/lib/proposals";
 import { createServiceClient } from "@/lib/supabase-admin";
+import { validateStoredPresentation } from "@/lib/chat-presentation";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -33,27 +50,21 @@ type StoredMessage = {
   created_at: string;
 };
 
-type OpenAIResponse = {
-  output?: Array<{
-    type?: string;
-    content?: Array<{ type?: string; text?: string }>;
-  }>;
-};
-
-function extractText(data: OpenAIResponse) {
-  return (data.output ?? [])
-    .flatMap((item) => item.content ?? [])
-    .filter(
-      (part) => part.type === "output_text" && typeof part.text === "string",
-    )
-    .map((part) => part.text)
-    .join("\n")
-    .trim();
-}
-
 function jsonError(error: unknown) {
   if (error instanceof HttpError) {
     return Response.json({ error: error.message }, { status: error.status });
+  }
+  if (error instanceof AgentUpstreamError) {
+    if (error.code === "rate_limited") {
+      return Response.json(
+        { error: "הסוכן עמוס כרגע. אפשר לנסות שוב בעוד רגע." },
+        { status: 503 },
+      );
+    }
+    return Response.json(
+      { error: "לא הצלחנו לקבל תשובה תקינה מהסוכן." },
+      { status: 502 },
+    );
   }
   console.error("Lean chat error");
   return Response.json(
@@ -111,11 +122,22 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const started = Date.now();
+  let activeTurn: {
+    db: SupabaseClient;
+    userId: string;
+    id: string;
+    resumable: boolean;
+  } | null = null;
   try {
     const { db, userId } = await authorize(req);
     const parsed = parseChatRequest(await req.json().catch(() => null));
     if (!parsed.ok) throw new HttpError(parsed.status, parsed.error);
-    const { message, surface, session_id: requestedSession } = parsed.request;
+    const {
+      message,
+      surface,
+      session_id: requestedSession,
+      turn_id: turnKey,
+    } = parsed.request;
 
     let sessionId = requestedSession;
     if (sessionId) {
@@ -128,125 +150,118 @@ export async function POST(req: Request) {
       sessionId = session.id;
     }
 
-    const { error: userSaveError } = await db.from("chat_messages").insert({
-      user_id: userId,
-      session_id: sessionId,
-      role: "user",
-      content: message,
+    const turnClaim = await claimAgentTurn(db, {
+      userId,
+      sessionId,
+      turnKey,
     });
-    if (userSaveError) throw new HttpError(503, "לא הצלחנו לשמור את ההודעה.");
-
-    const { data: recent, error: historyError } = await db
-      .from("chat_messages")
-      .select("role,content,created_at")
-      .eq("user_id", userId)
-      .eq("session_id", sessionId)
-      .order("created_at", { ascending: false })
-      .limit(24);
-    if (historyError)
-      throw new HttpError(503, "לא הצלחנו לטעון את ההקשר לשיחה.");
-
-    const [tasks, memory] = await Promise.all([
-      loadTasks(db, userId),
-      loadMemory(db, userId),
-    ]);
-    const consequences = await loadConsequences(
+    if (turnClaim.kind === "completed") {
+      return Response.json(turnClaim.response);
+    }
+    if (turnClaim.kind === "processing") {
+      throw new HttpError(409, "הפנייה הזו עדיין בטיפול.");
+    }
+    activeTurn = {
       db,
       userId,
-      tasks.filter((task) => task.status === "open").map((task) => task.id),
-    );
+      id: turnClaim.id,
+      resumable: Boolean(turnClaim.decision),
+    };
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new HttpError(503, "חיבור ה-AI עדיין לא הוגדר.");
-    const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-luna";
+    const tasks = await loadTasks(db, userId);
+    let agent = parseStoredDecision(turnClaim.decision);
+    if (turnClaim.decision && !agent) {
+      throw new Error("invalid_stored_turn_decision");
+    }
+    if (!agent) {
+      const { data: recent, error: historyError } = await db
+        .from("chat_messages")
+        .select("role,content,created_at")
+        .eq("user_id", userId)
+        .eq("session_id", sessionId)
+        .order("created_at", { ascending: false })
+        .limit(24);
+      if (historyError)
+        throw new HttpError(503, "לא הצלחנו לטעון את ההקשר לשיחה.");
 
-    const openaiInput = (recent ?? [])
-      .slice()
-      .reverse()
-      .map((item, index, items) => {
-        const isCurrentUserTurn =
-          index === items.length - 1 && item.role === "user";
-        const hint = isCurrentUserTurn ? surfaceInputHint(surface) : "";
-        return { role: item.role, content: `${hint}${item.content}` };
+      const memory = await loadMemory(db, userId);
+      const consequences = await loadConsequences(
+        db,
+        userId,
+        tasks.filter((task) => task.status === "open").map((task) => task.id),
+      );
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) throw new HttpError(503, "חיבור ה-AI עדיין לא הוגדר.");
+      const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-luna";
+      const openaiInput = (recent ?? [])
+        .slice()
+        .reverse()
+        .map((item) => ({ role: item.role, content: item.content }));
+      openaiInput.push({
+        role: "user",
+        content: `${surfaceInputHint(surface)}${message}`,
       });
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      signal: AbortSignal.timeout(30_000),
-      body: JSON.stringify({
+      const requested = await requestAgentDecision({
+        apiKey,
         model,
-        store: false,
         instructions: buildInstructions({
           tasks,
           memory,
           consequences,
           surface,
         }),
-        input: openaiInput,
-        max_output_tokens: 1400,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "agent_turn",
-            strict: true,
-            schema: AGENT_TURN_JSON_SCHEMA,
-          },
-        },
-      }),
-    });
+        messages: openaiInput,
+      });
+      const stored = await saveAgentTurnDecision(
+        db,
+        userId,
+        turnClaim.id,
+        storeValidatedDecision(requested),
+      );
+      activeTurn.resumable = true;
+      agent = parseStoredDecision(stored);
+      if (!agent) throw new Error("invalid_saved_turn_decision");
+    }
 
-    const raw = await response.text();
     const latencyMs = Date.now() - started;
+    const decision = agent.decision;
+    const scoped = decision
+      ? applySurfaceTurnPolicy({
+          surface,
+          actions: decision.actions,
+          presentation: decision.presentation,
+          consequence_updates: decision.consequence_updates,
+        })
+      : { actions: [], presentation: null, consequence_updates: [] };
 
-    if (!response.ok) {
-      await trackAi(userId, "ai.failure", {
-        status: response.status,
-        latencyMs,
-        code: response.status === 429 ? "rate_limited" : "upstream_error",
-      });
-      console.error("OpenAI Lean chat upstream error", {
-        status: response.status,
-        model,
-      });
-      if (response.status === 429)
-        throw new HttpError(503, "הסוכן עמוס כרגע. אפשר לנסות שוב בעוד רגע.");
-      throw new HttpError(502, "לא הצלחנו לקבל תשובה מהסוכן.");
-    }
-
-    let data: OpenAIResponse;
-    try {
-      data = JSON.parse(raw) as OpenAIResponse;
-    } catch {
-      await trackAi(userId, "ai.failure", {
-        latencyMs,
-        code: "invalid_json",
-      });
-      throw new HttpError(502, "הסוכן החזיר תשובה לא תקינה.");
-    }
-
-    const extracted = extractText(data);
-    if (!extracted) {
-      await trackAi(userId, "ai.failure", { latencyMs, code: "empty" });
-      throw new HttpError(502, "הסוכן לא החזיר תשובה.");
-    }
-
-    const decision = parseDecision(extracted);
-    if (!decision.ok) {
-      await trackAi(userId, "ai.failure", { latencyMs, code: "parse" });
-      throw new HttpError(502, "הסוכן החזיר תשובה לא תקינה.");
-    }
-    const scoped = applySurfaceTurnPolicy({
-      surface,
-      actions: decision.actions,
-      presentation: decision.presentation,
-      consequence_updates: decision.consequence_updates,
+    await persistTurnMessage(db, {
+      userId,
+      sessionId,
+      turnId: turnClaim.id,
+      role: "user",
+      content: message,
     });
-    const results = await runRequestedActions(db, userId, scoped.actions);
-    await persistConsequenceUpdates(db, userId, scoped.consequence_updates);
+
+    // No capability mutation is reachable before a complete, validated decision.
+    const inspected = inspectActions(scoped.actions);
+    if (inspected.results.length > 0) {
+      throw new Error("invalid_scoped_actions");
+    }
+    const results = decision
+      ? await executeIdempotentActions(db, {
+          scope: "turn",
+          scopeId: turnClaim.id,
+          actions: inspected.accepted,
+        })
+      : [];
+    if (decision) {
+      await persistConsequenceUpdates(
+        db,
+        userId,
+        scoped.consequence_updates,
+      );
+    }
     const nextTasks = await loadTasks(db, userId);
     const presentation = resolveAgentPresentation(
       scoped.presentation,
@@ -254,39 +269,62 @@ export async function POST(req: Request) {
       new Date(),
       surface,
     );
+    const storedPresentation = validateStoredPresentation(presentation);
+    const proposalRecord =
+      decision?.proposal != null
+        ? await createAgentProposal(db, {
+            userId,
+            sessionId,
+            turnId: turnClaim.id,
+            proposal: decision.proposal,
+          })
+        : null;
+    const proposal = proposalRecord
+      ? { ...proposalRecord, result_reply: null }
+      : null;
     const reply = replyForPresentation(
-      composeReply(decision.reply, results),
+      decision
+        ? composeReply(decision.reply, results)
+        : (agent.recoveredReply ?? ""),
       presentation,
     );
     if (!reply) throw new HttpError(502, "הסוכן לא החזיר תשובה.");
 
-    const { data: saved, error: assistantSaveError } = await db
-      .from("chat_messages")
-      .insert({
-        user_id: userId,
-        session_id: sessionId,
-        role: "assistant",
-        content: reply,
-      })
-      .select("id,created_at")
-      .single();
-    if (assistantSaveError || !saved) {
-      throw new HttpError(
-        503,
-        "קיבלנו תשובה מהסוכן אבל לא הצלחנו לשמור אותה. אפשר לנסות שוב.",
-      );
-    }
+    const saved = await persistTurnMessage(db, {
+      userId,
+      sessionId,
+      turnId: turnClaim.id,
+      role: "assistant",
+      content: reply,
+      presentation: storedPresentation,
+    });
 
-    await trackAi(userId, "ai.success", { latencyMs });
-    return Response.json({
+    const responseBody = {
       reply,
       id: saved.id,
       created_at: saved.created_at,
       tasks: nextTasks,
-      presentation,
+      presentation: storedPresentation,
+      proposal,
       session_id: sessionId,
+      turn_id: turnKey,
+    };
+    await completeAgentTurn(db, userId, turnClaim.id, responseBody);
+    activeTurn = null;
+    await trackAi(userId, "ai.success", {
+      latencyMs,
+      attempts: agent.attempts,
+      recovered: Boolean(agent.recoveredReply),
     });
+    return Response.json(responseBody);
   } catch (error) {
+    if (activeTurn && !activeTurn.resumable) {
+      await failAgentTurn(
+        activeTurn.db,
+        activeTurn.userId,
+        activeTurn.id,
+      ).catch(() => undefined);
+    }
     return jsonError(error);
   }
 }

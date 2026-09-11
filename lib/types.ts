@@ -1,6 +1,7 @@
 export type TaskStatus = "open" | "done" | "cancelled";
 export type MemoryKind = "preference" | "fact";
 export type MemoryConfidence = "low" | "medium" | "high";
+export type MemorySource = "user" | "agent" | "legacy";
 export type DuePatch = "keep" | "set" | "clear";
 export type ReminderPatch = "keep" | "set";
 export type PlanPatch = "keep" | "set" | "clear";
@@ -74,6 +75,8 @@ export type MemoryRow = {
   kind: MemoryKind;
   content: string;
   confidence: MemoryConfidence;
+  source: MemorySource;
+  seen_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -160,6 +163,21 @@ export type AgentPresentation =
       items: AgentSuggestionItem[];
     }
   | null;
+
+export type AgentProposal = {
+  summary: string;
+  actions: AgentAction[];
+  expires_in_seconds: number | null;
+};
+
+export type ClientProposal = {
+  id: string;
+  summary: string;
+  status: "pending" | "executing" | "approved" | "rejected" | "expired";
+  revision: number;
+  expires_at: string;
+  result_reply: string | null;
+};
 
 export type PresentedTask = {
   id: string;

@@ -339,8 +339,7 @@ test("follow-up explanation turn is allowed to have empty actions", () => {
     assert.deepEqual(parsed.actions, []);
     assert.equal(parsed.presentation, null);
   }
-  assert.match(AGENT_INSTRUCTIONS, /אל תחזור על action מה-turn הקודם/);
-  assert.match(AGENT_INSTRUCTIONS, /אם המשתמש שואל למה/);
+  assert.match(AGENT_INSTRUCTIONS, /הבן את הכוונה מתוך ההקשר הכולל/);
   assert.doesNotMatch(AGENT_INSTRUCTIONS, /אם ההודעה מכילה \"למה\"/);
 });
 
@@ -463,7 +462,7 @@ test("presentation task ids are isolated to the current user", () => {
   assert.equal(resolved, null);
 });
 
-test("invalid presentation is dropped and does not mutate", () => {
+test("invalid presentation rejects the decision and cannot mutate", () => {
   const parsed = parseDecision(
     JSON.stringify({
       reply: "הנה כמה הצעות",
@@ -471,11 +470,7 @@ test("invalid presentation is dropped and does not mutate", () => {
       presentation: { type: "unknown_cards", items: [{ title: "x" }] },
     }),
   );
-  assert.equal(parsed.ok, true);
-  if (!parsed.ok) return;
-  assert.equal(parsed.presentation, null);
-  assert.deepEqual(parsed.actions, []);
-  assert.equal(resolveAgentPresentation(parsed.presentation, []), null);
+  assert.equal(parsed.ok, false);
 });
 
 test("missing presentation no longer strips a plain reply", () => {
@@ -493,8 +488,8 @@ test("instructions keep the agent as the brain and separate due from planned", (
     now: new Date("2026-09-11T06:00:00.000Z"),
   });
   assert.match(text, /task_suggestions/);
-  assert.match(text, /planned_start_at הוא זמן ביצוע שתוכנן/);
-  assert.match(text, /אל תהפוך שעת תכנון שלך ל-due_at/);
-  assert.match(text, /plan_patch=set/);
+  assert.match(text, /הקוד לא אמור להחליט את הדברים האלה במקומך/);
+  assert.match(text, /אל תהפוך שעה שאתה עצמך הצעת לשעת יעד קשיחה/);
+  assert.match(text, /Planned Time/);
   assert.doesNotMatch(text, /אם surface=schedule: presentation\.type = "schedule_plan"\.\nאחרת presentation = null/);
 });

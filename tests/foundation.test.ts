@@ -188,9 +188,9 @@ test("admin lean APIs do not read app_states", () => {
   }
 });
 
-test("agent instructions mention proactive memory and at-task-time reminders", () => {
+test("agent instructions mention proactive memory and opt-in reminders", () => {
   assert.match(AGENT_INSTRUCTIONS, /silent=true/);
-  assert.match(AGENT_INSTRUCTIONS, /בזמן המשימה/);
+  assert.match(AGENT_INSTRUCTIONS, /Reminder מופעל רק כאשר ברור/);
 });
 
 test("clearUserTasks only cancels the current user's open and done tasks", async () => {

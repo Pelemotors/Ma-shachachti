@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { UUID_RE } from "./action-schema.ts";
+import { composeReply, UUID_RE } from "./action-schema.ts";
+import { validateStoredPresentation } from "./chat-presentation.ts";
+import type {
+  ActionResult,
+  ClientPresentation,
+  ClientProposal,
+} from "./types.ts";
 
 export const EMPTY_CHAT_PREVIEW = "שיחה חדשה";
 export const SESSION_LIST_PAGE = 20;
@@ -18,6 +24,8 @@ export type SessionMessage = {
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  presentation: ClientPresentation | null;
+  proposal: ClientProposal | null;
 };
 
 export function isSessionId(value: unknown): value is string {
@@ -209,11 +217,96 @@ export async function loadSessionMessages(
 ) {
   const { data, error } = await db
     .from("chat_messages")
-    .select("id,role,content,created_at")
+    .select("id,role,content,created_at,presentation,turn_id")
     .eq("user_id", userId)
     .eq("session_id", sessionId)
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw error;
-  return ((data ?? []) as SessionMessage[]).slice().reverse();
+  const rows = (
+    (data ?? []) as Array<Omit<SessionMessage, "presentation" | "proposal"> & {
+      presentation?: unknown;
+      turn_id?: string | null;
+    }>
+  );
+  const turnIds = [
+    ...new Set(
+      rows
+        .map((message) => message.turn_id)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  ];
+  const proposals = new Map<string, ClientProposal>();
+  if (turnIds.length > 0) {
+    const { data: proposalRows, error: proposalError } = await db
+      .from("agent_proposals")
+      .select("id,turn_id,summary,status,revision,expires_at,action_results")
+      .eq("user_id", userId)
+      .in("turn_id", turnIds);
+    if (proposalError) throw proposalError;
+    for (const proposal of proposalRows ?? []) {
+      proposals.set(String(proposal.turn_id), {
+        id: String(proposal.id),
+        summary: String(proposal.summary),
+        status: proposal.status as ClientProposal["status"],
+        revision: Number(proposal.revision),
+        expires_at: String(proposal.expires_at),
+        result_reply: Array.isArray(proposal.action_results)
+          ? composeReply("", proposal.action_results as ActionResult[])
+          : null,
+      });
+    }
+  }
+  return rows
+    .map((message) => ({
+      ...message,
+      presentation: validateStoredPresentation(message.presentation),
+      proposal: message.turn_id ? (proposals.get(message.turn_id) ?? null) : null,
+    }))
+    .reverse();
+}
+
+export async function persistTurnMessage(
+  db: SupabaseClient,
+  input: {
+    userId: string;
+    sessionId: string;
+    turnId: string;
+    role: "user" | "assistant";
+    content: string;
+    presentation?: ClientPresentation | null;
+  },
+) {
+  const row = {
+    user_id: input.userId,
+    session_id: input.sessionId,
+    turn_id: input.turnId,
+    role: input.role,
+    content: input.content,
+    presentation: input.presentation ?? null,
+  };
+  const { data, error } = await db
+    .from("chat_messages")
+    .insert(row)
+    .select("id,content,created_at,presentation")
+    .single();
+  if (!error && data) return data;
+  if (error?.code !== "23505") throw error;
+
+  const { data: existing, error: existingError } = await db
+    .from("chat_messages")
+    .select("id,content,created_at,presentation")
+    .eq("user_id", input.userId)
+    .eq("turn_id", input.turnId)
+    .eq("role", input.role)
+    .maybeSingle();
+  if (existingError || !existing) throw existingError ?? error;
+  if (
+    existing.content !== input.content ||
+    JSON.stringify(existing.presentation ?? null) !==
+      JSON.stringify(input.presentation ?? null)
+  ) {
+    throw new Error("turn_message_conflict");
+  }
+  return existing;
 }

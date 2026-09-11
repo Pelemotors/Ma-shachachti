@@ -9,6 +9,7 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "agent:bundle": "node scripts/bundle-instructions.mjs",
     "lint": "npm run typecheck"
   },
   "engines": {
