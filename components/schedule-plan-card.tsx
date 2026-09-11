@@ -9,13 +9,18 @@ type Plan = Extract<ClientPresentation, { type: "schedule_plan" }>;
 export function SchedulePlanCard(props: {
   plan: Plan;
   saving?: boolean;
+  optimistic?: boolean;
   onToggle: (id: string, done: boolean) => void;
   onSave?: () => void;
 }) {
   return (
     <div className="schedule-plan">
       <p className="schedule-plan-kicker">
-        {props.plan.saved ? "נשמר ללוז" : "תוכנית מוצעת"}
+        {props.optimistic
+          ? "שומר…"
+          : props.plan.saved
+            ? "נשמר ללוז"
+            : "תוכנית מוצעת"}
       </p>
       <ul className="schedule-plan-list">
         {props.plan.items.map((item) => {

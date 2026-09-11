@@ -688,6 +688,24 @@ h1 {
   font-size: 14px;
   padding: 2px 4px;
 }
+.retry-button,
+.mutation-notice button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+}
+.retry-button {
+  margin-top: 8px;
+}
+.mutation-notice {
+  margin: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 
 .composer-wrap {
   position: sticky;

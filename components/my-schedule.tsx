@@ -9,11 +9,12 @@ import type { TaskRow } from "@/lib/types";
 type Timed = TaskRow & { start: string; end: string | null; fixed: boolean };
 
 export function MySchedule(props: {
+  date: string;
+  onDateChange: (date: string) => void;
   saving?: boolean;
-  onToggle: (id: string, done: boolean) => void;
+  onToggle: (id: string, done: boolean) => Promise<boolean>;
 }) {
   const today = todayContext().date;
-  const [date, setDate] = useState(today);
   const [timed, setTimed] = useState<Timed[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -23,11 +24,11 @@ export function MySchedule(props: {
     setTimed([]);
     setError("");
     setLoading(true);
-    void authFetch(`/api/schedule?date=${date}`)
+    void authFetch(`/api/schedule?date=${props.date}`)
       .then((response) => response.json())
       .then((body) => {
         if (!alive) return;
-        if (typeof body.date === "string" && body.date !== date) return;
+        if (typeof body.date === "string" && body.date !== props.date) return;
         if (!Array.isArray(body.timed)) {
           setError("לא הצלחנו לטעון את הלוז.");
           setLoading(false);
@@ -46,23 +47,23 @@ export function MySchedule(props: {
     return () => {
       alive = false;
     };
-  }, [date, props.saving]);
+  }, [props.date, props.saving]);
 
   return (
     <div className="my-schedule">
       <div className="schedule-nav">
-        <button type="button" onClick={() => setDate(addJerusalemDays(date, -1))}>
+        <button type="button" onClick={() => props.onDateChange(addJerusalemDays(props.date, -1))}>
           ‹ יום קודם
         </button>
         <strong>
-          {date === today ? "היום" : ""} {formatJerusalemDay(date, "long")}
+          {props.date === today ? "היום" : ""} {formatJerusalemDay(props.date, "long")}
         </strong>
-        <button type="button" onClick={() => setDate(addJerusalemDays(date, 1))}>
+        <button type="button" onClick={() => props.onDateChange(addJerusalemDays(props.date, 1))}>
           יום הבא ›
         </button>
       </div>
-      {date !== today ? (
-        <button className="text-button" type="button" onClick={() => setDate(today)}>
+      {props.date !== today ? (
+        <button className="text-button" type="button" onClick={() => props.onDateChange(today)}>
           חזרה להיום
         </button>
       ) : null}
@@ -76,7 +77,19 @@ export function MySchedule(props: {
                 className={`task-check${done ? " checked" : ""}`}
                 type="button"
                 disabled={props.saving}
-                onClick={() => props.onToggle(item.id, done)}
+                onClick={() => {
+                  const snapshot = timed;
+                  setTimed((current) =>
+                    current.map((task) =>
+                      task.id === item.id
+                        ? { ...task, status: done ? "open" : "done" }
+                        : task,
+                    ),
+                  );
+                  void props.onToggle(item.id, done).then((ok) => {
+                    if (!ok) setTimed(snapshot);
+                  });
+                }}
               />
               <div className="task-copy">
                 <small className="schedule-time">

@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch, supabase } from "@/lib/supabase-browser";
 import { seasonForDate } from "@/lib/season";
 import {
@@ -43,6 +43,20 @@ import {
   reminderLabel,
 } from "@/lib/reminders";
 import { reminderPatchFromSelect, reminderSelectValue } from "@/lib/push-client";
+import {
+  decodeAppRoute,
+  encodeAppRoute,
+  type AppRouteState,
+  type AppView,
+} from "@/lib/app-route-state";
+import {
+  OptimisticMutationLayer,
+  type OptimisticFailure,
+  type UndoOpportunity,
+} from "@/lib/optimistic-mutation";
+import { readChatDraft, writeChatDraft } from "@/lib/chat-draft";
+import { todayContext } from "@/lib/time";
+import { chatTurnRequest, createPendingChatTurn } from "@/lib/chat-optimistic";
 
 type ChatMessage = {
   id: string;
@@ -51,9 +65,10 @@ type ChatMessage = {
   created_at: string;
   presentation?: ClientPresentation | null;
   proposal?: ClientProposal | null;
+  turnId?: string;
+  delivery?: "sending" | "failed";
+  surface?: ChatSurface | null;
 };
-
-type View = "home" | "chat" | "tasks" | "schedule" | "settings";
 
 function formatDue(task: { due_on: string | null; due_at?: string | null }) {
   return formatTaskWhen({ due_on: task.due_on, due_at: task.due_at ?? null });
@@ -69,7 +84,15 @@ function formatPresentedMeta(task: PresentedTask) {
 
 export function ChatApp() {
   const router = useRouter();
-  const [view, setView] = useState<View>("home");
+  const searchParams = useSearchParams();
+  const initialRoute = useMemo(
+    () => decodeAppRoute(searchParams),
+    [searchParams],
+  );
+  const [view, setView] = useState<AppView>(initialRoute.view);
+  const [scheduleDate, setScheduleDate] = useState(
+    initialRoute.date ?? todayContext().date,
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [text, setText] = useState("");
@@ -77,8 +100,11 @@ export function ChatApp() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
+  const [savingPlanId, setSavingPlanId] = useState<string | null>(null);
   const [proposalBusyId, setProposalBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [failure, setFailure] = useState<OptimisticFailure | null>(null);
+  const [undo, setUndo] = useState<UndoOpportunity | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [defaultReminderMinutes, setDefaultReminderMinutes] = useState(
@@ -86,6 +112,24 @@ export function ChatApp() {
   );
   const bottomRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
+  const mutations = useRef(new OptimisticMutationLayer());
+  const initialQuery = useRef(searchParams.toString());
+
+  function navigate(next: Partial<AppRouteState>, replace = false) {
+    const href = encodeAppRoute({
+      view: next.view ?? view,
+      date: next.date ?? (next.view === "schedule" ? scheduleDate : null),
+      sessionId:
+        next.sessionId ?? (next.view === "chat" ? sessionId : null),
+    });
+    if (replace) router.replace(href, { scroll: false });
+    else router.push(href, { scroll: false });
+  }
+
+  function openView(nextView: AppView) {
+    setView(nextView);
+    navigate({ view: nextView });
+  }
 
   useEffect(() => {
     let alive = true;
@@ -104,7 +148,8 @@ export function ChatApp() {
       }
       const nextUserId = data.session.user.id;
       if (alive) setUserId(nextUserId);
-      const preferred = readActiveChatSession(nextUserId);
+      const routeSession = decodeAppRoute(initialQuery.current).sessionId;
+      const preferred = routeSession ?? readActiveChatSession(nextUserId);
       let response = await authFetch(chatHistoryUrl(preferred));
       if (
         preferred &&
@@ -126,6 +171,13 @@ export function ChatApp() {
         if (typeof body.session_id === "string" && isSessionId(body.session_id)) {
           setSessionId(body.session_id);
           writeActiveChatSession(nextUserId, body.session_id);
+          const route = decodeAppRoute(initialQuery.current);
+          if (route.view === "chat" && route.sessionId !== body.session_id) {
+            router.replace(
+              encodeAppRoute({ ...route, sessionId: body.session_id }),
+              { scroll: false },
+            );
+          }
         }
       }
       const prefs = await authFetch("/api/preferences")
@@ -141,6 +193,51 @@ export function ChatApp() {
       alive = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    const route = decodeAppRoute(searchParams);
+    setView(route.view);
+    if (route.date) setScheduleDate(route.date);
+    if (route.view === "schedule" && !route.date) {
+      router.replace(
+        encodeAppRoute({
+          view: "schedule",
+          date: todayContext().date,
+          sessionId: null,
+        }),
+        { scroll: false },
+      );
+    }
+    if (
+      !loading &&
+      route.view === "chat" &&
+      route.sessionId &&
+      route.sessionId !== sessionId
+    ) {
+      void openPreviousSession(route.sessionId, false);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!userId) return;
+    setText(readChatDraft(userId, sessionId));
+  }, [userId, sessionId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const timer = window.setTimeout(
+      () => writeChatDraft(userId, sessionId, text),
+      150,
+    );
+    return () => window.clearTimeout(timer);
+  }, [text, userId, sessionId]);
+
+  useEffect(() => {
+    if (!undo) return;
+    const delay = Math.max(0, undo.expiresAt - Date.now());
+    const timer = window.setTimeout(() => setUndo(null), delay);
+    return () => window.clearTimeout(timer);
+  }, [undo]);
 
   useEffect(() => {
     if (view !== "tasks" && view !== "settings") return;
@@ -171,27 +268,47 @@ export function ChatApp() {
     [tasks],
   );
 
-  async function sendMessage(message: string, surface: ChatSurface | null = null) {
+  async function sendMessage(
+    message: string,
+    surface: ChatSurface | null = null,
+    retryTurnId?: string,
+  ) {
     if (!message || sending) return;
 
-    const turnId = crypto.randomUUID();
+    const turn = createPendingChatTurn(
+      message,
+      surface,
+      retryTurnId ?? crypto.randomUUID(),
+    );
+    const turnId = turn.turnId;
     setError("");
     setSending(true);
-    const optimistic: ChatMessage = {
-      id: `local-${Date.now()}`,
-      role: "user",
-      content: message,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((current) => [...current, optimistic]);
-    setView("chat");
+    if (retryTurnId) {
+      setMessages((current) =>
+        current.map((item) =>
+          item.turnId === turnId ? { ...item, delivery: "sending" } : item,
+        ),
+      );
+    } else {
+      const optimistic: ChatMessage = {
+        id: `local-${turnId}`,
+        role: "user",
+        content: message,
+        created_at: new Date().toISOString(),
+        turnId,
+        delivery: "sending",
+        surface,
+      };
+      setMessages((current) => [...current, optimistic]);
+    }
+    openView("chat");
 
+    const turnRequest = chatTurnRequest(turn, sessionId);
     const response = await authFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message,
-        surface,
+        ...turnRequest,
         session_id: sessionId,
         turn_id: turnId,
       }),
@@ -199,8 +316,13 @@ export function ChatApp() {
 
     if (!response) {
       setError("לא הצלחנו להגיע לסוכן. אפשר לנסות שוב.");
+      setMessages((current) =>
+        current.map((item) =>
+          item.turnId === turnId ? { ...item, delivery: "failed" } : item,
+        ),
+      );
       setSending(false);
-      return;
+      return false;
     }
     if (response.status === 401) {
       router.replace("/login");
@@ -209,11 +331,18 @@ export function ChatApp() {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       setError(body.error ?? "הסוכן לא הצליח לענות כרגע.");
+      setMessages((current) =>
+        current.map((item) =>
+          item.turnId === turnId ? { ...item, delivery: "failed" } : item,
+        ),
+      );
       setSending(false);
-      return;
+      return false;
     }
     setMessages((current) => [
-      ...current,
+      ...current.map((item) =>
+        item.turnId === turnId ? { ...item, delivery: undefined } : item,
+      ),
       {
         id: body.id ?? `assistant-${Date.now()}`,
         role: "assistant",
@@ -223,20 +352,28 @@ export function ChatApp() {
         proposal: body.proposal ?? null,
       },
     ]);
-    if (Array.isArray(body.tasks)) setTasks(body.tasks);
+    if (Array.isArray(body.tasks)) publishTasks(body.tasks);
     if (typeof body.session_id === "string" && isSessionId(body.session_id)) {
       setSessionId(body.session_id);
-      if (userId) writeActiveChatSession(userId, body.session_id);
+      if (userId) {
+        writeActiveChatSession(userId, body.session_id);
+        writeChatDraft(userId, sessionId, "");
+        writeChatDraft(userId, body.session_id, "");
+      }
+      navigate({ view: "chat", sessionId: body.session_id }, true);
     }
     setSending(false);
+    return true;
   }
 
   async function send(event?: FormEvent) {
     event?.preventDefault();
     const message = text.trim();
     if (!message) return;
-    setText("");
-    await sendMessage(message);
+    if (await sendMessage(message)) {
+      setText("");
+      if (userId) writeChatDraft(userId, sessionId, "");
+    }
   }
 
   function openSurface(surface: (typeof HOME_SURFACES)[number]) {
@@ -248,47 +385,179 @@ export function ChatApp() {
     proposal: ClientProposal,
     action: "approve" | "reject",
   ) {
-    if (proposalBusyId) return;
+    if (!userId || proposalBusyId) return;
     setError("");
     setProposalBusyId(proposal.id);
-    const response = await authFetch(`/api/proposals/${action}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: proposal.id }),
-    }).catch(() => null);
-    if (!response) {
-      setError("לא הצלחנו לעדכן את ההצעה. אפשר לנסות שוב.");
-      setProposalBusyId(null);
-      return;
-    }
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setError(body.error ?? "לא הצלחנו לעדכן את ההצעה.");
-      setProposalBusyId(null);
-      return;
-    }
-    setMessages((current) =>
-      current.map((message) =>
-        message.id === messageId && message.proposal?.id === proposal.id
-          ? {
-              ...message,
-              proposal: {
-                ...message.proposal,
-                status: action === "approve" ? "approved" : "rejected",
-                result_reply:
-                  action === "approve"
-                    ? (body.reply ?? message.proposal.result_reply)
-                    : null,
-              },
-            }
-          : message,
-      ),
+    await mutations.current.run<ChatMessage[]>(
+      {
+        key: `proposal:${proposal.id}`,
+        current: () => messages,
+        optimistic: (snapshot) =>
+          snapshot.map((message) =>
+            message.id === messageId && message.proposal?.id === proposal.id
+              ? {
+                  ...message,
+                  proposal: {
+                    ...message.proposal,
+                    status: "executing",
+                  },
+                }
+              : message,
+          ),
+        commit: async () => {
+          const response = await authFetch(`/api/proposals/${action}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: proposal.id }),
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error("proposal_failed");
+          const proposalMessages = messages.map((message) =>
+            message.id === messageId && message.proposal?.id === proposal.id
+              ? {
+                  ...message,
+                  proposal: {
+                    ...message.proposal,
+                    status: (action === "approve"
+                      ? "approved"
+                      : "rejected") as ClientProposal["status"],
+                    result_reply:
+                      action === "approve"
+                        ? (body.reply ?? message.proposal.result_reply)
+                        : null,
+                  },
+                }
+              : message,
+          );
+          if (Array.isArray(body.tasks)) {
+            setTasks(body.tasks);
+            return reconcileMessageTasks(proposalMessages, body.tasks);
+          }
+          return proposalMessages;
+        },
+        publish: (value) => setMessages(value),
+        errorMessage: "לא הצלחנו לעדכן את ההצעה.",
+      },
+      setFailure,
     );
-    if (Array.isArray(body.tasks)) setTasks(body.tasks);
     setProposalBusyId(null);
   }
 
+  function reconcileMessageTasks(
+    current: ChatMessage[],
+    nextTasks: TaskRow[],
+  ): ChatMessage[] {
+    const byId = new Map(nextTasks.map((task) => [task.id, task]));
+    const byTitle = new Map(
+      nextTasks.filter((task) => task.status === "open").map((task) => [task.title, task]),
+    );
+    return current.map((message) => {
+        if (message.presentation?.type === "task_list") {
+          return {
+            ...message,
+            presentation: {
+              type: "task_list" as const,
+              tasks: message.presentation.tasks.map((item) => {
+                const next = byId.get(item.id);
+                return next
+                  ? {
+                      id: next.id,
+                      title: next.title,
+                      notes: next.notes,
+                      status: next.status,
+                      due_on: next.due_on,
+                      due_at: next.due_at,
+                    }
+                  : item;
+              }),
+            },
+          };
+        }
+        if (message.presentation?.type === "schedule_plan") {
+          return {
+            ...message,
+            presentation: {
+              ...message.presentation,
+              items: message.presentation.items.map((item) => {
+                const next = item.task_id
+                  ? byId.get(item.task_id)
+                  : byTitle.get(item.title);
+                return next
+                  ? {
+                      ...item,
+                      task_id: next.id,
+                      title: next.title,
+                      status: next.status,
+                      fixed: Boolean(next.due_at),
+                    }
+                  : item;
+              }),
+            },
+          };
+        }
+        return message;
+      });
+  }
+
+  function publishTasks(nextTasks: TaskRow[]) {
+    setTasks(nextTasks);
+    setMessages((current) => reconcileMessageTasks(current, nextTasks));
+  }
+
+  async function postTaskAction(action: Record<string, unknown>) {
+    const response = await authFetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(action),
+    });
+    if (response.status === 401) {
+      router.replace("/login");
+      throw new Error("unauthorized");
+    }
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(body.tasks)) throw new Error("task_failed");
+    return body.tasks as TaskRow[];
+  }
+
   async function runTaskAction(action: Record<string, unknown>) {
+    const type = action.type;
+    const id = typeof action.id === "string" ? action.id : null;
+    if (
+      userId &&
+      id &&
+      (type === "task.complete" || type === "task.reopen") &&
+      tasks.some((task) => task.id === id)
+    ) {
+      const nextStatus = type === "task.complete" ? "done" : "open";
+      const reverseType =
+        type === "task.complete" ? "task.reopen" : "task.complete";
+      setSavingTask(true);
+      const ok = await mutations.current.run(
+        {
+          key: `task:${id}`,
+          current: () => tasks,
+          optimistic: (snapshot) =>
+            snapshot.map((task) =>
+              task.id === id
+                ? {
+                    ...task,
+                    status: nextStatus,
+                    completed_at:
+                      nextStatus === "done" ? new Date().toISOString() : null,
+                  }
+                : task,
+            ),
+          commit: () => postTaskAction(action),
+          publish: publishTasks,
+          errorMessage: "לא הצלחנו לעדכן את המשימה.",
+          reverse: () => postTaskAction({ type: reverseType, id }),
+        },
+        setFailure,
+        setUndo,
+      );
+      setSavingTask(false);
+      return ok;
+    }
     setError("");
     setSavingTask(true);
     const response = await authFetch("/api/tasks", {
@@ -312,46 +581,7 @@ export function ChatApp() {
     }
     if (Array.isArray(body.tasks)) {
       const nextTasks = body.tasks as TaskRow[];
-      setTasks(nextTasks);
-      setMessages((current) =>
-        current.map((message) => {
-          const byId = new Map(nextTasks.map((task) => [task.id, task]));
-          if (message.presentation?.type === "task_list") {
-            return {
-              ...message,
-              presentation: {
-                type: "task_list",
-                tasks: message.presentation.tasks.map((item) => {
-                  const next = byId.get(item.id);
-                  return next
-                    ? {
-                        id: next.id,
-                        title: next.title,
-                        notes: next.notes,
-                        status: next.status,
-                        due_on: next.due_on,
-                        due_at: next.due_at,
-                      }
-                    : item;
-                }),
-              },
-            };
-          }
-          if (message.presentation?.type === "schedule_plan") {
-            return {
-              ...message,
-              presentation: {
-                ...message.presentation,
-                items: message.presentation.items.map((item) => {
-                  const next = item.task_id ? byId.get(item.task_id) : undefined;
-                  return next ? { ...item, title: next.title, status: next.status } : item;
-                }),
-              },
-            };
-          }
-          return message;
-        }),
-      );
+      publishTasks(nextTasks);
     }
     return true;
   }
@@ -374,9 +604,10 @@ export function ChatApp() {
     if (userId) writeActiveChatSession(userId, body.session_id);
     setMessages([]);
     setView("chat");
+    navigate({ view: "chat", sessionId: body.session_id });
   }
 
-  async function openPreviousSession(nextSessionId: string) {
+  async function openPreviousSession(nextSessionId: string, updateUrl = true) {
     if (!isSessionId(nextSessionId)) return;
     setError("");
     const response = await authFetch(chatHistoryUrl(nextSessionId)).catch(
@@ -405,6 +636,7 @@ export function ChatApp() {
     setSessionId(nextSessionId);
     if (userId) writeActiveChatSession(userId, nextSessionId);
     setView("chat");
+    if (updateUrl) navigate({ view: "chat", sessionId: nextSessionId });
   }
 
   async function clearAllTasks() {
@@ -437,64 +669,65 @@ export function ChatApp() {
   }
 
   async function savePlan(messageId: string, plan: Extract<ClientPresentation, { type: "schedule_plan" }>) {
+    if (!userId) return;
     setSavingTask(true);
+    setSavingPlanId(messageId);
     setError("");
-    const response = await authFetch("/api/tasks/plan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        date: plan.date,
-        items: plan.items.map((item) => ({
-          task_id: item.task_id,
-          title: item.title,
-          planned_start: item.planned_start,
-          planned_end: item.planned_end,
-          anchor: item.fixed ? "fixed" : "planned",
-        })),
-      }),
-    }).catch(() => null);
-    setSavingTask(false);
-    if (!response?.ok) {
-      setError("לא הצלחנו לשמור את הלוז.");
-      return;
-    }
-    const body = await response.json().catch(() => ({}));
-    const nextTasks = Array.isArray(body.tasks) ? (body.tasks as TaskRow[]) : null;
-    if (nextTasks) setTasks(nextTasks);
-    setMessages((current) =>
-      current.map((message) => {
-        if (message.id !== messageId || message.presentation?.type !== "schedule_plan") {
-          return message;
-        }
-        const byId = new Map((nextTasks ?? []).map((task) => [task.id, task]));
-        const byTitle = new Map(
-          (nextTasks ?? [])
-            .filter((task) => task.status === "open")
-            .map((task) => [task.title, task]),
-        );
-        return {
-          ...message,
-          presentation: {
-            ...message.presentation,
-            saved: true,
-            items: message.presentation.items.map((item) => {
-              const next = item.task_id
-                ? byId.get(item.task_id)
-                : byTitle.get(item.title);
-              return next
-                ? {
-                    ...item,
-                    task_id: next.id,
-                    title: next.title,
-                    status: next.status,
-                    fixed: Boolean(next.due_at),
-                  }
-                : item;
+    await mutations.current.run<ChatMessage[]>(
+      {
+        key: `schedule:${messageId}`,
+        current: () => messages,
+        optimistic: (snapshot) =>
+          snapshot.map((message) =>
+            message.id === messageId &&
+            message.presentation?.type === "schedule_plan"
+              ? {
+                  ...message,
+                  presentation: { ...message.presentation, saved: true },
+                }
+              : message,
+          ),
+        commit: async () => {
+          const response = await authFetch("/api/tasks/plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              date: plan.date,
+              items: plan.items.map((item) => ({
+                task_id: item.task_id,
+                title: item.title,
+                planned_start: item.planned_start,
+                planned_end: item.planned_end,
+                anchor: item.fixed ? "fixed" : "planned",
+              })),
             }),
-          },
-        };
-      }),
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok || !Array.isArray(body.tasks)) {
+            throw new Error("schedule_failed");
+          }
+          const nextTasks = body.tasks as TaskRow[];
+          setTasks(nextTasks);
+          return reconcileMessageTasks(
+            messages.map((message) =>
+              message.id === messageId &&
+              message.presentation?.type === "schedule_plan"
+                ? {
+                    ...message,
+                    presentation: { ...message.presentation, saved: true },
+                  }
+                : message,
+            ),
+            nextTasks,
+          );
+        },
+        publish: (value) => setMessages(value),
+        errorMessage: "לא הצלחנו לשמור את הלוז.",
+      },
+      setFailure,
     );
+    setSavingTask(false);
+    setSavingPlanId(null);
   }
 
   async function addTask(event: FormEvent) {
@@ -552,7 +785,7 @@ export function ChatApp() {
             className="icon-button settings-button"
             type="button"
             aria-label="הגדרות"
-            onClick={() => setView("settings")}
+            onClick={() => openView("settings")}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
               <path
@@ -618,6 +851,22 @@ export function ChatApp() {
                 <div key={message.id} className={`message-row ${message.role}`}>
                   <div className="bubble">
                     <p className="bubble-text">{message.content}</p>
+                    {message.role === "user" && message.delivery === "failed" ? (
+                      <button
+                        className="retry-button"
+                        type="button"
+                        disabled={sending}
+                        onClick={() =>
+                          void sendMessage(
+                            message.content,
+                            message.surface ?? null,
+                            message.turnId,
+                          )
+                        }
+                      >
+                        השליחה נכשלה — נסה שוב
+                      </button>
+                    ) : null}
                     {message.role === "assistant" && message.proposal ? (
                       <section className="proposal-card" aria-label="הצעה לאישור">
                         <strong>הצעה לאישור</strong>
@@ -703,6 +952,7 @@ export function ChatApp() {
                       <SchedulePlanCard
                         plan={message.presentation}
                         saving={savingTask}
+                        optimistic={savingPlanId === message.id}
                         onToggle={(id, done) =>
                           void runTaskAction({
                             type: done ? "task.reopen" : "task.complete",
@@ -763,9 +1013,14 @@ export function ChatApp() {
           />
         ) : view === "schedule" ? (
           <MySchedule
+            date={scheduleDate}
+            onDateChange={(date) => {
+              setScheduleDate(date);
+              navigate({ view: "schedule", date });
+            }}
             saving={savingTask}
             onToggle={(id, done) =>
-              void runTaskAction({
+              runTaskAction({
                 type: done ? "task.reopen" : "task.complete",
                 id,
               })
@@ -898,6 +1153,22 @@ export function ChatApp() {
           </div>
         )}
 
+        {failure ? (
+          <div className="mutation-notice error-box" role="alert">
+            <span>{failure.message}</span>
+            <button type="button" onClick={() => void failure.retry()}>
+              נסה שוב
+            </button>
+          </div>
+        ) : undo ? (
+          <div className="mutation-notice success-box" role="status">
+            <span>הפעולה נשמרה.</span>
+            <button type="button" onClick={() => void undo.undo()}>
+              ביטול
+            </button>
+          </div>
+        ) : null}
+
         <div className="composer-wrap">
           {view === "settings" ? null : (
             <form className="composer" onSubmit={send}>
@@ -934,28 +1205,28 @@ export function ChatApp() {
             <button
               className={view === "home" ? "active" : undefined}
               type="button"
-              onClick={() => setView("home")}
+              onClick={() => openView("home")}
             >
               בית
             </button>
             <button
               className={view === "chat" ? "active" : undefined}
               type="button"
-              onClick={() => setView("chat")}
+              onClick={() => openView("chat")}
             >
               שיחה
             </button>
             <button
               className={view === "tasks" ? "active" : undefined}
               type="button"
-              onClick={() => setView("tasks")}
+              onClick={() => openView("tasks")}
             >
               משימות
             </button>
             <button
               className={view === "schedule" ? "active" : undefined}
               type="button"
-              onClick={() => setView("schedule")}
+              onClick={() => openView("schedule")}
             >
               הלוז שלי
             </button>
