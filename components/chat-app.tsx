@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch, supabase } from "@/lib/supabase-browser";
-import { seasonForDate } from "@/lib/season";
+import { seasonForDate, type Season } from "@/lib/season";
 import {
   greetingForDate,
   HOME_SURFACES,
@@ -19,6 +19,12 @@ import {
 import { appendTranscript } from "@/lib/audio/recorder-helpers";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { SettingsPanel } from "@/components/settings-panel";
+import { ChatHistoryDrawer } from "@/components/previous-chats";
+import { Onboarding } from "@/components/onboarding";
+import {
+  emptyUserProfile,
+  type UserProfile,
+} from "@/lib/user-profile";
 import {
   clearActiveChatSession,
   readActiveChatSession,
@@ -114,6 +120,9 @@ export function ChatApp() {
   const [undo, setUndo] = useState<UndoOpportunity | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileReady, setProfileReady] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [defaultReminderMinutes, setDefaultReminderMinutes] = useState(
     DEFAULT_REMINDER_MINUTES,
   );
@@ -170,7 +179,16 @@ export function ChatApp() {
         return;
       }
       const nextUserId = data.session.user.id;
-      if (alive) setUserId(nextUserId);
+      if (alive) {
+        setUserId(nextUserId);
+        setProfile(emptyUserProfile(nextUserId));
+      }
+      const profileResponse = await authFetch("/api/profile").catch(() => null);
+      const profileBody = await profileResponse?.json().catch(() => ({}));
+      if (alive && profileResponse?.ok && profileBody?.profile) {
+        setProfile(profileBody.profile as UserProfile);
+        setProfileReady(true);
+      }
       const routeSession = decodeAppRoute(initialQuery.current).sessionId;
       const preferred = routeSession ?? readActiveChatSession(nextUserId);
       let response = await authFetch(chatHistoryUrl(preferred));
@@ -788,6 +806,11 @@ export function ChatApp() {
     router.replace("/login");
   }
 
+  const activeSeason: Season =
+    profile?.appearance_mode === "season" && profile.appearance_season
+      ? profile.appearance_season
+      : seasonForDate();
+
   if (loading) {
     return (
       <main className="lean-shell" data-theme={seasonForDate()}>
@@ -797,7 +820,7 @@ export function ChatApp() {
   }
 
   return (
-    <main className="lean-shell" data-theme={seasonForDate()}>
+    <main className="lean-shell" data-theme={activeSeason}>
       <section className="chat-shell">
         <header className="chat-header">
           <div className="brand-mark small">מ׳</div>
@@ -818,6 +841,17 @@ export function ChatApp() {
             </span>
           </div>
           <UpcomingBell />
+          {view === "chat" ? (
+            <button
+              className="icon-button history-button"
+              type="button"
+              aria-label="היסטוריית שיחות"
+              aria-expanded={historyOpen}
+              onClick={() => setHistoryOpen(true)}
+            >
+              ☰
+            </button>
+          ) : null}
           <button
             className="icon-button settings-button"
             type="button"
@@ -1045,8 +1079,12 @@ export function ChatApp() {
           </div>
         ) : view === "settings" ? (
           <SettingsPanel
-            currentSessionId={sessionId}
-            onOpenSession={(id) => void openPreviousSession(id)}
+            profile={profile ?? emptyUserProfile(userId ?? "")}
+            onProfileSaved={(next) => {
+              setProfile(next);
+              setProfileReady(true);
+            }}
+            onSignOut={() => void logout()}
           />
         ) : view === "focus" ? (
           <FocusSurface
@@ -1309,6 +1347,16 @@ export function ChatApp() {
             </button>
           </nav>
         </div>
+        <ChatHistoryDrawer
+          open={historyOpen}
+          currentSessionId={sessionId}
+          onOpenSession={(id) => void openPreviousSession(id)}
+          onNewSession={() => void startNewChat()}
+          onClose={() => setHistoryOpen(false)}
+        />
+        {profileReady && profile && !profile.onboarding_completed_at ? (
+          <Onboarding profile={profile} onSaved={setProfile} />
+        ) : null}
       </section>
     </main>
   );

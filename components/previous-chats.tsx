@@ -14,12 +14,18 @@ function messageCountLabel(count: number) {
   return `${count} הודעות`;
 }
 
-export function PreviousChats({
+export function ChatHistoryDrawer({
+  open,
   currentSessionId,
   onOpenSession,
+  onNewSession,
+  onClose,
 }: {
+  open: boolean;
   currentSessionId: string | null;
   onOpenSession: (sessionId: string) => void;
+  onNewSession: () => void;
+  onClose: () => void;
 }) {
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -29,8 +35,10 @@ export function PreviousChats({
   const [openingId, setOpeningId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!open) return;
     let alive = true;
     setLoading(true);
+    setError("");
     void authFetch(`/api/chat/sessions?limit=${SESSION_LIST_PAGE}`)
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
@@ -51,7 +59,16 @@ export function PreviousChats({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open, onClose]);
 
   async function loadMore() {
     setLoadingMore(true);
@@ -71,9 +88,33 @@ export function PreviousChats({
 
   const others = sessions.filter((session) => session.id !== currentSessionId);
 
+  if (!open) return null;
+
   return (
-    <section className="settings-section">
-      <h2>שיחות קודמות</h2>
+    <div className="history-backdrop" role="presentation" onMouseDown={onClose}>
+      <aside
+        className="history-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="history-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="history-header">
+          <h2 id="history-title">השיחות שלי</h2>
+          <button className="icon-button" type="button" aria-label="סגירת היסטוריית השיחות" autoFocus onClick={onClose}>
+            ×
+          </button>
+        </header>
+        <button
+          className="settings-action history-new"
+          type="button"
+          onClick={() => {
+            onNewSession();
+            onClose();
+          }}
+        >
+          שיחה חדשה
+        </button>
       {loading ? <p className="muted">טוען שיחות…</p> : null}
       {!loading && sessions.length === 0 ? (
         <p className="muted">אין עדיין שיחות קודמות.</p>
@@ -92,6 +133,7 @@ export function PreviousChats({
               onClick={() => {
                 setOpeningId(session.id);
                 onOpenSession(session.id);
+                onClose();
               }}
             >
               <span className="previous-chat-title">
@@ -120,6 +162,7 @@ export function PreviousChats({
         </button>
       ) : null}
       {error ? <div className="error-box">{error}</div> : null}
-    </section>
+      </aside>
+    </div>
   );
 }

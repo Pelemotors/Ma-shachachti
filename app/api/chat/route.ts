@@ -38,6 +38,7 @@ import {
 import { createAgentProposal } from "@/lib/proposals";
 import { createServiceClient } from "@/lib/supabase-admin";
 import { validateStoredPresentation } from "@/lib/chat-presentation";
+import { loadAgentProfile } from "@/lib/user-profile";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -185,12 +186,17 @@ export async function POST(req: Request) {
       if (historyError)
         throw new HttpError(503, "לא הצלחנו לטעון את ההקשר לשיחה.");
 
-      const memory = await loadMemory(db, userId);
-      const consequences = await loadConsequences(
-        db,
-        userId,
-        tasks.filter((task) => task.status === "open").map((task) => task.id),
-      );
+      const [memory, consequences, profile] = await Promise.all([
+          loadMemory(db, userId),
+          loadConsequences(
+            db,
+            userId,
+            tasks.filter((task) => task.status === "open").map((task) => task.id),
+          ),
+          loadAgentProfile(db, userId),
+        ]).catch(() => {
+          throw new HttpError(503, "לא הצלחנו לטעון את הקשר המשתמש לשיחה.");
+        });
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) throw new HttpError(503, "חיבור ה-AI עדיין לא הוגדר.");
       const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-luna";
@@ -209,6 +215,7 @@ export async function POST(req: Request) {
         instructions: buildInstructions({
           tasks,
           memory,
+          profile,
           consequences,
           surface,
           surfaceContext,

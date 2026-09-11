@@ -306,6 +306,55 @@ h1 {
   background: #fff;
   border: 1px solid var(--border);
 }
+.field select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+}
+.memory-add {
+  display: flex;
+  gap: 8px;
+}
+.memory-group {
+  display: grid;
+  gap: 7px;
+}
+.memory-group h3 {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.memory-item {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+}
+.memory-item p {
+  margin: 0;
+}
+.memory-actions {
+  display: flex;
+  gap: 12px;
+}
+.memory-actions .danger-text {
+  margin: 0;
+}
+.new-badge {
+  display: inline-block;
+  margin-inline-start: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--primary);
+  font-size: 11px;
+}
 .previous-chats {
   display: grid;
   gap: 8px;
@@ -349,6 +398,56 @@ h1 {
 }
 .previous-chats-more {
   justify-self: start;
+}
+.history-backdrop,
+.onboarding-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(20, 25, 22, 0.35);
+}
+.history-drawer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: min(88vw, 360px);
+  padding: max(18px, env(safe-area-inset-top)) 16px 18px;
+  overflow: auto;
+  background: var(--bg);
+  box-shadow: 12px 0 40px rgba(20, 25, 22, 0.2);
+}
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.history-header h2 {
+  margin: 0;
+  font-size: 22px;
+}
+.history-new {
+  margin-bottom: 14px;
+}
+.onboarding-backdrop {
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  overflow: auto;
+}
+.onboarding-card {
+  width: min(100%, 390px);
+  padding: 24px;
+}
+.onboarding-card .brand-mark {
+  margin-bottom: 18px;
+}
+.onboarding-card h1 {
+  font-size: 30px;
+}
+.onboarding-skip {
+  width: 100%;
+  justify-content: center;
 }
 .settings-hint {
   margin: 0;
