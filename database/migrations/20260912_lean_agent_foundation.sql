@@ -650,6 +650,97 @@ begin
         'ok', false, 'type', v_type, 'error', 'הזיכרון לא נמצא.'
       );
     end if;
+  elsif v_type = 'shopping.add' then
+    v_title := pg_catalog.btrim(coalesce(p_action ->> 'title', ''));
+    if char_length(v_title) not between 1 and 200 then
+      v_result := jsonb_build_object('ok', false, 'type', v_type, 'error', 'חסר שם תקין לפריט.');
+    else
+      insert into public.shopping_items(user_id, title, quantity, order_index)
+      select v_user_id, v_title,
+        coalesce(nullif(p_action ->> 'quantity', '')::integer, 1),
+        coalesce(max(order_index) + 1, 0)
+      from public.shopping_items where user_id = v_user_id
+      returning id into v_id;
+      v_result := jsonb_build_object('ok', true, 'type', v_type, 'id', v_id, 'title', v_title);
+    end if;
+  elsif v_type in ('shopping.update', 'shopping.toggle', 'shopping.remove') then
+    v_id := nullif(p_action ->> 'id', '')::uuid;
+    if v_type = 'shopping.remove' then
+      delete from public.shopping_items where id = v_id and user_id = v_user_id
+      returning title into v_title;
+    elsif v_type = 'shopping.toggle' then
+      update public.shopping_items
+      set purchased_at = case when coalesce((p_action ->> 'purchased')::boolean, false)
+        then now() else null end, updated_at = now()
+      where id = v_id and user_id = v_user_id returning title into v_title;
+    else
+      update public.shopping_items
+      set title = coalesce(nullif(pg_catalog.btrim(p_action ->> 'title'), ''), title),
+          quantity = coalesce(nullif(p_action ->> 'quantity', '')::integer, quantity),
+          updated_at = now()
+      where id = v_id and user_id = v_user_id returning title into v_title;
+    end if;
+    v_result := case when v_title is null
+      then jsonb_build_object('ok', false, 'type', v_type, 'error', 'פריט הקניות לא נמצא.')
+      else jsonb_build_object('ok', true, 'type', v_type, 'id', v_id, 'title', v_title) end;
+  elsif v_type = 'checklist.create' then
+    v_title := pg_catalog.btrim(coalesce(p_action ->> 'title', ''));
+    if char_length(v_title) not between 1 and 200 then
+      v_result := jsonb_build_object('ok', false, 'type', v_type, 'error', 'חסר שם תקין לרשימה.');
+    else
+      insert into public.checklists(user_id, title, order_index)
+      select v_user_id, v_title, coalesce(max(order_index) + 1, 0)
+      from public.checklists where user_id = v_user_id
+      returning id into v_id;
+      v_result := jsonb_build_object('ok', true, 'type', v_type, 'id', v_id, 'title', v_title);
+    end if;
+  elsif v_type in ('checklist.rename', 'checklist.delete') then
+    v_id := nullif(p_action ->> 'id', '')::uuid;
+    if v_type = 'checklist.delete' then
+      delete from public.checklists where id = v_id and user_id = v_user_id returning title into v_title;
+    else
+      update public.checklists
+      set title = pg_catalog.btrim(p_action ->> 'title'), updated_at = now()
+      where id = v_id and user_id = v_user_id returning title into v_title;
+    end if;
+    v_result := case when v_title is null
+      then jsonb_build_object('ok', false, 'type', v_type, 'error', 'הרשימה לא נמצאה.')
+      else jsonb_build_object('ok', true, 'type', v_type, 'id', v_id, 'title', v_title) end;
+  elsif v_type = 'checklist.item.add' then
+    v_id := nullif(p_action ->> 'checklist_id', '')::uuid;
+    v_title := pg_catalog.btrim(coalesce(p_action ->> 'text', ''));
+    if char_length(v_title) not between 1 and 500 or not exists (
+      select 1 from public.checklists where id = v_id and user_id = v_user_id
+    ) then
+      v_result := jsonb_build_object('ok', false, 'type', v_type, 'error', 'הרשימה או הפריט אינם תקינים.');
+    else
+      insert into public.checklist_items(id, checklist_id, user_id, text, order_index)
+      select gen_random_uuid(), v_id, v_user_id, v_title, coalesce(max(order_index) + 1, 0)
+      from public.checklist_items where user_id = v_user_id and checklist_id = v_id
+      returning id into v_id;
+      v_result := jsonb_build_object('ok', true, 'type', v_type, 'id', v_id, 'title', v_title);
+    end if;
+  elsif v_type in ('checklist.item.update', 'checklist.item.toggle', 'checklist.item.remove') then
+    v_id := nullif(p_action ->> 'id', '')::uuid;
+    if v_type = 'checklist.item.remove' then
+      delete from public.checklist_items
+      where id = v_id and user_id = v_user_id
+        and checklist_id = nullif(p_action ->> 'checklist_id', '')::uuid
+      returning text into v_title;
+    elsif v_type = 'checklist.item.toggle' then
+      update public.checklist_items set checked = coalesce((p_action ->> 'checked')::boolean, false), updated_at = now()
+      where id = v_id and user_id = v_user_id
+        and checklist_id = nullif(p_action ->> 'checklist_id', '')::uuid
+      returning text into v_title;
+    else
+      update public.checklist_items set text = pg_catalog.btrim(p_action ->> 'text'), updated_at = now()
+      where id = v_id and user_id = v_user_id
+        and checklist_id = nullif(p_action ->> 'checklist_id', '')::uuid
+      returning text into v_title;
+    end if;
+    v_result := case when v_title is null
+      then jsonb_build_object('ok', false, 'type', v_type, 'error', 'פריט הרשימה לא נמצא.')
+      else jsonb_build_object('ok', true, 'type', v_type, 'id', v_id, 'title', v_title) end;
   else
     v_result := jsonb_build_object(
       'ok', false, 'type', 'invalid', 'error', 'סוג הפעולה אינו נתמך.'

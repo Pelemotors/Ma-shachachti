@@ -70,6 +70,7 @@ import {
   ScheduleAgentPanel,
 } from "@/components/personal-agent-surfaces";
 import { useAgentSurfaces } from "@/hooks/use-agent-surfaces";
+import { ChecklistsView, ShoppingView } from "@/components/lean-lists";
 
 type ChatMessage = {
   id: string;
@@ -153,6 +154,9 @@ export function ChatApp() {
       date: next.date ?? (next.view === "schedule" ? scheduleDate : null),
       sessionId:
         next.sessionId ?? (next.view === "chat" ? sessionId : null),
+      checklistId:
+        next.checklistId ??
+        (next.view === "checklists" ? initialRoute.checklistId ?? null : null),
     });
     if (replace) router.replace(href, { scroll: false });
     else router.push(href, { scroll: false });
@@ -829,6 +833,10 @@ export function ChatApp() {
             <span>
               {view === "tasks"
                 ? "המשימות שלך"
+                : view === "shopping"
+                  ? "רשימת קניות"
+                : view === "checklists"
+                  ? "הרשימות שלי"
                 : view === "focus"
                   ? "מיקוד"
                 : view === "schedule"
@@ -1077,6 +1085,27 @@ export function ChatApp() {
             {error ? <div className="error-box">{error}</div> : null}
             <div ref={bottomRef} />
           </div>
+        ) : view === "shopping" ? (
+          <ShoppingView
+            mutations={mutations.current}
+            onFailure={setFailure}
+          />
+        ) : view === "checklists" ? (
+          <ChecklistsView
+            activeId={decodeAppRoute(searchParams).checklistId ?? null}
+            onActive={(checklistId, replace = false) => {
+              const href = encodeAppRoute({
+                view: "checklists",
+                date: null,
+                sessionId: null,
+                checklistId,
+              });
+              if (replace) router.replace(href, { scroll: false });
+              else router.push(href, { scroll: false });
+            }}
+            mutations={mutations.current}
+            onFailure={setFailure}
+          />
         ) : view === "settings" ? (
           <SettingsPanel
             profile={profile ?? emptyUserProfile(userId ?? "")}
@@ -1342,8 +1371,19 @@ export function ChatApp() {
             >
               הלוז שלי
             </button>
-            <button disabled type="button">
+            <button
+              className={view === "shopping" ? "active" : undefined}
+              type="button"
+              onClick={() => openView("shopping")}
+            >
               קניות
+            </button>
+            <button
+              className={view === "checklists" ? "active" : undefined}
+              type="button"
+              onClick={() => openView("checklists")}
+            >
+              רשימות
             </button>
           </nav>
         </div>

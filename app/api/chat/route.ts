@@ -40,6 +40,7 @@ import { createServiceClient } from "@/lib/supabase-admin";
 import { validateStoredPresentation } from "@/lib/chat-presentation";
 import { loadAgentProfile } from "@/lib/user-profile";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadChecklists, loadShopping } from "@/lib/lists";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -186,7 +187,7 @@ export async function POST(req: Request) {
       if (historyError)
         throw new HttpError(503, "לא הצלחנו לטעון את ההקשר לשיחה.");
 
-      const [memory, consequences, profile] = await Promise.all([
+      const [memory, consequences, profile, shopping, checklists] = await Promise.all([
           loadMemory(db, userId),
           loadConsequences(
             db,
@@ -194,6 +195,8 @@ export async function POST(req: Request) {
             tasks.filter((task) => task.status === "open").map((task) => task.id),
           ),
           loadAgentProfile(db, userId),
+          loadShopping(db, userId),
+          loadChecklists(db, userId),
         ]).catch(() => {
           throw new HttpError(503, "לא הצלחנו לטעון את הקשר המשתמש לשיחה.");
         });
@@ -217,6 +220,8 @@ export async function POST(req: Request) {
           memory,
           profile,
           consequences,
+          shopping,
+          checklists,
           surface,
           surfaceContext,
         }),

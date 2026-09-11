@@ -49,6 +49,8 @@ test("runtime registry publishes only implemented Phase 1 capabilities", () => {
   assert.deepEqual(Object.keys(RUNTIME_CAPABILITIES), [
     "tasks",
     "memory",
+    "shopping",
+    "checklists",
     "presentations",
     "consequences",
     "schedule-save",

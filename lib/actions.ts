@@ -9,6 +9,7 @@ import type {
   MemoryRow,
   TaskRow,
 } from "./types.ts";
+import { mutateChecklist, mutateShopping } from "./lists.ts";
 
 type Db = SupabaseClient;
 
@@ -443,6 +444,63 @@ export async function executeAction(
       if (error) return fail(action.type, "לא הצלחנו למחוק את הזיכרון.");
       return ok(action.type, { id: action.id });
     }
+    case "shopping.add": {
+      if (!action.title || action.quantity == null) return fail(action.type, "חסר פריט קניות תקין.");
+      await mutateShopping(db, userId, { action: "add", title: action.title, quantity: action.quantity });
+      return ok(action.type, { title: action.title });
+    }
+    case "shopping.update": {
+      if (!action.id) return fail(action.type, "חסר מזהה פריט.");
+      await mutateShopping(db, userId, { action: "update", id: action.id, ...(action.title ? { title: action.title } : {}), ...(action.quantity != null ? { quantity: action.quantity } : {}) });
+      return ok(action.type, { id: action.id, title: action.title });
+    }
+    case "shopping.toggle": {
+      if (!action.id || action.purchased == null) return fail(action.type, "חסר מצב קנייה תקין.");
+      await mutateShopping(db, userId, { action: "toggle", id: action.id, purchased: action.purchased });
+      return ok(action.type, { id: action.id, title: action.title });
+    }
+    case "shopping.remove": {
+      if (!action.id) return fail(action.type, "חסר מזהה פריט.");
+      await mutateShopping(db, userId, { action: "remove", id: action.id });
+      return ok(action.type, { id: action.id, title: action.title });
+    }
+    case "checklist.create": {
+      if (!action.title) return fail(action.type, "חסר שם רשימה.");
+      await mutateChecklist(db, userId, { action: "create", title: action.title });
+      return ok(action.type, { title: action.title });
+    }
+    case "checklist.rename": {
+      if (!action.id || !action.title) return fail(action.type, "חסרים פרטי הרשימה.");
+      await mutateChecklist(db, userId, { action: "rename", id: action.id, title: action.title });
+      return ok(action.type, { id: action.id, title: action.title });
+    }
+    case "checklist.delete": {
+      if (!action.id) return fail(action.type, "חסר מזהה רשימה.");
+      await mutateChecklist(db, userId, { action: "delete", id: action.id });
+      return ok(action.type, { id: action.id, title: action.title });
+    }
+    case "checklist.item.add": {
+      if (!action.checklist_id || !action.text) return fail(action.type, "חסרים פרטי הפריט.");
+      await mutateChecklist(db, userId, { action: "item.add", checklist_id: action.checklist_id, text: action.text });
+      return ok(action.type, { title: action.text });
+    }
+    case "checklist.item.update": {
+      if (!action.checklist_id || !action.id || !action.text) return fail(action.type, "חסרים פרטי הפריט.");
+      await mutateChecklist(db, userId, { action: "item.update", checklist_id: action.checklist_id, id: action.id, text: action.text });
+      return ok(action.type, { id: action.id, title: action.text });
+    }
+    case "checklist.item.toggle": {
+      if (!action.checklist_id || !action.id || action.checked == null) return fail(action.type, "חסר מצב סימון תקין.");
+      await mutateChecklist(db, userId, { action: "item.toggle", checklist_id: action.checklist_id, id: action.id, checked: action.checked });
+      return ok(action.type, { id: action.id, title: action.title });
+    }
+    case "checklist.item.remove": {
+      if (!action.checklist_id || !action.id) return fail(action.type, "חסרים פרטי הפריט.");
+      await mutateChecklist(db, userId, { action: "item.remove", checklist_id: action.checklist_id, id: action.id });
+      return ok(action.type, { id: action.id, title: action.title });
+    }
+    default:
+      return fail(action.type, "הפעולה זמינה רק דרך מבצע הפעולות האטומי.");
   }
 }
 

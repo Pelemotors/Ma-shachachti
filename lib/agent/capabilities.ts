@@ -18,6 +18,31 @@ export const RUNTIME_CAPABILITIES = {
     instructions:
       "Memory מיועדת למידע אישי מתמשך. learning יזומה silent=true; בקשת זכירה מפורשת silent=false; תיקון משתמש מעדכן לפי id.",
   },
+  shopping: {
+    kind: "action",
+    operations: [
+      "shopping.add",
+      "shopping.update",
+      "shopping.toggle",
+      "shopping.remove",
+    ],
+    instructions:
+      "רשימת קניות אישית. add דורש title ו-quantity; update/toggle/remove דורשות id מההקשר. toggle דורש purchased.",
+  },
+  checklists: {
+    kind: "action",
+    operations: [
+      "checklist.create",
+      "checklist.rename",
+      "checklist.delete",
+      "checklist.item.add",
+      "checklist.item.update",
+      "checklist.item.toggle",
+      "checklist.item.remove",
+    ],
+    instructions:
+      "רשימות אישיות. פעולות item דורשות checklist_id; עדכון/toggle/remove דורשים id של פריט מאותה רשימה. toggle דורש checked.",
+  },
   presentations: {
     kind: "presentation",
     operations: ["task_list", "schedule_plan", "task_suggestions"],

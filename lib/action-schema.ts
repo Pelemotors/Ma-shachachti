@@ -44,7 +44,29 @@ export const ActionSchema = z.object({
   content: z.string().trim().min(1).max(500).nullable().optional(),
   confidence: z.enum(["low", "medium", "high"]).nullable().optional(),
   silent: z.boolean().nullable().optional(),
-}).strict();
+  checklist_id: z.string().uuid().nullable().optional(),
+  text: z.string().trim().min(1).max(500).nullable().optional(),
+  quantity: z.number().int().min(1).max(999).nullable().optional(),
+  purchased: z.boolean().nullable().optional(),
+  checked: z.boolean().nullable().optional(),
+}).strict().superRefine((action, context) => {
+  const requireField = (field: "id" | "title" | "checklist_id" | "text" | "quantity" | "purchased" | "checked") => {
+    if (action[field] == null || action[field] === "") {
+      context.addIssue({ code: "custom", path: [field], message: "required" });
+    }
+  };
+  if (["shopping.update", "shopping.toggle", "shopping.remove", "checklist.rename", "checklist.delete",
+    "checklist.item.update", "checklist.item.toggle", "checklist.item.remove"].includes(action.type)) requireField("id");
+  if (["shopping.add", "checklist.create", "checklist.rename"].includes(action.type)) requireField("title");
+  if (action.type === "shopping.add") requireField("quantity");
+  if (action.type === "shopping.update" && action.title == null && action.quantity == null) {
+    context.addIssue({ code: "custom", path: ["title"], message: "title_or_quantity_required" });
+  }
+  if (["checklist.item.add", "checklist.item.update", "checklist.item.toggle", "checklist.item.remove"].includes(action.type)) requireField("checklist_id");
+  if (["checklist.item.add", "checklist.item.update"].includes(action.type)) requireField("text");
+  if (action.type === "shopping.toggle") requireField("purchased");
+  if (action.type === "checklist.item.toggle") requireField("checked");
+});
 
 function nullable(schema: Record<string, unknown>) {
   return { anyOf: [schema, { type: "null" }] };
@@ -89,6 +111,11 @@ export const AGENT_TURN_JSON_SCHEMA = {
           "content",
           "confidence",
           "silent",
+          "checklist_id",
+          "text",
+          "quantity",
+          "purchased",
+          "checked",
         ],
         properties: {
           type: {
@@ -142,6 +169,11 @@ export const AGENT_TURN_JSON_SCHEMA = {
             enum: ["low", "medium", "high"],
           }),
           silent: nullable({ type: "boolean" }),
+          checklist_id: nullable({ type: "string", pattern: UUID_RE.source }),
+          text: nullable({ type: "string", minLength: 1, maxLength: 500 }),
+          quantity: nullable({ type: "integer", minimum: 1, maximum: 999 }),
+          purchased: nullable({ type: "boolean" }),
+          checked: nullable({ type: "boolean" }),
         },
       },
     },
@@ -181,6 +213,11 @@ export const AGENT_TURN_JSON_SCHEMA = {
                   "content",
                   "confidence",
                   "silent",
+                  "checklist_id",
+                  "text",
+                  "quantity",
+                  "purchased",
+                  "checked",
                 ],
                 properties: {
                   type: { type: "string", enum: [...ACTION_TYPES] },
@@ -251,6 +288,22 @@ export const AGENT_TURN_JSON_SCHEMA = {
                     enum: ["low", "medium", "high"],
                   }),
                   silent: nullable({ type: "boolean" }),
+                  checklist_id: nullable({
+                    type: "string",
+                    pattern: UUID_RE.source,
+                  }),
+                  text: nullable({
+                    type: "string",
+                    minLength: 1,
+                    maxLength: 500,
+                  }),
+                  quantity: nullable({
+                    type: "integer",
+                    minimum: 1,
+                    maximum: 999,
+                  }),
+                  purchased: nullable({ type: "boolean" }),
+                  checked: nullable({ type: "boolean" }),
                 },
               },
             },
@@ -517,6 +570,11 @@ export function toAgentAction(data: z.infer<typeof ActionSchema>): AgentAction {
     content: data.content ?? null,
     confidence: data.confidence ?? null,
     silent: data.silent ?? null,
+    checklist_id: data.checklist_id ?? null,
+    text: data.text ?? null,
+    quantity: data.quantity ?? null,
+    purchased: data.purchased ?? null,
+    checked: data.checked ?? null,
   };
 }
 
@@ -605,6 +663,28 @@ function successLine(result: Extract<ActionResult, { ok: true }>) {
       return "שמרתי את זה לזיכרון האישי.";
     case "memory.remove":
       return "הסרתי את הפריט מהזיכרון האישי.";
+    case "shopping.add":
+      return `הוספתי${title} לרשימת הקניות.`;
+    case "shopping.update":
+      return `עדכנתי${title} ברשימת הקניות.`;
+    case "shopping.toggle":
+      return `עדכנתי את מצב הקנייה של${title}.`;
+    case "shopping.remove":
+      return `הסרתי${title} מרשימת הקניות.`;
+    case "checklist.create":
+      return `יצרתי את הרשימה${title}.`;
+    case "checklist.rename":
+      return `שיניתי את שם הרשימה ל${title}.`;
+    case "checklist.delete":
+      return `מחקתי את הרשימה${title}.`;
+    case "checklist.item.add":
+      return `הוספתי את הפריט${title} לרשימה.`;
+    case "checklist.item.update":
+      return `עדכנתי את הפריט${title}.`;
+    case "checklist.item.toggle":
+      return `עדכנתי את הסימון של${title}.`;
+    case "checklist.item.remove":
+      return `הסרתי את הפריט${title}.`;
   }
 }
 

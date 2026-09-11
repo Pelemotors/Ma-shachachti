@@ -4,6 +4,8 @@ export const APP_VIEWS = [
   "home",
   "chat",
   "tasks",
+  "shopping",
+  "checklists",
   "focus",
   "schedule",
   "free-time",
@@ -15,6 +17,7 @@ export type AppRouteState = {
   view: AppView;
   date: string | null;
   sessionId: string | null;
+  checklistId?: string | null;
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -40,7 +43,13 @@ export function decodeAppRoute(input: URLSearchParams | string): AppRouteState {
   const date = view === "schedule" && isValidScheduleDate(params.get("date"))
     ? params.get("date")
     : null;
-  return { view, date, sessionId };
+  const checklistId =
+    view === "checklists" && isSessionId(params.get("checklist"))
+      ? params.get("checklist")
+      : null;
+  return view === "checklists"
+    ? { view, date, sessionId, checklistId }
+    : { view, date, sessionId };
 }
 
 export function encodeAppRoute(state: AppRouteState) {
@@ -51,6 +60,9 @@ export function encodeAppRoute(state: AppRouteState) {
   }
   if (state.view === "chat" && isSessionId(state.sessionId)) {
     params.set("session", state.sessionId);
+  }
+  if (state.view === "checklists" && isSessionId(state.checklistId)) {
+    params.set("checklist", state.checklistId);
   }
   const query = params.toString();
   return query ? `/app?${query}` : "/app";

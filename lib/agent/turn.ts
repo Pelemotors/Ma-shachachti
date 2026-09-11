@@ -14,6 +14,7 @@ import type {
 import { TIME_ZONE, dueTimeFromDueAt, jerusalemParts, todayContext } from "../time.ts";
 import { reminderBase } from "../reminders.ts";
 import type { AgentProfileContext } from "../user-profile.ts";
+import type { Checklist, ShoppingItem } from "../lists.ts";
 
 export { AGENT_TURN_JSON_SCHEMA, parseDecision } from "../action-schema.ts";
 export { TIME_ZONE, todayContext };
@@ -170,6 +171,8 @@ export function surfaceInputHint(
 export function buildInstructions(input: {
   tasks: TaskRow[];
   memory: MemoryRow[];
+  shopping?: ShoppingItem[];
+  checklists?: Checklist[];
   profile?: AgentProfileContext;
   consequences?: Map<string, ConsequenceRow>;
   surface?: ChatSurface | null;
@@ -245,6 +248,18 @@ ${
         .join("\n")
     : "- אין"
 }
+
+רשימת קניות (עד 40):
+${(input.shopping ?? []).slice(0, 40).map((item) =>
+  `- ${item.id} [${item.purchased_at ? "purchased" : "open"}] ${item.title} x${item.quantity}`
+).join("\n") || "- אין"}
+
+רשימות (עד 12 רשימות ו-20 פריטים בכל רשימה):
+${(input.checklists ?? []).slice(0, 12).map((list) =>
+  `- ${list.id} ${list.title}\n${list.items.slice(0, 20).map((item) =>
+    `  - ${item.id} [${item.checked ? "checked" : "open"}] ${item.text}`
+  ).join("\n")}`
+).join("\n") || "- אין"}
 ${scheduleDateContext(input.tasks, input.surfaceContext ?? null)}
 ${surfaceInstructions(surface, input.surfaceContext ?? null, currentTime)}`;
 }

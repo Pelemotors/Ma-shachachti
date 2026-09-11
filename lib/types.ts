@@ -92,6 +92,17 @@ export const ACTION_TYPES = [
   "task.delete",
   "memory.upsert",
   "memory.remove",
+  "shopping.add",
+  "shopping.update",
+  "shopping.toggle",
+  "shopping.remove",
+  "checklist.create",
+  "checklist.rename",
+  "checklist.delete",
+  "checklist.item.add",
+  "checklist.item.update",
+  "checklist.item.toggle",
+  "checklist.item.remove",
 ] as const;
 
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -117,6 +128,11 @@ export type AgentAction = {
   content: string | null;
   confidence: MemoryConfidence | null;
   silent: boolean | null;
+  checklist_id?: string | null;
+  text?: string | null;
+  quantity?: number | null;
+  purchased?: boolean | null;
+  checked?: boolean | null;
 };
 
 export type ActionResult =
