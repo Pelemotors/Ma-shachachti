@@ -34,6 +34,7 @@ export function useAudioRecorder() {
   const [levels, setLevels] = useState<number[]>(() => emptyLevels());
   const [error, setError] = useState("");
   const [blob, setBlob] = useState<Blob | null>(null);
+  const [recordingId, setRecordingId] = useState<string | null>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -45,6 +46,7 @@ export function useAudioRecorder() {
   const sendLocked = useRef(false);
   const cancelled = useRef(false);
   const phaseRef = useRef<RecorderPhase>("idle");
+  const durationRef = useRef(0);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -118,6 +120,8 @@ export function useAudioRecorder() {
     cancelled.current = false;
     setError("");
     setBlob(null);
+    setRecordingId(null);
+    durationRef.current = 0;
     setLevels(emptyLevels());
     setPhase("requesting_permission");
     try {
@@ -178,6 +182,7 @@ export function useAudioRecorder() {
           return;
         }
         setBlob(recorded);
+        setRecordingId(crypto.randomUUID());
         setPhase("preview");
       };
       try {
@@ -186,11 +191,13 @@ export function useAudioRecorder() {
         rec.start();
       }
       setSeconds(0);
+      durationRef.current = 0;
       setPhase("recording");
       startLevelLoop();
       tick.current = setInterval(() => {
         setSeconds((current) => {
           const next = current + 1;
+          durationRef.current = next;
           if (next >= RECORDER_MAX_SECONDS) {
             stopTimer();
             if (mediaRecorder.current?.state === "recording") {
@@ -236,6 +243,7 @@ export function useAudioRecorder() {
     sendLocked.current = false;
     cleanup();
     setBlob(null);
+    setRecordingId(null);
     setSeconds(0);
     setLevels(emptyLevels());
     setError("");
@@ -245,6 +253,7 @@ export function useAudioRecorder() {
   const discardPreview = useCallback(() => {
     sendLocked.current = false;
     setBlob(null);
+    setRecordingId(null);
     setSeconds(0);
     setLevels(emptyLevels());
     setError("");
@@ -253,12 +262,18 @@ export function useAudioRecorder() {
 
   const send = useCallback(
     async (
-      transcribe: (recorded: Blob) => Promise<string>,
+      transcribe: (
+        recorded: Blob,
+        recordingId: string,
+        durationSeconds: number,
+      ) => Promise<string>,
     ): Promise<string | null> => {
       const current = blob;
+      const currentId = recordingId;
       if (
         !canSendTranscript(phaseRef.current, !!current, sendLocked.current) ||
-        !current
+        !current ||
+        !currentId
       ) {
         return null;
       }
@@ -266,8 +281,9 @@ export function useAudioRecorder() {
       setPhase("transcribing");
       setError("");
       try {
-        const text = await transcribe(current);
+        const text = await transcribe(current, currentId, durationRef.current);
         if (!shouldKeepBlobAfterTranscribe(true)) setBlob(null);
+        setRecordingId(null);
         setSeconds(0);
         setLevels(emptyLevels());
         setPhase("idle");
@@ -282,7 +298,7 @@ export function useAudioRecorder() {
         sendLocked.current = false;
       }
     },
-    [blob],
+    [blob, recordingId],
   );
 
   return {
@@ -291,6 +307,7 @@ export function useAudioRecorder() {
     levels,
     error,
     blob,
+    recordingId,
     start,
     finish,
     cancel,

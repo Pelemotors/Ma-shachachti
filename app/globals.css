@@ -463,7 +463,7 @@ h1 {
 
 .bottom-nav {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: 4px;
   padding: 8px 2px 2px;
 }
@@ -578,6 +578,78 @@ h1 {
   flex: 1;
   overflow: auto;
   padding: 16px 16px 8px;
+}
+.recording-bank {
+  flex: 1;
+  overflow: auto;
+  padding: 18px 16px;
+}
+.recording-bank__heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.recording-bank__heading h1,
+.recording-bank__heading p,
+.recording-bank__empty p {
+  margin: 0;
+}
+.recording-bank__heading p,
+.recording-bank__empty p {
+  color: var(--muted);
+  margin-top: 4px;
+}
+.recording-bank__empty {
+  padding: 40px 16px;
+  text-align: center;
+}
+.recording-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.recording-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+}
+.recording-card__meta,
+.recording-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.recording-status {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--text);
+}
+.recording-status.ready {
+  background: #dceedd;
+  color: #315e38;
+}
+.recording-status.error {
+  background: #f8dedb;
+  color: #8b413a;
+}
+.recording-card__transcript {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+.recording-card audio {
+  width: 100%;
 }
 
 .lists-panel {

@@ -10,6 +10,10 @@ const authSrc = readFileSync(
   new URL("../lib/server-auth.ts", import.meta.url),
   "utf8",
 );
+const serviceSrc = readFileSync(
+  new URL("../lib/audio/transcription-service.ts", import.meta.url),
+  "utf8",
+);
 
 test("unauthenticated users cannot transcribe", () => {
   assert.match(src, /await authorize\(req\)/);
@@ -21,7 +25,8 @@ test("lean transcribe route stays a transcription endpoint only", () => {
     src,
     /readState|budget|runRequestedActions|executeAction|loadMemory/,
   );
-  assert.match(src, /audio\/transcriptions/);
-  assert.match(src, /language", "he"/);
-  assert.match(src, /transcriptionModelFromEnv/);
+  assert.match(src, /transcribeAudio/);
+  assert.match(serviceSrc, /audio\/transcriptions/);
+  assert.match(serviceSrc, /language", "he"/);
+  assert.match(serviceSrc, /transcriptionModelFromEnv/);
 });

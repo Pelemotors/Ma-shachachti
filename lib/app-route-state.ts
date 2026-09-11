@@ -6,6 +6,7 @@ export const APP_VIEWS = [
   "tasks",
   "shopping",
   "checklists",
+  "recordings",
   "focus",
   "schedule",
   "free-time",

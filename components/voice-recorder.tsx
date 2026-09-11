@@ -5,7 +5,7 @@ import {
   formatRecordingClock,
   useAudioRecorder,
 } from "@/hooks/use-audio-recorder";
-import { transcribeAudioBlob } from "@/lib/audio/transcribe-client";
+import { processRecordingBlob } from "@/lib/audio/transcribe-client";
 
 function Icon({ path, size = 20 }: { path: string; size?: number }) {
   return (
@@ -36,6 +36,7 @@ export function VoiceRecorder(props: {
   const [playing, setPlaying] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const autoProcessedIds = useRef(new Set<string>());
 
   useEffect(() => {
     if (!rec.blob) {
@@ -59,6 +60,16 @@ export function VoiceRecorder(props: {
     }
   }, [previewUrl]);
 
+  useEffect(() => {
+    const id = rec.recordingId;
+    if (rec.phase !== "preview" || !rec.blob || !id) return;
+    if (autoProcessedIds.current.has(id)) return;
+    autoProcessedIds.current.add(id);
+    void rec.send(processRecordingBlob).then(async (text) => {
+      if (text) await props.onText(text);
+    });
+  }, [rec.phase, rec.blob, rec.recordingId, rec.send, props.onText]);
+
   async function handleStart() {
     if (!props.enabled) {
       props.onError?.("תמלול קולי זמין אחרי חיבור לחשבון.");
@@ -68,7 +79,7 @@ export function VoiceRecorder(props: {
   }
 
   async function handleSend() {
-    const text = await rec.send(transcribeAudioBlob);
+    const text = await rec.send(processRecordingBlob);
     if (text) await props.onText(text);
   }
 
@@ -166,7 +177,7 @@ export function VoiceRecorder(props: {
     <div
       className="voice-recorder voice-recorder--active voice-recorder--preview"
       role="group"
-      aria-label="תצוגה מקדימה של ההקלטה"
+      aria-label="עיבוד ההקלטה"
     >
       <button
         type="button"
@@ -211,14 +222,14 @@ export function VoiceRecorder(props: {
         disabled={rec.phase === "transcribing"}
         onClick={() => void handleSend()}
         aria-label={
-          rec.phase === "error" ? "נסה שוב תמלול" : "שליחת הקלטה לתמלול"
+          rec.phase === "error" ? "נסה שוב תמלול" : "תמלול ההקלטה"
         }
       >
         {rec.phase === "transcribing"
           ? "מתמללים…"
           : rec.phase === "error"
             ? "נסה שוב"
-            : "תמלל"}
+            : "מתחילים…"}
       </button>
     </div>
   );

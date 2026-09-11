@@ -71,6 +71,7 @@ import {
 } from "@/components/personal-agent-surfaces";
 import { useAgentSurfaces } from "@/hooks/use-agent-surfaces";
 import { ChecklistsView, ShoppingView } from "@/components/lean-lists";
+import { RecordingBank } from "@/components/recording-bank";
 
 type ChatMessage = {
   id: string;
@@ -837,6 +838,8 @@ export function ChatApp() {
                   ? "רשימת קניות"
                 : view === "checklists"
                   ? "הרשימות שלי"
+                : view === "recordings"
+                  ? "בנק ההקלטות"
                 : view === "focus"
                   ? "מיקוד"
                 : view === "schedule"
@@ -1106,6 +1109,8 @@ export function ChatApp() {
             mutations={mutations.current}
             onFailure={setFailure}
           />
+        ) : view === "recordings" ? (
+          <RecordingBank />
         ) : view === "settings" ? (
           <SettingsPanel
             profile={profile ?? emptyUserProfile(userId ?? "")}
@@ -1384,6 +1389,13 @@ export function ChatApp() {
               onClick={() => openView("checklists")}
             >
               רשימות
+            </button>
+            <button
+              className={view === "recordings" ? "active" : undefined}
+              type="button"
+              onClick={() => openView("recordings")}
+            >
+              הקלטות
             </button>
           </nav>
         </div>
