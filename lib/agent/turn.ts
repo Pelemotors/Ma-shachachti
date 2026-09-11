@@ -11,6 +11,7 @@ import type {
   TaskRow,
 } from "../types.ts";
 import { TIME_ZONE, dueTimeFromDueAt, jerusalemParts, todayContext } from "../time.ts";
+import { reminderBase } from "../reminders.ts";
 
 export { AGENT_TURN_JSON_SCHEMA, parseDecision } from "../action-schema.ts";
 export { TIME_ZONE, todayContext };
@@ -28,9 +29,10 @@ function formatTask(task: TaskRow, consequence?: ConsequenceRow) {
         task.planned_end_at ? `-${jerusalemParts(task.planned_end_at).time}` : ""
       }`
     : " | planned none";
-  const reminder = task.due_at
+  const base = reminderBase(task);
+  const reminder = base
     ? task.reminder_enabled
-      ? ` | reminder ${task.reminder_offset_minutes ?? "default"}`
+      ? ` | reminder ${task.reminder_offset_minutes ?? "default"} base=${base.source}:${base.at}`
       : " | reminder off"
     : "";
   const notes = task.notes ? ` | notes ${task.notes}` : "";

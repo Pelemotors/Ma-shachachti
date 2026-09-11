@@ -12,14 +12,17 @@ function notificationCopy(state: PushUiState) {
   if (state === "unsupported") {
     return "התראות Push אינן נתמכות במכשיר הזה.";
   }
-  if (state === "denied") {
+  if (state === "permission-denied") {
     return "התראות חסומות. ניתן לשנות זאת בהרשאות האתר או המכשיר.";
   }
-  if (state === "granted") return "התראות מאושרות ופעילות";
+  if (state === "active") return "התראות מאושרות, רשומות ומוכנות לשליחה.";
   if (state === "granted-unsubscribed") {
     return "הרשאה קיימת, ההתראות עדיין לא הופעלו";
   }
-  return "התראות עדיין לא אושרו";
+  if (state === "subscribed-not-ready") {
+    return "המכשיר רשום, אך שירות השליחה בשרת עדיין אינו מוכן.";
+  }
+  return "נדרשת הרשאה כדי להפעיל התראות.";
 }
 
 export function DevicePermissionsPanel() {
@@ -73,19 +76,43 @@ export function DevicePermissionsPanel() {
             {notificationCopy(push.state)}
           </p>
         </div>
-        {canAskPush ? (
-          <button
-            className="settings-action"
-            type="button"
-            disabled={push.busy}
-            onClick={() => void push.enable()}
-          >
-            {push.state === "granted-unsubscribed"
-              ? "הפעלת התראות במכשיר"
-              : "אישור התראות"}
-          </button>
-        ) : null}
+        <div className="permission-actions">
+          {canAskPush ? (
+            <button
+              className="settings-action"
+              type="button"
+              disabled={push.busy}
+              onClick={() => void push.enable()}
+            >
+              {push.state === "granted-unsubscribed"
+                ? "הפעלה מחדש"
+                : "אישור והפעלה"}
+            </button>
+          ) : null}
+          {push.state === "active" ? (
+            <button
+              className="settings-action"
+              type="button"
+              disabled={push.busy}
+              onClick={() => void push.test()}
+            >
+              שליחת בדיקה
+            </button>
+          ) : null}
+          {push.state === "active" ||
+          push.state === "subscribed-not-ready" ? (
+            <button
+              className="text-button"
+              type="button"
+              disabled={push.busy}
+              onClick={() => void push.disable()}
+            >
+              כיבוי במכשיר
+            </button>
+          ) : null}
+        </div>
       </div>
+      {push.message ? <p className="success-box">{push.message}</p> : null}
       {localError || push.error ? (
         <p className="error-box">{localError || push.error}</p>
       ) : null}

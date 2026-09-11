@@ -16,6 +16,8 @@ function action(partial: Partial<AgentAction>): AgentAction {
     due_time: null,
     due_patch: null,
     reminder_enabled: null,
+    reminder_at: null,
+    reminder_at_patch: null,
     reminder_offset_minutes: null,
     reminder_patch: null,
     plan_patch: null,
@@ -37,6 +39,9 @@ type Row = {
   notes: string;
   due_on: string | null;
   due_at: string | null;
+  reminder_at: string | null;
+  planned_start_at: string | null;
+  planned_end_at: string | null;
   reminder_enabled: boolean;
   reminder_offset_minutes: number | null;
   reminder_sent_at: string | null;
@@ -71,7 +76,10 @@ function dbWith(rows: Row[]) {
             notes: String(next.notes ?? ""),
             due_on: (next.due_on as string | null) ?? null,
             due_at: (next.due_at as string | null) ?? null,
-            reminder_enabled: next.reminder_enabled !== false,
+            reminder_at: (next.reminder_at as string | null) ?? null,
+            planned_start_at: (next.planned_start_at as string | null) ?? null,
+            planned_end_at: (next.planned_end_at as string | null) ?? null,
+            reminder_enabled: next.reminder_enabled === true,
             reminder_offset_minutes:
               (next.reminder_offset_minutes as number | null) ?? null,
             reminder_sent_at: null,
@@ -143,6 +151,7 @@ test("task.create stores no-date, date-only, and date+time as three states", asy
   assert.equal(none.ok, true);
   assert.equal(noneRows[0]?.due_on, null);
   assert.equal(noneRows[0]?.due_at, null);
+  assert.equal(noneRows[0]?.reminder_enabled, false);
 
   const dateRows: Row[] = [];
   const dated = await executeAction(
@@ -168,6 +177,36 @@ test("task.create stores no-date, date-only, and date+time as three states", asy
   assert.equal(timeRows[0]?.notes, "");
 });
 
+test("task.create reminders are off unless the explicit opt-in contract is complete", async () => {
+  const implicitRows: Row[] = [];
+  await executeAction(
+    dbWith(implicitRows),
+    "user-1",
+    action({
+      title: "לא להפעיל בשקט",
+      reminder_enabled: true,
+      due_on: "2026-10-23",
+      due_time: "17:00",
+    }),
+  );
+  assert.equal(implicitRows[0]?.reminder_enabled, false);
+
+  const explicitRows: Row[] = [];
+  await executeAction(
+    dbWith(explicitRows),
+    "user-1",
+    action({
+      title: "להזכיר במפורש",
+      reminder_patch: "set",
+      reminder_enabled: true,
+      reminder_at_patch: "set",
+      reminder_at: "2026-10-23T12:00:00.000Z",
+    }),
+  );
+  assert.equal(explicitRows[0]?.reminder_enabled, true);
+  assert.equal(explicitRows[0]?.reminder_at, "2026-10-23T12:00:00.000Z");
+});
+
 test("time without date is rejected by inspect and execute", async () => {
   const inspected = inspectActions([
     action({ title: "בלי תאריך", due_time: "16:00" }),
@@ -191,6 +230,9 @@ test("task.update can move between none, date-only, and date+time", async () => 
       notes: "לא לקרוא שעה מכאן 17:00",
       due_on: null,
       due_at: null,
+      reminder_at: null,
+      planned_start_at: null,
+      planned_end_at: null,
       reminder_enabled: true,
       reminder_offset_minutes: null,
       reminder_sent_at: "2026-09-01T00:00:00.000Z",

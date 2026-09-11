@@ -70,7 +70,7 @@ export function SettingsPanel({
       <section className="settings-section">
         <h2>תזכורת ברירת מחדל</h2>
         <p className="muted">
-          כמה זמן לפני משימה עם שעה לשלוח לך התראה?
+          כמה זמן לפני בסיס הזמן לשלוח תזכורת שהפעלת?
         </p>
         <label className="settings-field">
           <span className="sr-only">תזכורת ברירת מחדל</span>
@@ -87,8 +87,7 @@ export function SettingsPanel({
           </select>
         </label>
         <p className="muted settings-hint">
-          ההגדרה חלה על משימות עם תאריך ושעה. אפשר לשנות את התזכורת גם במשימה
-          מסוימת.
+          תזכורות כבויות כברירת מחדל. ההגדרה חלה רק לאחר הפעלה מפורשת במשימה.
         </p>
       </section>
       {error ? <div className="error-box">{error}</div> : null}

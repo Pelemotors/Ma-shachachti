@@ -8,7 +8,9 @@ function safeUrl(value) {
       self.location.origin,
     );
     if (url.origin !== self.location.origin) return DEFAULT_URL;
-    if (!url.pathname.startsWith("/app")) return DEFAULT_URL;
+    if (url.pathname !== "/app" && !url.pathname.startsWith("/app/")) {
+      return DEFAULT_URL;
+    }
     return url.pathname + url.search + url.hash;
   } catch {
     return DEFAULT_URL;
@@ -27,8 +29,8 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(data.title || "מה שכחתי?", {
       body: data.body || "יש משימה שצריך לשים לב אליה",
       tag: data.tag || "task-reminder",
-      icon: data.icon || "/icon-192.png",
-      badge: data.badge || "/icon-192.png",
+      icon: data.icon || "/icon.svg",
+      badge: data.badge || "/icon.svg",
       data: {
         url,
         taskId: data.data?.taskId ?? data.taskId ?? null,

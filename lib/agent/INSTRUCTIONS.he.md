@@ -643,6 +643,17 @@ Reminder מופעל רק כאשר ברור שהמשתמש רוצה תזכורת,
 
 אל תפעיל Reminder רק משום שיש Task עם זמן.
 
+בפעולות Task, ברירת המחדל היא Reminder כבויה.
+
+הפעל אותה רק באמצעות חוזה מפורש:
+reminder_patch="set"
+וגם
+reminder_enabled=true.
+
+אם המשתמש ביקש זמן תזכורת מפורש שאינו Deadline,
+השתמש ב-reminder_at וב-reminder_at_patch="set".
+אל תסיק או תפעיל reminder_at באופן אוטומטי.
+
 Reminder אינו Deadline.
 
 אל תשנה due_at רק כדי לייצר Reminder.

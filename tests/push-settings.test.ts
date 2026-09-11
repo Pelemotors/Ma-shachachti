@@ -30,7 +30,9 @@ function task(partial: Partial<ReminderTask> = {}): ReminderTask {
     user_id: "user-a",
     title: "להזמין אוכל לדגים",
     status: "open",
+    reminder_at: null,
     due_at: dueAt,
+    planned_start_at: null,
     reminder_enabled: true,
     reminder_offset_minutes: null,
     reminder_sent_at: null,
@@ -51,6 +53,7 @@ test("push permission states map to honest UI copy states", () => {
       supported: false,
       permission: "unsupported",
       hasSubscription: false,
+      deliveryReady: false,
     }),
     "unsupported",
   );
@@ -59,22 +62,25 @@ test("push permission states map to honest UI copy states", () => {
       supported: true,
       permission: "default",
       hasSubscription: false,
+      deliveryReady: true,
     }),
-    "default",
+    "permission-required",
   );
   assert.equal(
     notificationUiState({
       supported: true,
       permission: "granted",
       hasSubscription: true,
+      deliveryReady: true,
     }),
-    "granted",
+    "active",
   );
   assert.equal(
     notificationUiState({
       supported: true,
       permission: "granted",
       hasSubscription: false,
+      deliveryReady: true,
     }),
     "granted-unsubscribed",
   );
@@ -83,16 +89,26 @@ test("push permission states map to honest UI copy states", () => {
       supported: true,
       permission: "denied",
       hasSubscription: false,
+      deliveryReady: true,
     }),
-    "denied",
+    "permission-denied",
+  );
+  assert.equal(
+    notificationUiState({
+      supported: true,
+      permission: "granted",
+      hasSubscription: true,
+      deliveryReady: false,
+    }),
+    "subscribed-not-ready",
   );
 });
 
 test("push permission is requested only from the settings button", () => {
   assert.equal(shouldAutoRequestPushPermission(), false);
   assert.equal(PUSH_PERMISSION_TRIGGER, "settings-button");
-  assert.equal(canPromptPushPermission("default"), true);
-  assert.equal(canPromptPushPermission("denied"), false);
+  assert.equal(canPromptPushPermission("permission-required"), true);
+  assert.equal(canPromptPushPermission("permission-denied"), false);
 });
 
 test("push subscription payload cannot carry another user_id", () => {
@@ -163,6 +179,31 @@ test("per-task override is respected and default is inherited", () => {
   if (inherited.kind === "send") assert.equal(inherited.offset, 180);
 });
 
+test("planner uses explicit reminder_at before due and planned bases", () => {
+  const explicit = planTaskReminder(
+    task({
+      reminder_at: "2026-09-10T17:00:00.000Z",
+      due_at: "2026-09-10T20:00:00.000Z",
+      planned_start_at: "2026-09-10T19:00:00.000Z",
+      reminder_offset_minutes: 0,
+    }),
+    30,
+    new Date("2026-09-10T17:01:00.000Z"),
+  );
+  assert.equal(explicit.kind, "send");
+
+  const planned = planTaskReminder(
+    task({
+      reminder_at: null,
+      due_at: null,
+      planned_start_at: "2026-09-10T18:00:00.000Z",
+    }),
+    30,
+    new Date("2026-09-10T17:31:00.000Z"),
+  );
+  assert.equal(planned.kind, "send");
+});
+
 test("expired 404/410 subscriptions are treated as gone", () => {
   assert.equal(goneSubscriptionStatus(404), true);
   assert.equal(goneSubscriptionStatus(410), true);
@@ -203,4 +244,45 @@ test("notification tables stay isolated by auth.uid and not user_metadata", () =
   assert.match(sql, /notification_preferences_select_own/);
   assert.match(sql, /user_push_subscriptions_delete_own/);
   assert.match(sql, /enable row level security/);
+});
+
+test("pending foundation migration makes reminders conservative and leaves legacy tables alone", () => {
+  const sql = readFileSync(
+    new URL(
+      "../database/migrations/20260912_lean_agent_foundation.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(sql, /add column if not exists reminder_at timestamptz/);
+  assert.match(sql, /alter column reminder_enabled set default false/);
+  assert.match(sql, /reminder_opted_in_at is null/);
+  assert.match(
+    sql,
+    /p_action ->> 'reminder_patch' = 'set'[\s\S]*reminder_enabled/,
+  );
+  assert.match(sql, /coalesce\(reminder_at, due_at, planned_start_at\)/);
+  assert.doesNotMatch(sql, /legacy_push|push_subscriptions_legacy/);
+});
+
+test("service worker registration has one shared owner and valid local assets", () => {
+  const owner = readFileSync(
+    new URL("../lib/push-service-worker.ts", import.meta.url),
+    "utf8",
+  );
+  const app = readFileSync(
+    new URL("../components/chat-app.tsx", import.meta.url),
+    "utf8",
+  );
+  const worker = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
+  const icon = readFileSync(
+    new URL("../public/icon.svg", import.meta.url),
+    "utf8",
+  );
+  assert.match(owner, /registrationPromise \?\?=/);
+  assert.doesNotMatch(app, /serviceWorker\.register/);
+  assert.match(worker, /showNotification/);
+  assert.match(worker, /clients\.openWindow/);
+  assert.match(worker, /url\.origin !== self\.location\.origin/);
+  assert.match(icon, /<svg/);
 });

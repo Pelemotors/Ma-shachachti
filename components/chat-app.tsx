@@ -143,12 +143,6 @@ export function ChatApp() {
   }, [router]);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      void navigator.serviceWorker.register("/sw.js");
-    }
-  }, []);
-
-  useEffect(() => {
     if (view !== "tasks" && view !== "settings") return;
     let alive = true;
     void authFetch("/api/preferences")
@@ -508,7 +502,12 @@ export function ChatApp() {
     const title = newTitle.trim();
     if (!title || savingTask) return;
     setNewTitle("");
-    await runTaskAction({ type: "task.create", title });
+    await runTaskAction({
+      type: "task.create",
+      title,
+      reminder_patch: "set",
+      reminder_enabled: false,
+    });
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -737,6 +736,8 @@ export function ChatApp() {
                                   void runTaskAction({
                                     type: "task.create",
                                     title: item.title,
+                                    reminder_patch: "set",
+                                    reminder_enabled: false,
                                   })
                                 }
                               >
@@ -823,11 +824,15 @@ export function ChatApp() {
                       {formatDue(task) ? (
                         <small>{formatDue(task)}</small>
                       ) : null}
-                      {task.due_at ? (
+                      {task.reminder_at ||
+                      task.due_at ||
+                      task.planned_start_at ? (
                         <small>
                           🔔{" "}
                           {formatTaskReminder({
+                            reminder_at: task.reminder_at,
                             due_at: task.due_at,
+                            planned_start_at: task.planned_start_at,
                             reminder_enabled: task.reminder_enabled,
                             reminder_offset_minutes:
                               task.reminder_offset_minutes,
@@ -835,7 +840,9 @@ export function ChatApp() {
                           })}
                         </small>
                       ) : null}
-                      {task.due_at ? (
+                      {task.reminder_at ||
+                      task.due_at ||
+                      task.planned_start_at ? (
                         <label className="task-reminder">
                           <span>תזכורת</span>
                           <select

@@ -1,6 +1,7 @@
 import {
   DEFAULT_REMINDER_MINUTES,
   effectiveReminderOffset,
+  reminderBase,
   reminderDispatchState,
   remindAtIso,
   REMINDER_CLAIM_STALE_MS,
@@ -11,7 +12,9 @@ export type ReminderTask = {
   user_id: string;
   title: string;
   status: string;
+  reminder_at: string | null;
   due_at: string | null;
+  planned_start_at: string | null;
   reminder_enabled: boolean;
   reminder_offset_minutes: number | null;
   reminder_sent_at: string | null;
@@ -35,18 +38,23 @@ export function planTaskReminder(
   if (task.status !== "open") return { kind: "skip", reason: "not_open" };
   if (task.reminder_sent_at) return { kind: "skip", reason: "already_sent" };
   const offset = effectiveReminderOffset({
+    reminder_at: task.reminder_at,
     due_at: task.due_at,
+    planned_start_at: task.planned_start_at,
     reminder_enabled: task.reminder_enabled,
     reminder_offset_minutes: task.reminder_offset_minutes,
     default_reminder_minutes: defaultMinutes ?? DEFAULT_REMINDER_MINUTES,
   });
   if (offset == null) {
+    const base = reminderBase(task);
     return {
       kind: "skip",
-      reason: task.due_at ? "disabled" : "no_due_at",
+      reason: base ? "disabled" : "no_base",
     };
   }
-  const remindAt = remindAtIso(task.due_at as string, offset);
+  const base = reminderBase(task);
+  if (!base) return { kind: "skip", reason: "no_base" };
+  const remindAt = remindAtIso(base.at, offset);
   const state = reminderDispatchState(now, remindAt);
   if (state === "future") return { kind: "wait" };
   if (state === "expired") return { kind: "expire" };

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   DEFAULT_REMINDER_MINUTES,
   effectiveReminderOffset,
+  reminderBase,
   reminderDispatchState,
   remindAtIso,
   shouldResetReminderDelivery,
@@ -76,6 +77,41 @@ test("null override inherits the current default", () => {
   );
 });
 
+test("reminder base precedence is explicit, due, planned, then none", () => {
+  assert.deepEqual(
+    reminderBase({
+      reminder_at: "2026-09-10T16:00:00.000Z",
+      due_at: "2026-09-10T18:00:00.000Z",
+      planned_start_at: "2026-09-10T17:00:00.000Z",
+    }),
+    { at: "2026-09-10T16:00:00.000Z", source: "reminder_at" },
+  );
+  assert.equal(
+    reminderBase({
+      reminder_at: null,
+      due_at: dueAt,
+      planned_start_at: "2026-09-10T17:00:00.000Z",
+    })?.source,
+    "due_at",
+  );
+  assert.equal(
+    reminderBase({
+      reminder_at: null,
+      due_at: null,
+      planned_start_at: "2026-09-10T17:00:00.000Z",
+    })?.source,
+    "planned_start_at",
+  );
+  assert.equal(
+    reminderBase({
+      reminder_at: null,
+      due_at: null,
+      planned_start_at: null,
+    }),
+    null,
+  );
+});
+
 test("expired reminders outside the two-hour grace window are skipped", () => {
   const remindAt = remindAtIso(dueAt, 30);
   assert.equal(
@@ -106,6 +142,34 @@ test("changed due_at or offset resets delivery, title-only would not", () => {
       nextEnabled: true,
     }),
     false,
+  );
+  assert.equal(
+    shouldResetReminderDelivery({
+      previousReminderAt: null,
+      nextReminderAt: "2026-09-10T17:00:00.000Z",
+      previousDueAt: dueAt,
+      nextDueAt: dueAt,
+      previousPlannedStartAt: null,
+      nextPlannedStartAt: null,
+      previousOffset: null,
+      nextOffset: null,
+      previousEnabled: true,
+      nextEnabled: true,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldResetReminderDelivery({
+      previousDueAt: null,
+      nextDueAt: null,
+      previousPlannedStartAt: "2026-09-10T17:00:00.000Z",
+      nextPlannedStartAt: "2026-09-10T18:00:00.000Z",
+      previousOffset: 30,
+      nextOffset: 30,
+      previousEnabled: true,
+      nextEnabled: true,
+    }),
+    true,
   );
 });
 

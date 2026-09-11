@@ -1,3 +1,32 @@
+-- Reminders are opt-in. The old tasks default was true, but no historical
+-- column proves that those rows were explicitly enabled by a user. Disable
+-- only rows without opt-in provenance so activating planned_start_at cannot
+-- suddenly notify existing tasks. Legacy reminder/subscription tables are
+-- intentionally untouched; Lean delivery uses user_push_subscriptions.
+alter table public.tasks
+  add column if not exists reminder_at timestamptz,
+  add column if not exists reminder_opted_in_at timestamptz;
+
+alter table public.tasks
+  alter column reminder_enabled set default false;
+
+update public.tasks
+set reminder_enabled = false,
+    reminder_sent_at = null,
+    reminder_claimed_at = null
+where reminder_enabled
+  and reminder_opted_in_at is null;
+
+drop index if exists public.tasks_open_reminders_idx;
+create index if not exists tasks_open_reminder_bases_idx
+  on public.tasks (
+    coalesce(reminder_at, due_at, planned_start_at)
+  )
+  where status = 'open'
+    and reminder_enabled
+    and reminder_sent_at is null
+    and coalesce(reminder_at, due_at, planned_start_at) is not null;
+
 alter table public.agent_memory
   add column if not exists source text not null default 'legacy',
   add column if not exists seen_at timestamptz;
@@ -190,6 +219,7 @@ declare
   v_due_on date;
   v_due_time time;
   v_due_at timestamptz;
+  v_reminder_at timestamptz;
   v_planned_start timestamptz;
   v_planned_end timestamptz;
   v_reminder_enabled boolean;
@@ -333,19 +363,24 @@ begin
                 at time zone 'Asia/Jerusalem'
             end;
           end if;
-          v_reminder_enabled := coalesce(
-            (p_action ->> 'reminder_enabled')::boolean,
-            true
-          );
+          v_reminder_enabled :=
+            p_action ->> 'reminder_patch' = 'set'
+            and coalesce((p_action ->> 'reminder_enabled')::boolean, false);
+          v_reminder_at := case
+            when p_action ->> 'reminder_at_patch' = 'set'
+            then nullif(p_action ->> 'reminder_at', '')::timestamptz
+            else null
+          end;
           v_reminder_offset :=
             nullif(p_action ->> 'reminder_offset_minutes', '')::integer;
           insert into public.tasks (
             user_id, title, notes, status, due_on, due_at,
-            planned_start_at, planned_end_at, reminder_enabled,
-            reminder_offset_minutes, updated_at
+            planned_start_at, planned_end_at, reminder_at, reminder_enabled,
+            reminder_opted_in_at, reminder_offset_minutes, updated_at
           ) values (
             v_user_id, v_title, v_notes, 'open', v_due_on, v_due_at,
-            v_planned_start, v_planned_end, v_reminder_enabled,
+            v_planned_start, v_planned_end, v_reminder_at, v_reminder_enabled,
+            case when v_reminder_enabled then now() else null end,
             v_reminder_offset, now()
           )
           returning id into v_id;
@@ -464,9 +499,15 @@ begin
         end if;
       end if;
       if v_result is null then
+        v_reminder_at := case
+          when p_action ->> 'reminder_at_patch' = 'clear' then null
+          when p_action ->> 'reminder_at_patch' = 'set'
+            then nullif(p_action ->> 'reminder_at', '')::timestamptz
+          else v_current.reminder_at
+        end;
         v_reminder_enabled := case
           when p_action ->> 'reminder_patch' = 'set'
-          then coalesce((p_action ->> 'reminder_enabled')::boolean, true)
+          then coalesce((p_action ->> 'reminder_enabled')::boolean, false)
           else v_current.reminder_enabled
         end;
         v_reminder_offset := case
@@ -510,20 +551,31 @@ begin
             end,
             due_on = v_due_on,
             due_at = v_due_at,
+            reminder_at = v_reminder_at,
             reminder_enabled = v_reminder_enabled,
+            reminder_opted_in_at = case
+              when p_action ->> 'reminder_patch' = 'set'
+                and v_reminder_enabled then now()
+              when not v_reminder_enabled then null
+              else reminder_opted_in_at
+            end,
             reminder_offset_minutes = v_reminder_offset,
             planned_start_at = v_planned_start,
             planned_end_at = v_planned_end,
             reminder_sent_at = case
-              when due_at is distinct from v_due_at
+              when reminder_at is distinct from v_reminder_at
+                or due_at is distinct from v_due_at
+                or planned_start_at is distinct from v_planned_start
                 or reminder_offset_minutes is distinct from v_reminder_offset
-                or (not reminder_enabled and v_reminder_enabled)
+                or reminder_enabled is distinct from v_reminder_enabled
               then null else reminder_sent_at
             end,
             reminder_claimed_at = case
-              when due_at is distinct from v_due_at
+              when reminder_at is distinct from v_reminder_at
+                or due_at is distinct from v_due_at
+                or planned_start_at is distinct from v_planned_start
                 or reminder_offset_minutes is distinct from v_reminder_offset
-                or (not reminder_enabled and v_reminder_enabled)
+                or reminder_enabled is distinct from v_reminder_enabled
               then null else reminder_claimed_at
             end,
             updated_at = now()

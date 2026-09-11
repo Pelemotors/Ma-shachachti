@@ -207,7 +207,8 @@ test("device permission helpers stay honest", () => {
     supported: true,
     permission: "granted",
     hasSubscription: false,
+    deliveryReady: true,
   }), "granted-unsubscribed");
-  assert.equal(canPromptPushPermission("granted"), false);
-  assert.equal(canPromptPushPermission("default"), true);
+  assert.equal(canPromptPushPermission("active"), false);
+  assert.equal(canPromptPushPermission("permission-required"), true);
 });

@@ -14,6 +14,8 @@ export { DATE_RE, TIME_RE };
 
 export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const ISO_DATE_TIME_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
 
 export const ActionSchema = z.object({
   type: z.enum(ACTION_TYPES),
@@ -24,6 +26,8 @@ export const ActionSchema = z.object({
   due_time: z.string().regex(TIME_RE).nullable().optional(),
   due_patch: z.enum(["keep", "set", "clear"]).nullable().optional(),
   reminder_enabled: z.boolean().nullable().optional(),
+  reminder_at: z.string().regex(ISO_DATE_TIME_RE).nullable().optional(),
+  reminder_at_patch: z.enum(["keep", "set", "clear"]).nullable().optional(),
   reminder_offset_minutes: z
     .number()
     .int()
@@ -73,6 +77,8 @@ export const AGENT_TURN_JSON_SCHEMA = {
           "due_time",
           "due_patch",
           "reminder_enabled",
+          "reminder_at",
+          "reminder_at_patch",
           "reminder_offset_minutes",
           "reminder_patch",
           "plan_patch",
@@ -99,6 +105,14 @@ export const AGENT_TURN_JSON_SCHEMA = {
             enum: ["keep", "set", "clear"],
           }),
           reminder_enabled: nullable({ type: "boolean" }),
+          reminder_at: nullable({
+            type: "string",
+            pattern: ISO_DATE_TIME_RE.source,
+          }),
+          reminder_at_patch: nullable({
+            type: "string",
+            enum: ["keep", "set", "clear"],
+          }),
           reminder_offset_minutes: nullable({
             type: "integer",
             minimum: 0,
@@ -155,6 +169,8 @@ export const AGENT_TURN_JSON_SCHEMA = {
                   "due_time",
                   "due_patch",
                   "reminder_enabled",
+                  "reminder_at",
+                  "reminder_at_patch",
                   "reminder_offset_minutes",
                   "reminder_patch",
                   "plan_patch",
@@ -188,6 +204,14 @@ export const AGENT_TURN_JSON_SCHEMA = {
                     enum: ["keep", "set", "clear"],
                   }),
                   reminder_enabled: nullable({ type: "boolean" }),
+                  reminder_at: nullable({
+                    type: "string",
+                    pattern: ISO_DATE_TIME_RE.source,
+                  }),
+                  reminder_at_patch: nullable({
+                    type: "string",
+                    enum: ["keep", "set", "clear"],
+                  }),
                   reminder_offset_minutes: nullable({
                     type: "integer",
                     minimum: 0,
@@ -478,6 +502,8 @@ export function toAgentAction(data: z.infer<typeof ActionSchema>): AgentAction {
     due_time: data.due_time ?? null,
     due_patch: data.due_patch ?? null,
     reminder_enabled: data.reminder_enabled ?? null,
+    reminder_at: data.reminder_at ?? null,
+    reminder_at_patch: data.reminder_at_patch ?? null,
     reminder_offset_minutes:
       data.reminder_offset_minutes === undefined
         ? null

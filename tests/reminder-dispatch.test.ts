@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   deliverToSubscriptions,
+  deliverUserPush,
   dispatchDueReminders,
 } from "../lib/reminder-dispatch.ts";
+import { readFileSync } from "node:fs";
 import type { ReminderTask } from "../lib/reminder-plan.ts";
 
 type Sub = {
@@ -18,7 +20,9 @@ function task(partial: Partial<ReminderTask> = {}): ReminderTask {
     user_id: "user-a",
     title: "להזמין אוכל לדגים",
     status: "open",
+    reminder_at: null,
     due_at: "2026-09-10T18:00:00.000Z",
+    planned_start_at: null,
     reminder_enabled: true,
     reminder_offset_minutes: null,
     reminder_sent_at: null,
@@ -201,6 +205,52 @@ test("one failed device does not block another device", async () => {
   assert.deepEqual(delivered, ["https://fcm.googleapis.com/fcm/send/live"]);
 });
 
+test("shared user delivery loads only that user's subscriptions and cleans gone rows", async () => {
+  const db = createDb({
+    tasks: [],
+    prefs: [],
+    subs: [
+      {
+        user_id: "user-a",
+        endpoint: "https://fcm.googleapis.com/fcm/send/dead",
+        subscription: {
+          endpoint: "https://fcm.googleapis.com/fcm/send/dead",
+          keys: { p256dh: "x", auth: "y" },
+        },
+      },
+      {
+        user_id: "user-b",
+        endpoint: "https://fcm.googleapis.com/fcm/send/other",
+        subscription: {
+          endpoint: "https://fcm.googleapis.com/fcm/send/other",
+          keys: { p256dh: "x", auth: "y" },
+        },
+      },
+    ],
+  });
+  const result = await deliverUserPush(db as never, "user-a", "{}", async () => {
+    const error = new Error("gone") as Error & { statusCode: number };
+    error.statusCode = 410;
+    throw error;
+  });
+  assert.equal(result.gone, 1);
+  assert.deepEqual(
+    db.state.subs.map((row) => row.user_id),
+    ["user-b"],
+  );
+});
+
+test("test push route is authenticated, uses shared delivery, and records diagnostics", () => {
+  const source = readFileSync(
+    new URL("../app/api/push/test/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /await authorize\(req\)/);
+  assert.match(source, /deliverUserPush/);
+  assert.match(source, /eventType: "push\.test"/);
+  assert.match(source, /outcome: "no_subscription"/);
+});
+
 test("expired 404 subscription is removed and the other device still receives Push", async () => {
   const db = createDb({
     tasks: [task()],
@@ -240,4 +290,66 @@ test("expired 404 subscription is removed and the other device still receives Pu
     db.state.subs.map((row) => row.endpoint),
     ["https://fcm.googleapis.com/fcm/send/ok"],
   );
+});
+
+test("no subscription releases the claim and never records a sent reminder", async () => {
+  const db = createDb({
+    tasks: [task()],
+    prefs: [{ user_id: "user-a", default_reminder_minutes: 30 }],
+    subs: [],
+  });
+  const result = await dispatchDueReminders(db as never, {
+    now,
+    requireVapid: false,
+    send: async () => undefined,
+  });
+  assert.equal(result.sent, 0);
+  assert.equal(result.noSubscription, 1);
+  assert.equal(db.state.tasks[0]?.reminder_sent_at, null);
+  assert.equal(db.state.tasks[0]?.reminder_claimed_at, null);
+});
+
+test("transient delivery failure releases the claim for a later retry", async () => {
+  const db = createDb({
+    tasks: [task()],
+    prefs: [{ user_id: "user-a", default_reminder_minutes: 30 }],
+    subs: [
+      {
+        user_id: "user-a",
+        endpoint: "https://fcm.googleapis.com/fcm/send/retry",
+        subscription: {
+          endpoint: "https://fcm.googleapis.com/fcm/send/retry",
+          keys: { p256dh: "x", auth: "y" },
+        },
+      },
+    ],
+  });
+  const result = await dispatchDueReminders(db as never, {
+    now,
+    requireVapid: false,
+    send: async () => {
+      throw Object.assign(new Error("temporary"), { statusCode: 503 });
+    },
+  });
+  assert.equal(result.failed, 1);
+  assert.equal(result.sent, 0);
+  assert.equal(db.state.tasks[0]?.reminder_sent_at, null);
+  assert.equal(db.state.tasks[0]?.reminder_claimed_at, null);
+});
+
+test("expired reminders resolve without pretending they were sent", async () => {
+  const db = createDb({
+    tasks: [task()],
+    prefs: [{ user_id: "user-a", default_reminder_minutes: 30 }],
+    subs: [],
+  });
+  const result = await dispatchDueReminders(db as never, {
+    now: new Date("2026-09-10T20:00:00.000Z"),
+    requireVapid: false,
+    send: async () => undefined,
+  });
+  assert.equal(result.expired, 1);
+  assert.equal(result.sent, 0);
+  assert.equal(db.state.tasks[0]?.reminder_sent_at, null);
+  assert.equal(db.state.tasks[0]?.reminder_claimed_at, null);
 });

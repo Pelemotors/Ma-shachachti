@@ -8,7 +8,7 @@ import {
   type ReminderTask,
 } from "./reminder-plan.ts";
 
-type PushRow = {
+export type PushRow = {
   endpoint: string;
   subscription: {
     endpoint: string;
@@ -20,6 +20,13 @@ export type PushSender = (
   subscription: PushRow["subscription"],
   payload: string,
 ) => Promise<void>;
+
+export type PushDeliveryResult = {
+  subscriptions: number;
+  delivered: number;
+  failed: number;
+  gone: number;
+};
 
 export function configureWebPush() {
   const subject = process.env.VAPID_SUBJECT?.trim();
@@ -38,6 +45,7 @@ export async function deliverToSubscriptions(
 ) {
   let delivered = 0;
   let failed = 0;
+  let gone = 0;
   for (const row of subscriptions) {
     try {
       await send(row.subscription, payload);
@@ -48,12 +56,46 @@ export async function deliverToSubscriptions(
       );
       if (goneSubscriptionStatus(status)) {
         await onGone(row.endpoint);
+        gone += 1;
       } else {
         failed += 1;
       }
     }
   }
-  return { delivered, failed };
+  return { subscriptions: subscriptions.length, delivered, failed, gone };
+}
+
+export const sendWebPush: PushSender = async (subscription, payload) => {
+  await webpush.sendNotification(subscription, payload, {
+    TTL: 3600,
+    urgency: "normal",
+  });
+};
+
+export async function deliverUserPush(
+  db: SupabaseClient,
+  userId: string,
+  payload: string,
+  send: PushSender = sendWebPush,
+): Promise<PushDeliveryResult> {
+  const { data, error } = await db
+    .from("user_push_subscriptions")
+    .select("endpoint,subscription")
+    .eq("user_id", userId);
+  if (error) throw error;
+  return deliverToSubscriptions(
+    (data ?? []) as PushRow[],
+    payload,
+    send,
+    async (endpoint) => {
+      const { error: deleteError } = await db
+        .from("user_push_subscriptions")
+        .delete()
+        .eq("user_id", userId)
+        .eq("endpoint", endpoint);
+      if (deleteError) throw deleteError;
+    },
+  );
 }
 
 export async function dispatchDueReminders(
@@ -67,25 +109,29 @@ export async function dispatchDueReminders(
   const now = options.now ?? new Date();
   const requireVapid = options.requireVapid !== false;
   if (requireVapid && !options.send && !configureWebPush()) {
-    return { scanned: 0, sent: 0, skipped: 0, failed: 0 };
+    return {
+      scanned: 0,
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+      expired: 0,
+      noSubscription: 0,
+      gone: 0,
+    };
   }
   const send: PushSender =
-    options.send ??
-    (async (subscription, payload) => {
-      await webpush.sendNotification(subscription, payload, {
-        TTL: 3600,
-        urgency: "normal",
-      });
-    });
+    options.send ?? sendWebPush;
 
   const { data: tasks, error } = await db
     .from("tasks")
     .select(
-      "id,user_id,title,status,due_at,reminder_enabled,reminder_offset_minutes,reminder_sent_at,reminder_claimed_at",
+      "id,user_id,title,status,reminder_at,due_at,planned_start_at,reminder_enabled,reminder_offset_minutes,reminder_sent_at,reminder_claimed_at",
     )
     .eq("status", "open")
     .eq("reminder_enabled", true)
-    .not("due_at", "is", null)
+    .or(
+      "reminder_at.not.is.null,due_at.not.is.null,planned_start_at.not.is.null",
+    )
     .is("reminder_sent_at", null)
     .limit(200);
   if (error) throw error;
@@ -105,6 +151,9 @@ export async function dispatchDueReminders(
   let sent = 0;
   let skipped = 0;
   let failed = 0;
+  let expired = 0;
+  let noSubscription = 0;
+  let gone = 0;
   const nowIso = now.toISOString();
 
   for (const raw of tasks ?? []) {
@@ -139,20 +188,13 @@ export async function dispatchDueReminders(
     if (plan.kind === "expire") {
       await db
         .from("tasks")
-        .update({
-          reminder_sent_at: nowIso,
-          reminder_claimed_at: nowIso,
-        })
+        .update({ reminder_claimed_at: null })
         .eq("id", task.id)
         .is("reminder_sent_at", null);
       skipped += 1;
+      expired += 1;
       continue;
     }
-
-    const { data: subscriptions } = await db
-      .from("user_push_subscriptions")
-      .select("endpoint,subscription")
-      .eq("user_id", task.user_id);
 
     const payload = JSON.stringify({
       title: "מה שכחתי?",
@@ -161,21 +203,42 @@ export async function dispatchDueReminders(
       tag: `task-${task.id}`,
       data: { taskId: task.id, url: "/app" },
     });
-    const result = await deliverToSubscriptions(
-      (subscriptions ?? []) as PushRow[],
-      payload,
-      send,
-      async (endpoint) => {
-        await db.from("user_push_subscriptions").delete().eq("endpoint", endpoint);
-      },
-    );
+    let result: PushDeliveryResult;
+    try {
+      result = await deliverUserPush(db, task.user_id, payload, send);
+    } catch (error) {
+      failed += 1;
+      console.error("Lean reminder delivery failed", {
+        taskId: task.id,
+        error: error instanceof Error ? error.message : "delivery_failed",
+      });
+      await db
+        .from("tasks")
+        .update({ reminder_claimed_at: null })
+        .eq("id", task.id)
+        .is("reminder_sent_at", null);
+      continue;
+    }
     failed += result.failed;
+    gone += result.gone;
+    if (
+      result.subscriptions === 0 ||
+      (result.delivered === 0 && result.gone === result.subscriptions)
+    ) {
+      noSubscription += 1;
+    }
     if (result.delivered > 0) {
       await db
         .from("tasks")
         .update({ reminder_sent_at: nowIso })
         .eq("id", task.id);
       sent += 1;
+    } else {
+      await db
+        .from("tasks")
+        .update({ reminder_claimed_at: null })
+        .eq("id", task.id)
+        .is("reminder_sent_at", null);
     }
   }
 
@@ -184,5 +247,8 @@ export async function dispatchDueReminders(
     sent,
     skipped,
     failed,
+    expired,
+    noSubscription,
+    gone,
   };
 }

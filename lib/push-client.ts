@@ -7,10 +7,11 @@ export type PushPermission = "default" | "granted" | "denied";
 
 export type PushUiState =
   | "unsupported"
-  | "default"
-  | "granted"
+  | "permission-required"
+  | "permission-denied"
   | "granted-unsubscribed"
-  | "denied";
+  | "subscribed-not-ready"
+  | "active";
 
 export const PUSH_PERMISSION_TRIGGER = "settings-button" as const;
 
@@ -18,17 +19,19 @@ export function notificationUiState(input: {
   supported: boolean;
   permission: PushPermission | "unsupported";
   hasSubscription: boolean;
+  deliveryReady: boolean;
 }): PushUiState {
   if (!input.supported || input.permission === "unsupported") {
     return "unsupported";
   }
-  if (input.permission === "denied") return "denied";
-  if (input.permission === "default") return "default";
-  return input.hasSubscription ? "granted" : "granted-unsubscribed";
+  if (input.permission === "denied") return "permission-denied";
+  if (input.permission === "default") return "permission-required";
+  if (!input.hasSubscription) return "granted-unsubscribed";
+  return input.deliveryReady ? "active" : "subscribed-not-ready";
 }
 
 export function canPromptPushPermission(state: PushUiState) {
-  return state === "default" || state === "granted-unsubscribed";
+  return state === "permission-required" || state === "granted-unsubscribed";
 }
 
 export function shouldAutoRequestPushPermission() {

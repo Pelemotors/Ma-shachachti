@@ -34,7 +34,7 @@ async function ownTask(db: Db, userId: string, id: string) {
   const { data, error } = await db
     .from("tasks")
     .select(
-      "id,due_on,due_at,reminder_enabled,reminder_offset_minutes,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at",
+      "id,due_on,due_at,reminder_at,reminder_enabled,reminder_offset_minutes,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at",
     )
     .eq("user_id", userId)
     .eq("id", id)
@@ -45,6 +45,7 @@ async function ownTask(db: Db, userId: string, id: string) {
     | "id"
     | "due_on"
     | "due_at"
+    | "reminder_at"
     | "reminder_enabled"
     | "reminder_offset_minutes"
     | "reminder_sent_at"
@@ -58,21 +59,28 @@ async function ownTask(db: Db, userId: string, id: string) {
 
 function reminderResetIfNeeded(
   previous: {
+    reminder_at: string | null;
     due_at: string | null;
+    planned_start_at: string | null;
     reminder_enabled: boolean;
     reminder_offset_minutes: number | null;
   },
   next: {
+    reminder_at: string | null;
     due_at: string | null;
+    planned_start_at: string | null;
     reminder_enabled: boolean;
     reminder_offset_minutes: number | null;
   },
 ) {
-  const dueChanged = previous.due_at !== next.due_at;
+  const baseChanged =
+    previous.reminder_at !== next.reminder_at ||
+    previous.due_at !== next.due_at ||
+    previous.planned_start_at !== next.planned_start_at;
   const offsetChanged =
     previous.reminder_offset_minutes !== next.reminder_offset_minutes;
-  const reenabled = !previous.reminder_enabled && next.reminder_enabled;
-  if (dueChanged || offsetChanged || reenabled) {
+  const enabledChanged = previous.reminder_enabled !== next.reminder_enabled;
+  if (baseChanged || offsetChanged || enabledChanged) {
     return {
       reminder_sent_at: null,
       reminder_claimed_at: null,
@@ -130,7 +138,12 @@ export async function executeAction(
       if (!action.title) return fail(action.type, "חסר שם למשימה.");
       const deadline = resolveTaskDeadline(action.due_on, action.due_time);
       if (!deadline.ok) return fail(action.type, deadline.error);
-      const reminderEnabled = action.reminder_enabled !== false;
+      const reminderEnabled =
+        action.reminder_patch === "set" && action.reminder_enabled === true;
+      const reminderAt =
+        action.reminder_at_patch === "set" && action.reminder_at
+          ? action.reminder_at
+          : null;
       const reminderOffset =
         action.reminder_patch === "set" || action.reminder_offset_minutes != null
           ? action.reminder_offset_minutes
@@ -181,9 +194,11 @@ export async function executeAction(
           notes: fields.notes,
           due_on: fields.due_on,
           due_at: fields.due_at,
+          reminder_at: reminderAt,
           planned_start_at: plannedStart,
           planned_end_at: plannedEnd,
           reminder_enabled: reminderEnabled,
+          reminder_opted_in_at: reminderEnabled ? now : null,
           reminder_offset_minutes: reminderOffset,
           status: "open",
           updated_at: now,
@@ -208,6 +223,8 @@ export async function executeAction(
       if (action.notes != null) patch.notes = action.notes;
       let nextDueAt = current.due_at;
       let nextDueOn = current.due_on;
+      let nextReminderAt = current.reminder_at;
+      let nextPlannedStart = current.planned_start_at;
       if (action.due_patch === "clear") {
         nextDueOn = null;
         nextDueAt = null;
@@ -224,12 +241,24 @@ export async function executeAction(
       let nextEnabled = current.reminder_enabled;
       let nextOffset = current.reminder_offset_minutes;
       if (action.reminder_patch === "set") {
-        nextEnabled = action.reminder_enabled !== false;
+        nextEnabled = action.reminder_enabled === true;
         nextOffset = action.reminder_offset_minutes;
         patch.reminder_enabled = nextEnabled;
+        patch.reminder_opted_in_at = nextEnabled ? now : null;
         patch.reminder_offset_minutes = nextOffset;
       }
+      if (action.reminder_at_patch === "clear") {
+        nextReminderAt = null;
+        patch.reminder_at = null;
+      } else if (action.reminder_at_patch === "set") {
+        if (!action.reminder_at) {
+          return fail(action.type, "חסר זמן תזכורת מפורש.");
+        }
+        nextReminderAt = action.reminder_at;
+        patch.reminder_at = nextReminderAt;
+      }
       if (action.plan_patch === "clear") {
+        nextPlannedStart = null;
         patch.planned_start_at = null;
         patch.planned_end_at = null;
       } else if (action.plan_patch === "set") {
@@ -239,6 +268,7 @@ export async function executeAction(
           action.planned_end_time,
         );
         if (!planned.ok) return fail(action.type, planned.error);
+        nextPlannedStart = planned.start;
         patch.planned_start_at = planned.start;
         patch.planned_end_at = planned.end;
       }
@@ -246,12 +276,16 @@ export async function executeAction(
         patch,
         reminderResetIfNeeded(
           {
+            reminder_at: current.reminder_at,
             due_at: current.due_at,
+            planned_start_at: current.planned_start_at,
             reminder_enabled: current.reminder_enabled,
             reminder_offset_minutes: current.reminder_offset_minutes,
           },
           {
+            reminder_at: nextReminderAt,
             due_at: nextDueAt,
+            planned_start_at: nextPlannedStart,
             reminder_enabled: nextEnabled,
             reminder_offset_minutes: nextOffset,
           },
@@ -287,12 +321,16 @@ export async function executeAction(
         updated_at: now,
         ...reminderResetIfNeeded(
           {
+            reminder_at: current.reminder_at,
             due_at: current.due_at,
+            planned_start_at: current.planned_start_at,
             reminder_enabled: current.reminder_enabled,
             reminder_offset_minutes: current.reminder_offset_minutes,
           },
           {
+            reminder_at: current.reminder_at,
             due_at: deadline.due_at,
+            planned_start_at: current.planned_start_at,
             reminder_enabled: current.reminder_enabled,
             reminder_offset_minutes: current.reminder_offset_minutes,
           },
@@ -442,7 +480,7 @@ export async function loadTasks(db: Db, userId: string): Promise<TaskRow[]> {
   const { data, error } = await db
     .from("tasks")
     .select(
-      "id,title,notes,status,due_on,due_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at,created_at,updated_at,completed_at",
+      "id,title,notes,status,due_on,due_at,reminder_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at,created_at,updated_at,completed_at",
     )
     .eq("user_id", userId)
     .neq("status", "cancelled")
@@ -478,7 +516,7 @@ export async function loadScheduleTasks(db: Db, userId: string) {
   const { data, error } = await db
     .from("tasks")
     .select(
-      "id,title,notes,status,due_on,due_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at,created_at,updated_at,completed_at",
+      "id,title,notes,status,due_on,due_at,reminder_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at,created_at,updated_at,completed_at",
     )
     .eq("user_id", userId)
     .neq("status", "cancelled")
@@ -511,6 +549,8 @@ export async function saveTaskPlans(
     due_time: null,
     due_patch: null,
     reminder_enabled: null,
+    reminder_at: null,
+    reminder_at_patch: null,
     reminder_offset_minutes: null,
     reminder_patch: null,
     plan_patch: null,
@@ -524,7 +564,8 @@ export async function saveTaskPlans(
   };
   for (const item of items.slice(0, 20)) {
     if (item.task_id) {
-      if (!(await ownTask(db, userId, item.task_id))) {
+      const current = await ownTask(db, userId, item.task_id);
+      if (!current) {
         throw new Error("forbidden_task");
       }
       const planned = resolvePlannedWindow(
@@ -538,6 +579,9 @@ export async function saveTaskPlans(
         .update({
           planned_start_at: planned.start,
           planned_end_at: planned.end,
+          ...(current.planned_start_at !== planned.start
+            ? { reminder_sent_at: null, reminder_claimed_at: null }
+            : {}),
           updated_at: now,
         })
         .eq("user_id", userId)

@@ -4,6 +4,7 @@ export type MemoryConfidence = "low" | "medium" | "high";
 export type MemorySource = "user" | "agent" | "legacy";
 export type DuePatch = "keep" | "set" | "clear";
 export type ReminderPatch = "keep" | "set";
+export type ReminderAtPatch = "keep" | "set" | "clear";
 export type PlanPatch = "keep" | "set" | "clear";
 
 export type TaskRow = {
@@ -13,6 +14,7 @@ export type TaskRow = {
   status: TaskStatus;
   due_on: string | null;
   due_at: string | null;
+  reminder_at: string | null;
   reminder_offset_minutes: number | null;
   reminder_enabled: boolean;
   reminder_sent_at: string | null;
@@ -103,6 +105,8 @@ export type AgentAction = {
   due_time: string | null;
   due_patch: DuePatch | null;
   reminder_enabled: boolean | null;
+  reminder_at: string | null;
+  reminder_at_patch: ReminderAtPatch | null;
   reminder_offset_minutes: number | null;
   reminder_patch: ReminderPatch | null;
   plan_patch: PlanPatch | null;

@@ -869,6 +869,12 @@ h1 {
 .perm-row p {
   margin: 4px 0 0;
 }
+.permission-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .bell-wrap {
   position: relative;
 }

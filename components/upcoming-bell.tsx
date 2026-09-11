@@ -47,7 +47,7 @@ export function UpcomingBell() {
       {open ? (
         <div className="bell-panel">
           <strong>התראות בדרך</strong>
-          {push.state !== "granted" ? (
+          {push.state !== "active" ? (
             <p className="muted">
               התראות המכשיר אינן פעילות.{" "}
               <span>אפשר לאשר אותן בהגדרות.</span>

@@ -10,7 +10,7 @@ export const RUNTIME_CAPABILITIES = {
       "task.delete",
     ],
     instructions:
-      "Task יכולה להיות ללא מועד, עם תאריך בלבד, עם due time קשיח, או עם planned time. אין ליצור כפילות מדויקת.",
+      "Task יכולה להיות ללא מועד, עם תאריך בלבד, עם due time קשיח, או עם planned time. Reminder כבויה כברירת מחדל; הפעלה מפורשת בלבד דורשת reminder_patch=set וגם reminder_enabled=true. reminder_at הוא זמן בסיס מפורש ונפרד מ-due_at. אין ליצור כפילות מדויקת.",
   },
   memory: {
     kind: "action",
