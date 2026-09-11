@@ -135,6 +135,7 @@ export async function POST(req: Request) {
     const {
       message,
       surface,
+      surface_context: surfaceContext,
       session_id: requestedSession,
       turn_id: turnKey,
     } = parsed.request;
@@ -199,7 +200,7 @@ export async function POST(req: Request) {
         .map((item) => ({ role: item.role, content: item.content }));
       openaiInput.push({
         role: "user",
-        content: `${surfaceInputHint(surface)}${message}`,
+        content: `${surfaceInputHint(surface, surfaceContext)}${message}`,
       });
 
       const requested = await requestAgentDecision({
@@ -210,6 +211,7 @@ export async function POST(req: Request) {
           memory,
           consequences,
           surface,
+          surfaceContext,
         }),
         messages: openaiInput,
       });

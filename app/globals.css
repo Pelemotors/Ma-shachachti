@@ -978,6 +978,50 @@ h1 {
   background: transparent;
   min-height: 40px;
 }
+.schedule-surface {
+  flex: 1;
+  overflow: auto;
+}
+.schedule-surface .my-schedule {
+  overflow: visible;
+}
+.agent-surface {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 16px;
+}
+.agent-surface h1,
+.agent-surface h2,
+.agent-surface p {
+  margin: 0;
+}
+.agent-surface fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+.agent-surface legend {
+  padding-inline: 6px;
+  color: var(--muted);
+}
+.surface-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.agent-surface input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font: inherit;
+}
 
 @media (max-width: 600px) {
   .chat-shell {

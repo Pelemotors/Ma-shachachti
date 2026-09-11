@@ -91,8 +91,9 @@ function utcClock(date: Date) {
 test("home surfaces expose the chat surface contract", () => {
   assert.deepEqual(
     HOME_SURFACES.map((surface) => surface.id),
-    [...CHAT_SURFACES],
+    ["focus", "schedule", "free-time"],
   );
+  assert.ok(CHAT_SURFACES.includes("forgotten"));
 });
 
 test("todayContext uses Asia/Jerusalem rather than the host or Vercel UTC clock", () => {
@@ -133,9 +134,9 @@ test("schedule input hint is turn context only and carries Jerusalem time", () =
   assert.doesNotMatch(hint, /צור לי לו״ז להיום/);
 });
 
-test("forgotten input hint stays short and does not rank tasks", () => {
+test("forgotten input hint aliases focus and does not rank tasks", () => {
   const hint = surfaceInputHint("forgotten", eveningUtc);
-  assert.match(hint, /surface=forgotten/);
+  assert.match(hint, /surface=focus/);
   assert.match(hint, /20:50/);
   assert.match(hint, /2026-09-10/);
   assert.match(hint, /ראוי לתשומת לב/);
@@ -148,11 +149,13 @@ test("schedule surface is parsed separately from a regular chat message", () => 
   const schedule = parseChatRequest({
     message: "צור לי לו״ז להיום",
     surface: "schedule",
+    surface_context: { type: "schedule", date: "2026-09-10" },
   });
   const typed = parseChatRequest({ message: "צור לי לו״ז להיום" });
   const forgotten = parseChatRequest({
     message: "מה שכחתי?",
     surface: "forgotten",
+    surface_context: { type: "focus" },
   });
   const invalid = parseChatRequest({
     message: "צור לי לו״ז להיום",
@@ -167,7 +170,7 @@ test("schedule surface is parsed separately from a regular chat message", () => 
     assert.equal(schedule.request.surface, "schedule");
     assert.equal(typed.request.surface, null);
     assert.equal(typed.request.message, schedule.request.message);
-    assert.equal(forgotten.request.surface, "forgotten");
+    assert.equal(forgotten.request.surface, "focus");
     assert.notEqual(schedule.request.surface, typed.request.surface);
   }
 });

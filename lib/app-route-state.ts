@@ -1,6 +1,14 @@
 import { isSessionId } from "./chat-sessions.ts";
 
-export const APP_VIEWS = ["home", "chat", "tasks", "schedule", "settings"] as const;
+export const APP_VIEWS = [
+  "home",
+  "chat",
+  "tasks",
+  "focus",
+  "schedule",
+  "free-time",
+  "settings",
+] as const;
 export type AppView = (typeof APP_VIEWS)[number];
 
 export type AppRouteState = {

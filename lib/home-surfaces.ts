@@ -1,12 +1,17 @@
-export const CHAT_SURFACES = ["forgotten", "schedule", "free-time"] as const;
+export const CHAT_SURFACES = [
+  "focus",
+  "forgotten",
+  "schedule",
+  "free-time",
+] as const;
 export type ChatSurface = (typeof CHAT_SURFACES)[number];
 
 export const HOME_SURFACES = [
   {
-    id: "forgotten",
-    title: "מה שכחתי?",
-    subtitle: "מה כדאי לשים לב אליו עכשיו",
-    objective: "מה שכחתי?",
+    id: "focus",
+    title: "מיקוד",
+    subtitle: "מה ראוי לתשומת לב עכשיו",
+    objective: "עזור לי למצוא מיקוד במה שראוי לתשומת לב עכשיו",
     primary: true,
   },
   {

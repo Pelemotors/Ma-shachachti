@@ -57,6 +57,13 @@ import {
 import { readChatDraft, writeChatDraft } from "@/lib/chat-draft";
 import { todayContext } from "@/lib/time";
 import { chatTurnRequest, createPendingChatTurn } from "@/lib/chat-optimistic";
+import type { SurfaceContext } from "@/lib/chat-request";
+import {
+  FocusSurface,
+  FreeTimeSurface,
+  ScheduleAgentPanel,
+} from "@/components/personal-agent-surfaces";
+import { useAgentSurfaces } from "@/hooks/use-agent-surfaces";
 
 type ChatMessage = {
   id: string;
@@ -114,6 +121,22 @@ export function ChatApp() {
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const mutations = useRef(new OptimisticMutationLayer());
   const initialQuery = useRef(searchParams.toString());
+  const agentSurfaces = useAgentSurfaces({
+    initialDate: initialRoute.date ?? todayContext().date,
+    sessionId,
+    userId,
+    busy: savingTask,
+    setBusy: setSavingTask,
+    setSessionId,
+    rememberSession: (id) => {
+      if (userId) writeActiveChatSession(userId, id);
+    },
+    publishTasks,
+    onUnauthorized: () => router.replace("/login"),
+    mutations: mutations.current,
+    onFailure: setFailure,
+  });
+  const { surfaceTurns } = agentSurfaces;
 
   function navigate(next: Partial<AppRouteState>, replace = false) {
     const href = encodeAppRoute({
@@ -197,7 +220,15 @@ export function ChatApp() {
   useEffect(() => {
     const route = decodeAppRoute(searchParams);
     setView(route.view);
-    if (route.date) setScheduleDate(route.date);
+    if (route.date) {
+      setScheduleDate(route.date);
+      if (
+        surfaceTurns.schedule.context.type !== "schedule" ||
+        surfaceTurns.schedule.context.date !== route.date
+      ) {
+        agentSurfaces.resetSchedule(route.date);
+      }
+    }
     if (route.view === "schedule" && !route.date) {
       router.replace(
         encodeAppRoute({
@@ -272,6 +303,7 @@ export function ChatApp() {
     message: string,
     surface: ChatSurface | null = null,
     retryTurnId?: string,
+    surfaceContext: SurfaceContext | null = null,
   ) {
     if (!message || sending) return;
 
@@ -279,6 +311,7 @@ export function ChatApp() {
       message,
       surface,
       retryTurnId ?? crypto.randomUUID(),
+      surfaceContext,
     );
     const turnId = turn.turnId;
     setError("");
@@ -377,7 +410,7 @@ export function ChatApp() {
   }
 
   function openSurface(surface: (typeof HOME_SURFACES)[number]) {
-    void sendMessage(surface.objective, surface.id);
+    openView(surface.id === "focus" ? "focus" : surface.id);
   }
 
   async function respondToProposal(
@@ -773,8 +806,12 @@ export function ChatApp() {
             <span>
               {view === "tasks"
                 ? "המשימות שלך"
+                : view === "focus"
+                  ? "מיקוד"
                 : view === "schedule"
                   ? "הלוז שלי"
+                  : view === "free-time"
+                    ? "זמן פנוי"
                   : view === "settings"
                   ? "הגדרות"
                   : "הסוכן האישי שלך"}
@@ -1011,21 +1048,58 @@ export function ChatApp() {
             currentSessionId={sessionId}
             onOpenSession={(id) => void openPreviousSession(id)}
           />
-        ) : view === "schedule" ? (
-          <MySchedule
-            date={scheduleDate}
-            onDateChange={(date) => {
-              setScheduleDate(date);
-              navigate({ view: "schedule", date });
-            }}
-            saving={savingTask}
-            onToggle={(id, done) =>
-              runTaskAction({
-                type: done ? "task.reopen" : "task.complete",
-                id,
-              })
+        ) : view === "focus" ? (
+          <FocusSurface
+            state={surfaceTurns.focus}
+            onRun={(context, retry) =>
+              void agentSurfaces.run(context, retry)
             }
           />
+        ) : view === "free-time" ? (
+          <FreeTimeSurface
+            state={surfaceTurns["free-time"]}
+            onRun={(context, retry) =>
+              void agentSurfaces.run(context, retry)
+            }
+          />
+        ) : view === "schedule" ? (
+          <div className="schedule-surface">
+            <MySchedule
+              date={scheduleDate}
+              onDateChange={(date) => {
+                setScheduleDate(date);
+                agentSurfaces.resetSchedule(date);
+                navigate({ view: "schedule", date });
+              }}
+              saving={savingTask}
+              onToggle={(id, done) =>
+                runTaskAction({
+                  type: done ? "task.reopen" : "task.complete",
+                  id,
+                })
+              }
+            />
+            <ScheduleAgentPanel
+              date={scheduleDate}
+              state={surfaceTurns.schedule}
+              saving={savingTask}
+              savingPlan={agentSurfaces.operation === "save"}
+              proposalBusy={agentSurfaces.operation === "proposal"}
+              onRun={(context, retry) =>
+                void agentSurfaces.run(context, retry)
+              }
+              onToggle={(id, done) =>
+                void runTaskAction({
+                  type: done ? "task.reopen" : "task.complete",
+                  id,
+                })
+              }
+              onSave={(plan) => void agentSurfaces.saveSchedulePlan(plan)}
+              onProposal={(action) =>
+                void agentSurfaces.respondToScheduleProposal(action)
+              }
+            />
+          </div>
         ) : (
           <div className="tasks-panel">
             <form className="task-create" onSubmit={addTask}>
@@ -1170,7 +1244,7 @@ export function ChatApp() {
         ) : null}
 
         <div className="composer-wrap">
-          {view === "settings" ? null : (
+          {view === "home" || view === "chat" || view === "tasks" ? (
             <form className="composer" onSubmit={send}>
             <VoiceRecorder
               enabled={!sending}
@@ -1200,7 +1274,7 @@ export function ChatApp() {
               ←
             </button>
             </form>
-          )}
+          ) : null}
           <nav className="bottom-nav" aria-label="ניווט ראשי">
             <button
               className={view === "home" ? "active" : undefined}

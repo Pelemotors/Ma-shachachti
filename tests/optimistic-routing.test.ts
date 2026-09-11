@@ -5,6 +5,7 @@ import { decodeAppRoute, encodeAppRoute } from "../lib/app-route-state.ts";
 import { chatTurnRequest, createPendingChatTurn } from "../lib/chat-optimistic.ts";
 import { readChatDraft, writeChatDraft } from "../lib/chat-draft.ts";
 import { OptimisticMutationLayer } from "../lib/optimistic-mutation.ts";
+import { chooseSurfaceTurnId } from "../lib/surface-turn.ts";
 
 const session = "11111111-1111-4111-8111-111111111111";
 
@@ -89,15 +90,54 @@ test("undo is a real reverse mutation and reports canonical reverse result", asy
   assert.equal(state, "server-open");
 });
 
-test("chat retry preserves turn id and surface", () => {
-  const turn = createPendingChatTurn("שלום", "schedule", "turn-stable");
+test("chat retry preserves turn id and typed surface context", () => {
+  const turn = createPendingChatTurn(
+    "שלום",
+    "schedule",
+    "turn-stable",
+    { type: "schedule", date: "2026-09-12" },
+  );
   assert.deepEqual(chatTurnRequest(turn, session), {
     message: "שלום",
     surface: "schedule",
+    surface_context: { type: "schedule", date: "2026-09-12" },
     session_id: session,
     turn_id: "turn-stable",
   });
   assert.equal(chatTurnRequest(turn, session).turn_id, turn.turnId);
+});
+
+test("surface retry reuses turn id while a fresh run creates a new one", () => {
+  let created = 0;
+  const createId = () => `turn-${++created}`;
+  const first = chooseSurfaceTurnId(
+    { retry: false, previousStatus: "idle", previousTurnId: null },
+    createId,
+  );
+  const retry = chooseSurfaceTurnId(
+    { retry: true, previousStatus: "error", previousTurnId: first },
+    createId,
+  );
+  const refresh = chooseSurfaceTurnId(
+    { retry: false, previousStatus: "success", previousTurnId: first },
+    createId,
+  );
+  assert.equal(first, "turn-1");
+  assert.equal(retry, first);
+  assert.equal(refresh, "turn-2");
+  assert.equal(created, 2);
+});
+
+test("schedule surfaces reuse the shared optimistic mutation layer", () => {
+  const hook = readFileSync(
+    new URL("../hooks/use-agent-surfaces.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(hook, /input\.mutations\.run<SurfaceTurnState>/);
+  assert.match(hook, /optimistic:.*saved: true/s);
+  assert.match(hook, /status: "executing"/);
+  assert.match(hook, /finally \{/);
+  assert.doesNotMatch(hook, /new OptimisticMutationLayer/);
 });
 
 test("URL state round trips view, date and session with invalid fallback", () => {
@@ -115,6 +155,17 @@ test("URL state round trips view, date and session with invalid fallback", () =>
     date: null,
     sessionId: session,
   });
+  for (const view of ["focus", "free-time"] as const) {
+    assert.deepEqual(decodeAppRoute(encodeAppRoute({
+      view,
+      date: null,
+      sessionId: null,
+    }).split("?")[1] ?? ""), {
+      view,
+      date: null,
+      sessionId: null,
+    });
+  }
   assert.deepEqual(decodeAppRoute("view=admin&session=bad&date=2026-02-30"), {
     view: "home",
     date: null,

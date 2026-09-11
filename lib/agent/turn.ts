@@ -4,6 +4,7 @@ import {
 } from "./instructions.ts";
 import { renderRuntimeCapabilities } from "./capabilities.ts";
 import type { ChatSurface } from "../home-surfaces.ts";
+import type { SurfaceContext } from "../chat-request.ts";
 import type {
   AgentPresentation,
   ConsequenceRow,
@@ -47,19 +48,41 @@ function formatTask(task: TaskRow, consequence?: ConsequenceRow) {
   return `- ${task.id} [${task.status}] ${task.title}${due}${time}${planned}${reminder}${notes}${created}${reschedules}${lastRescheduled}${consequenceText}`;
 }
 
+function scheduleDateContext(tasks: TaskRow[], context: SurfaceContext | null) {
+  if (context?.type !== "schedule") return "";
+  const scoped = tasks.filter((task) => {
+    const dueAtDate = task.due_at ? jerusalemParts(task.due_at).date : null;
+    const plannedDate = task.planned_start_at
+      ? jerusalemParts(task.planned_start_at).date
+      : null;
+    return (
+      task.due_on === context.date ||
+      dueAtDate === context.date ||
+      plannedDate === context.date
+    );
+  });
+  return `
+## הקשר טכני לתאריך ${context.date}
+${scoped.length ? scoped.map((task) => formatTask(task)).join("\n") : "- אין פריטי לו״ז או משימות לתאריך"}
+`;
+}
+
 function surfaceInstructions(
   surface: ChatSurface | null,
+  context: SurfaceContext | null,
   currentTime: string,
 ) {
   if (surface === "schedule") {
     return `
 ## הקשר Surface נוכחי
 surface=schedule; המטרה היא לעזור למשתמש לבחון או לתכנן את הלו״ז. השעה עכשיו ${currentTime}.
-הלו״ז והמשימות שסופקו הם ההקשר הטכני הקיים. הצעה אינה נשמרת ללא אישור מפורש.
+תאריך היעד הוא ${context?.type === "schedule" ? context.date : "לא צוין"}.
+הלו״ז והמשימות שסופקו הם ההקשר הטכני הקיים. due_at הוא התחייבות קבועה; planned_start_at ו־planned_end_at הם תכנון מוצע.
+הצעה אינה נשמרת ללא אישור מפורש.
 `;
   }
 
-  if (surface === "forgotten") {
+  if (surface === "focus" || surface === "forgotten") {
     return `
 ## הקשר Surface נוכחי
 surface=forgotten; המטרה היא לעזור למשתמש להבין מה ראוי לתשומת לב עכשיו מתוך ההקשר שסופק.
@@ -71,7 +94,8 @@ surface=forgotten; המטרה היא לעזור למשתמש להבין מה ר�
     return `
 ## הקשר Surface נוכחי
 surface=free-time; המטרה היא לעזור למשתמש לנצל חלון זמן פנוי. השעה עכשיו ${currentTime}.
-משך ומאמץ, כאשר נמסרו, מופיעים בהודעת המשתמש. עצם פתיחת ה-Surface אינה אישור לשנות נתונים.
+משך החלון הוא ${context?.type === "free-time" ? context.minutes : "לא צוין"} דקות והמאמץ הוא ${context?.type === "free-time" ? context.effort ?? "לא צוין" : "לא צוין"}.
+עצם פתיחת ה-Surface אינה אישור לשנות נתונים.
 `;
   }
 
@@ -99,11 +123,18 @@ export function applySurfaceTurnPolicy(input: {
       consequence_updates,
     };
   }
-  if (input.surface === "forgotten") {
+  if (input.surface === "focus" || input.surface === "forgotten") {
     return {
       actions: [],
       presentation:
         input.presentation?.type === "task_list" ? input.presentation : null,
+      consequence_updates,
+    };
+  }
+  if (input.surface === "free-time") {
+    return {
+      actions: [],
+      presentation: input.presentation,
       consequence_updates,
     };
   }
@@ -116,17 +147,23 @@ export function applySurfaceTurnPolicy(input: {
 
 export function surfaceInputHint(
   surface: ChatSurface | null,
-  now = new Date(),
+  contextOrNow: SurfaceContext | Date | null = null,
+  requestedNow = new Date(),
 ) {
   if (!surface) return "";
+  const context =
+    contextOrNow instanceof Date ? null : contextOrNow;
+  const now = contextOrNow instanceof Date ? contextOrNow : requestedNow;
   const { currentTime, date, timeZone } = todayContext(now);
   if (surface === "schedule") {
-    return `הקשר ל-turn הזה בלבד: surface=schedule. עכשיו ${currentTime}, ${date}, ${timeZone}. הצע לו״ז להמשך היום ב-presentation.schedule_plan בלבד. בלי לשנות משימות ובלי Markdown.\n\n`;
+    const targetDate = context?.type === "schedule" ? context.date : date;
+    return `הקשר ל-turn הזה בלבד: surface=schedule, target_date=${targetDate}. עכשיו ${currentTime}, ${date}, ${timeZone}. החזר presentation.schedule_plan מפורש אם יש תוכנית להציג. בלי לשנות משימות ובלי Markdown.\n\n`;
   }
-  if (surface === "forgotten") {
-    return `הקשר ל-turn הזה בלבד: surface=forgotten. עכשיו ${currentTime}, ${date}, ${timeZone}. מטרת המשטח היא להציף מה ראוי לתשומת לב; עצם פתיחתו אינה אישור ל-mutation.\n\n`;
+  if (surface === "focus" || surface === "forgotten") {
+    return `הקשר ל-turn הזה בלבד: surface=focus. עכשיו ${currentTime}, ${date}, ${timeZone}. מטרת המשטח היא להציף מה ראוי לתשומת לב; הצג רשימה רק באמצעות presentation.task_list מפורש. עצם פתיחתו אינה אישור ל-mutation.\n\n`;
   }
-  return `הקשר ל-turn הזה בלבד: surface=free-time. עכשיו ${currentTime}. הצע מה מתאים לזמן הפנוי, בלי לשנות משימות אלא אם ביקשו במפורש.\n\n`;
+  const freeTime = context?.type === "free-time" ? context : null;
+  return `הקשר ל-turn הזה בלבד: surface=free-time. עכשיו ${currentTime}. חלון: ${freeTime?.minutes ?? "לא צוין"} דקות; מאמץ: ${freeTime?.effort ?? "לא צוין"}. הצג רשימה רק באמצעות Presentation מפורש ואל תשנה משימות.\n\n`;
 }
 
 export function buildInstructions(input: {
@@ -134,6 +171,7 @@ export function buildInstructions(input: {
   memory: MemoryRow[];
   consequences?: Map<string, ConsequenceRow>;
   surface?: ChatSurface | null;
+  surfaceContext?: SurfaceContext | null;
   now?: Date;
 }) {
   const { date, weekday, timeZone, currentTime, localDateTime } = todayContext(
@@ -191,5 +229,6 @@ ${
         .join("\n")
     : "- אין"
 }
-${surfaceInstructions(surface, currentTime)}`;
+${scheduleDateContext(input.tasks, input.surfaceContext ?? null)}
+${surfaceInstructions(surface, input.surfaceContext ?? null, currentTime)}`;
 }
