@@ -1,166 +1,49 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import {
+  OperationalDetailDrawer,
+  type OperationalDetail,
+} from "./operational-detail-drawer";
+import { OperationalDiagnosticsPanel } from "./operational-diagnostics-panel";
+import { OperationalEventsPanel } from "./operational-events-panel";
 import { supabase } from "@/lib/supabase-browser";
+import type {
+  AdminAiMetrics,
+  AdminHealth,
+  AdminIncidentsResponse,
+  AdminOverview,
+  AdminTasks,
+  AdminUsers,
+  OperationalEvent,
+  TestEvidence,
+} from "@/lib/admin-control-contract";
 import type {
   AdminDiagnosticCheck,
   DiagnosticResult,
 } from "@/lib/admin-diagnostic-contract";
-import type {
-  SmithConnectionState,
-  SmithDashboardData,
-} from "@/lib/smith/types";
 
 type LoadState = "loading" | "ready" | "unauthorized" | "forbidden" | "error";
-type ActivityEvent = {
-  id?: string;
-  event_type: string;
-  created_at: string;
-  owner_id?: string | null;
-  metadata?: Record<string, unknown> | null;
-};
-type AdminOverview = {
-  stats: {
-    users: number;
-    approved: number;
-    pending: number;
-    active7: number;
-    tasks: number;
-    completed: number;
-    ai7: number;
-    aiAttempts7: number;
-    aiFailures7: number;
-    aiAverageLatencyMs: number | null;
-    reminders7: number;
-    reminderErrors: number;
-  };
-  recent: ActivityEvent[];
-  generatedAt: string;
-};
-type AdminHealth = {
-  database: "healthy" | "error";
-  latencyMs: number;
-  services: {
-    supabase: boolean;
-    openai: boolean;
-    push: boolean;
-    cron: boolean;
-  };
-  serviceDetails: Record<
-    "supabase" | "openai" | "push" | "cron",
-    {
-      configured: boolean;
-      status: string;
-      lastTestedAt?: string | null;
-      lastRunAt?: string | null;
-    }
-  >;
-  checkedAt: string;
-};
-type AdminAi = {
-  attempts: number;
-  successes: number;
-  failures: number;
-  successRate: number | null;
-  averageLatencyMs: number | null;
-  failureCodes: Record<string, number>;
-  lastTestedAt: string | null;
-};
-type AdminTasks = { total: number; byStatus: Record<string, number> };
-type AdminUsers = {
-  users: Array<{
-    id: string;
-    role: "user" | "admin";
-    approved: boolean;
-  }>;
-};
-type TestEvidence = {
-  phase1a?: {
-    status: string;
-    environment: string;
-    generatedAt: string;
-    productionConnected: boolean;
-  };
-  playwright?: {
-    status: string;
-    environment: string;
-    executedAt: string;
-    results: { passed: number; skipped: number; failed: number };
-    sourceState: string;
-    approvalEvidence: boolean;
-  };
-};
+type Section = "overview" | "events" | "tests" | "audit" | "setup";
 type ControlCenterData = {
   overview: AdminOverview;
   health: AdminHealth | null;
-  ai: AdminAi | null;
+  ai: AdminAiMetrics | null;
+  incidents: AdminIncidentsResponse | null;
   tasks: AdminTasks | null;
   users: AdminUsers | null;
-  activity: ActivityEvent[];
-  smith: SmithDashboardData | null;
+  activity: OperationalEvent[];
   evidence: TestEvidence | null;
 };
 
-const navigation = [
-  ["סקירה תפעולית", "/admin/smith", "events"],
-  ["אירועים ותקלות", "/admin/smith/events", "events"],
-  ["בדיקות מערכת", "/admin/smith/tests", "tests"],
-  ["Audit", "/admin/smith/audit", "audit"],
-  ["Setup", "/admin/smith/setup", "setup"],
-] as const;
-
-const diagnosticButtons: Array<{
-  check: AdminDiagnosticCheck;
-  label: string;
-  description: string;
-}> = [
-  {
-    check: "database",
-    label: "בדוק Database",
-    description: "שאילתה אמיתית ו-latency",
-  },
-  { check: "auth", label: "בדוק Auth", description: "אימות חשבון Admin נוכחי" },
-  {
-    check: "admin-apis",
-    label: "בדוק Admin APIs",
-    description: "ששת הממשקים הקיימים",
-  },
-  { check: "openai", label: "בדוק OpenAI", description: "מפתח ומודל בפועל" },
-  {
-    check: "storage",
-    label: "בדוק Storage",
-    description: "bucket פרטי ללא כתיבה",
-  },
-  {
-    check: "push-reminders",
-    label: "בדוק Push / Reminders",
-    description: "הגדרות וריצה אחרונה",
-  },
-  {
-    check: "full-health",
-    label: "Health Check מלא",
-    description: "כל הבדיקות הבטוחות",
-  },
-  {
-    check: "unit-tests",
-    label: "הרץ Test Suite",
-    description: "Local development בלבד",
-  },
-  {
-    check: "playwright",
-    label: "הרץ Playwright",
-    description: "Local development בלבד",
-  },
+const navigation: Array<[Section, string, string, string]> = [
+  ["overview", "סקירה תפעולית", "/admin/smith", "events"],
+  ["events", "אירועים ותקלות", "/admin/smith/events", "events"],
+  ["tests", "בדיקות מערכת", "/admin/smith/tests", "tests"],
+  ["audit", "Audit", "/admin/smith/audit", "audit"],
+  ["setup", "Setup", "/admin/smith/setup", "setup"],
 ];
-
-const connectionLabels: Record<SmithConnectionState, string> = {
-  connected: "מחובר",
-  disconnected: "לא מחובר",
-  partial: "חלקי",
-  blocked: "חסום",
-  not_configured: "לא הוגדר",
-  local_only: "מקומי בלבד",
-};
 
 async function getAdminToken() {
   const sessionResult = await Promise.race([
@@ -180,28 +63,38 @@ async function fetchAdminResource(path: string, token: string | null) {
 }
 
 export function SmithControlCenter() {
+  const pathname = usePathname();
+  const section = sectionFromPath(pathname);
   const [state, setState] = useState<LoadState>("loading");
   const [data, setData] = useState<ControlCenterData | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [runningCheck, setRunningCheck] = useState<AdminDiagnosticCheck | null>(
-    null,
-  );
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState("");
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [clock, setClock] = useState(Date.now());
+  const [detail, setDetail] = useState<OperationalDetail | null>(null);
+  const [running, setRunning] = useState<{
+    check: AdminDiagnosticCheck;
+    startedAt: string;
+  } | null>(null);
   const [diagnostics, setDiagnostics] = useState<
     Partial<Record<AdminDiagnosticCheck, DiagnosticResult>>
   >({});
 
   async function load() {
-    setState("loading");
+    if (data) setRefreshing(true);
+    else setState("loading");
+    setRefreshError("");
     try {
       const token = await getAdminToken();
       const paths = [
         "/api/admin/overview",
         "/api/admin/health",
         "/api/admin/ai",
+        "/api/admin/incidents",
         "/api/admin/tasks",
         "/api/admin/users",
-        "/api/admin/activity?limit=30",
-        "/api/admin/smith/overview",
+        "/api/admin/activity?limit=100",
         "/api/admin/diagnostics/evidence",
       ] as const;
       const responses = await Promise.all(
@@ -211,47 +104,69 @@ export function SmithControlCenter() {
         paths.map((path, index) => [path, responses[index]]),
       );
       const usersResponse = byPath.get("/api/admin/users")!;
-      if (usersResponse.status === 401) return setState("unauthorized");
-      if (usersResponse.status === 403) return setState("forbidden");
+      if (usersResponse.status === 401) {
+        setState("unauthorized");
+        return;
+      }
+      if (usersResponse.status === 403) {
+        setState("forbidden");
+        return;
+      }
       const overviewResponse = byPath.get("/api/admin/overview")!;
-      if (!overviewResponse.ok) return setState("error");
-
+      if (!overviewResponse.ok) {
+        setState("error");
+        return;
+      }
       const optionalJson = async <T,>(path: (typeof paths)[number]) => {
         const response = byPath.get(path);
         return response?.ok ? ((await response.json()) as T) : null;
       };
       const overview = (await overviewResponse.json()) as AdminOverview;
-      const health = await optionalJson<AdminHealth>("/api/admin/health");
-      const ai = await optionalJson<AdminAi>("/api/admin/ai");
-      const tasks = await optionalJson<AdminTasks>("/api/admin/tasks");
-      const users = await optionalJson<AdminUsers>("/api/admin/users");
-      const activityResponse = await optionalJson<{ events: ActivityEvent[] }>(
-        "/api/admin/activity?limit=30",
-      );
-      const smith = await optionalJson<SmithDashboardData>(
-        "/api/admin/smith/overview",
-      );
-      const evidence = await optionalJson<TestEvidence>(
-        "/api/admin/diagnostics/evidence",
-      );
-      setData({
+      const nextData = {
         overview,
-        health,
-        ai,
-        tasks,
-        users,
-        activity: activityResponse?.events ?? [],
-        smith,
-        evidence,
-      });
+        health: await optionalJson<AdminHealth>("/api/admin/health"),
+        ai: await optionalJson<AdminAiMetrics>("/api/admin/ai"),
+        incidents: await optionalJson<AdminIncidentsResponse>(
+          "/api/admin/incidents",
+        ),
+        tasks: await optionalJson<AdminTasks>("/api/admin/tasks"),
+        users: await optionalJson<AdminUsers>("/api/admin/users"),
+        activity:
+          (
+            await optionalJson<{ events: OperationalEvent[] }>(
+              "/api/admin/activity?limit=100",
+            )
+          )?.events ?? [],
+        evidence: await optionalJson<TestEvidence>(
+          "/api/admin/diagnostics/evidence",
+        ),
+      };
+      const failedOptional = paths.filter(
+        (path) =>
+          path !== "/api/admin/overview" &&
+          path !== "/api/admin/users" &&
+          !byPath.get(path)?.ok,
+      );
+      setData(nextData);
+      setUpdatedAt(new Date().toISOString());
+      setClock(Date.now());
       setState("ready");
+      if (failedOptional.length) {
+        setRefreshError(
+          `${failedOptional.length} מקורות משניים לא נטענו; מוצגים הנתונים הזמינים.`,
+        );
+      }
     } catch {
-      setState("error");
+      if (data) setRefreshError("הרענון נכשל; הנתונים הקודמים נשארו מוצגים.");
+      else setState("error");
+    } finally {
+      setRefreshing(false);
     }
   }
 
   async function runDiagnostic(check: AdminDiagnosticCheck) {
-    setRunningCheck(check);
+    const startedAt = new Date().toISOString();
+    setRunning({ check, startedAt });
     try {
       const token = await getAdminToken();
       const response = await fetch(`/api/admin/diagnostics/${check}`, {
@@ -260,32 +175,41 @@ export function SmithControlCenter() {
       });
       const payload = await response.json();
       if (!response.ok) {
+        const completedAt = new Date().toISOString();
         setDiagnostics((current) => ({
           ...current,
           [check]: {
             check,
-            status: "failed",
+            status: "fail",
             summary: payload.error ?? "הבדיקה נכשלה.",
-            checkedAt: new Date().toISOString(),
-            durationMs: 0,
+            startedAt,
+            completedAt,
+            durationMs:
+              new Date(completedAt).getTime() - new Date(startedAt).getTime(),
+            warnings: [],
+            details: payload.code ? { code: payload.code } : undefined,
           },
         }));
       } else {
         setDiagnostics((current) => ({ ...current, [check]: payload }));
       }
     } catch {
+      const completedAt = new Date().toISOString();
       setDiagnostics((current) => ({
         ...current,
         [check]: {
           check,
-          status: "failed",
+          status: "fail",
           summary: "לא התקבלה תשובה מהבדיקה.",
-          checkedAt: new Date().toISOString(),
-          durationMs: 0,
+          startedAt,
+          completedAt,
+          durationMs:
+            new Date(completedAt).getTime() - new Date(startedAt).getTime(),
+          warnings: [],
         },
       }));
     } finally {
-      setRunningCheck(null);
+      setRunning(null);
     }
   }
 
@@ -293,52 +217,161 @@ export function SmithControlCenter() {
     void load();
   }, []);
 
-  if (state !== "ready" || !data) {
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  if (state !== "ready" || !data || !updatedAt) {
     return <AccessState state={state} retry={() => void load()} />;
   }
+
+  const stale = clock - new Date(updatedAt).getTime() > 5 * 60_000;
+  const title = {
+    overview: [
+      "מרכז הבקרה התפעולי",
+      "נתוני מערכת אמיתיים וכלי Admin דטרמיניסטיים.",
+    ],
+    events: [
+      "אירועים ותקלות אחרונות",
+      "סינון, חיפוש ופרטים מתוך הטלמטריה הקיימת.",
+    ],
+    tests: [
+      "בדיקות מערכת",
+      "בדיקות ידניות עם evidence מובנה וללא shell חופשי.",
+    ],
+    audit: ["Audit ופעילות", "אירועי Admin ומערכת מתועדים."],
+    setup: ["מצב חיבורים", "מה פעיל, מה כבוי ומה מנותק במכוון."],
+  }[section];
 
   return (
     <div className="smith-admin">
       <Header data={data} onMenu={() => setMenuOpen(true)} />
       <div className="smith-shell">
-        <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
+        <Sidebar
+          section={section}
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+        />
         <main className="smith-main" id="smith-main">
           <div className="smith-title-row">
             <div>
               <p className="smith-eyebrow">ADMIN CONTROL CENTER</p>
-              <h1>מרכז הבקרה התפעולי</h1>
-              <p>נתוני מערכת אמיתיים ובדיקות ידניות, ללא Agent אוטונומי.</p>
+              <h1>{title[0]}</h1>
+              <p>{title[1]}</p>
+              <Freshness updatedAt={updatedAt} stale={stale} />
             </div>
             <button
               className="smith-secondary-button"
               onClick={() => void load()}
+              disabled={refreshing}
             >
-              רענון metrics
+              {refreshing ? "מרענן…" : "רענון metrics"}
             </button>
           </div>
 
-          <SystemStatusBar data={data} />
-          <SummaryCards data={data} />
-          <DiagnosticsPanel
-            running={runningCheck}
-            results={diagnostics}
-            onRun={(check) => void runDiagnostic(check)}
-          />
-
-          <div className="smith-workspace">
-            <AgentOffPanel />
-            <div className="smith-operations">
-              <EventsPanel events={data.overview.recent} />
-              <ServicePanel data={data} diagnostics={diagnostics} />
-              <div className="smith-split">
-                <TestsPanel data={data} results={diagnostics} />
-                <PreviewApprovalPanel />
-              </div>
-              <AuditPanel items={data.activity} />
+          {refreshError && (
+            <div className="control-refresh-error" role="alert">
+              <span>{refreshError}</span>
+              <button onClick={() => void load()}>נסה שוב</button>
             </div>
-          </div>
+          )}
+
+          {section === "overview" && (
+            <>
+              <SystemStatusBar data={data} onOpen={setDetail} />
+              <SummaryCards data={data} onOpen={setDetail} />
+              <QuickActions
+                onRefresh={() => void load()}
+                onCheck={(check) => void runDiagnostic(check)}
+                onOpen={setDetail}
+                running={running !== null}
+              />
+              <OperationalDiagnosticsPanel
+                running={running}
+                results={diagnostics}
+                onRun={(check) => void runDiagnostic(check)}
+              />
+              <div className="smith-workspace">
+                <AgentOffPanel />
+                <div className="smith-operations">
+                  <OperationalEventsPanel
+                    events={data.activity}
+                    incidents={data.incidents}
+                    updatedAt={updatedAt}
+                    refreshing={refreshing}
+                    onRefresh={() => void load()}
+                    onSelect={(event) => setDetail({ event })}
+                  />
+                  <ServicePanel data={data} diagnostics={diagnostics} />
+                  <div className="smith-split">
+                    <TestsPanel data={data} results={diagnostics} />
+                    <PreviewApprovalPanel />
+                  </div>
+                  <AuditPanel
+                    items={data.activity}
+                    onSelect={(event) => setDetail({ event })}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {section === "events" && (
+            <>
+              <IncidentSummary incidents={data.incidents} onOpen={setDetail} />
+              <OperationalEventsPanel
+                events={data.activity}
+                incidents={data.incidents}
+                updatedAt={updatedAt}
+                refreshing={refreshing}
+                onRefresh={() => void load()}
+                onSelect={(event) => setDetail({ event })}
+              />
+            </>
+          )}
+
+          {section === "tests" && (
+            <>
+              <OperationalDiagnosticsPanel
+                running={running}
+                results={diagnostics}
+                onRun={(check) => void runDiagnostic(check)}
+              />
+              <TestsPanel data={data} results={diagnostics} />
+            </>
+          )}
+
+          {section === "audit" && (
+            <AuditPanel
+              items={data.activity}
+              onSelect={(event) => setDetail({ event })}
+              expanded
+            />
+          )}
+
+          {section === "setup" && (
+            <>
+              <SystemStatusBar data={data} onOpen={setDetail} />
+              <ServicePanel data={data} diagnostics={diagnostics} />
+              <IntentionalBoundaries onOpen={setDetail} />
+            </>
+          )}
         </main>
       </div>
+      <OperationalDetailDrawer
+        detail={detail}
+        overview={data.overview}
+        health={data.health}
+        ai={data.ai}
+        incidents={data.incidents}
+        tasks={data.tasks}
+        users={data.users}
+        updatedAt={updatedAt}
+        refreshing={refreshing}
+        onRefresh={() => void load()}
+        onClose={() => setDetail(null)}
+      />
     </div>
   );
 }
@@ -366,20 +399,13 @@ function Header({
         </span>
       </a>
       <div className="smith-environments" aria-label="מצבי סביבה">
-        <Environment label="Application" state="connected" />
+        <Environment label="Application" state="connected" text="מחובר" />
         <Environment
           label="Database"
           state={data.health?.database === "healthy" ? "connected" : "blocked"}
+          text={data.health?.database === "healthy" ? "מחובר" : "בעיה"}
         />
-        <Environment label="Smith" state="disconnected" />
-      </div>
-      <div className="smith-search-wrap">
-        <input
-          aria-label="חיפוש עתידי"
-          placeholder="חיפוש באירועים ובפעילות..."
-          disabled
-          title="חיפוש רוחבי עדיין לא הוגדר"
-        />
+        <Environment label="Smith" state="off" text="OFF" />
       </div>
       <div className="smith-admin-identity">
         <span className="smith-avatar-letter">A</span>
@@ -395,20 +421,30 @@ function Header({
 function Environment({
   label,
   state,
+  text,
 }: {
   label: string;
-  state: SmithConnectionState;
+  state: string;
+  text: string;
 }) {
   return (
     <span className="smith-environment" data-state={state}>
       <i />
       <span dir="ltr">{label}</span>
-      <small>{connectionLabels[state]}</small>
+      <small>{text}</small>
     </span>
   );
 }
 
-function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+function Sidebar({
+  section,
+  open,
+  onClose,
+}: {
+  section: Section;
+  open: boolean;
+  onClose: () => void;
+}) {
   return (
     <>
       {open && (
@@ -425,8 +461,12 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         </div>
         <p className="smith-nav-label">כלי ניהול פעילים</p>
         <nav aria-label="ניווט מרכז הבקרה">
-          {navigation.map(([label, href, icon], index) => (
-            <a className={index === 0 ? "active" : ""} href={href} key={href}>
+          {navigation.map(([id, label, href, icon]) => (
+            <a
+              className={section === id ? "active" : ""}
+              href={href}
+              key={href}
+            >
               <span className={`smith-nav-icon ${icon}`} aria-hidden="true" />
               {label}
             </a>
@@ -438,7 +478,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
             <strong>Smith Agent</strong>
             <span>יכולת עתידית</span>
             <small>
-              <i /> כבוי כרגע
+              <i /> OFF — כבוי במכוון
             </small>
           </div>
         </div>
@@ -447,151 +487,204 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
-function SystemStatusBar({ data }: { data: ControlCenterData }) {
+function SystemStatusBar({
+  data,
+  onOpen,
+}: {
+  data: ControlCenterData;
+  onOpen: (detail: OperationalDetail) => void;
+}) {
   const openai = data.health?.serviceDetails.openai.status;
-  const statuses = [
-    ["Application", "connected", "Connected"],
-    [
-      "Database",
-      data.health?.database === "healthy" ? "connected" : "blocked",
-      data.health?.database === "healthy" ? "Connected" : "Issue",
-    ],
-    ["Auth", "connected", "Connected"],
-    [
-      "AI",
-      openai === "available"
-        ? "connected"
-        : openai === "failed"
-          ? "blocked"
-          : "not_configured",
-      openai === "available"
-        ? "Connected"
-        : openai === "failed"
-          ? "Issue"
-          : "No data",
-    ],
-    ["Smith Agent", "disconnected", "OFF"],
-    ["Preview", "disconnected", "Disconnected"],
-    ["Production Executor", "disconnected", "Disconnected"],
-  ] as const;
+  const statuses: Array<{
+    label: string;
+    state: string;
+    value: string;
+    detail: OperationalDetail;
+  }> = [
+    {
+      label: "Application",
+      state: "connected",
+      value: "Connected",
+      detail: "application",
+    },
+    {
+      label: "Database",
+      state: data.health?.database === "healthy" ? "connected" : "blocked",
+      value: data.health?.database === "healthy" ? "Connected" : "Issue",
+      detail: "system",
+    },
+    { label: "Auth", state: "connected", value: "Connected", detail: "auth" },
+    {
+      label: "AI",
+      state:
+        openai === "available"
+          ? "connected"
+          : openai === "failed"
+            ? "blocked"
+            : "not_configured",
+      value:
+        openai === "available"
+          ? "Connected"
+          : openai === "failed"
+            ? "Issue"
+            : "No data",
+      detail: "ai",
+    },
+    {
+      label: "Smith Agent",
+      state: "off",
+      value: "OFF — deliberate",
+      detail: "smith",
+    },
+    {
+      label: "Preview",
+      state: "disconnected",
+      value: "Disconnected",
+      detail: "preview",
+    },
+    {
+      label: "Production Executor",
+      state: "disconnected",
+      value: "Disconnected",
+      detail: "production",
+    },
+  ];
   return (
     <section className="control-status-bar" aria-label="מצב רכיבי מערכת">
-      {statuses.map(([label, status, value]) => (
-        <span data-state={status} key={label}>
+      {statuses.map((status) => (
+        <button
+          data-state={status.state}
+          key={status.label}
+          onClick={() => onOpen(status.detail)}
+        >
           <i />
-          <b dir="ltr">{label}</b>
-          <small>{value}</small>
-        </span>
+          <b dir="ltr">{status.label}</b>
+          <small>{status.value}</small>
+        </button>
       ))}
     </section>
   );
 }
 
-function SummaryCards({ data }: { data: ControlCenterData }) {
+function SummaryCards({
+  data,
+  onOpen,
+}: {
+  data: ControlCenterData;
+  onOpen: (detail: OperationalDetail) => void;
+}) {
   const stats = data.overview.stats;
-  const incidents = stats.aiFailures7 + stats.reminderErrors;
-  const cards = [
-    [
-      "בריאות מערכת",
-      !data.health
+  const cards: Array<{
+    label: string;
+    value: string | number;
+    detail: string;
+    tone: string;
+    target: OperationalDetail;
+  }> = [
+    {
+      label: "בריאות מערכת",
+      value: !data.health
         ? "אין נתונים"
         : data.health.database === "healthy"
           ? "תקין"
           : "בעיה",
-      data.health ? `${data.health.latencyMs}ms DB` : "אין נתונים",
-      "health",
-    ],
-    ["משתמשים פעילים", stats.active7, "7 ימים אחרונים", "users"],
-    ["ממתינים לאישור", stats.pending, `מתוך ${stats.users}`, "approval"],
-    [
-      "משימות",
-      data.tasks?.total ?? stats.tasks,
-      `${stats.completed} הושלמו`,
-      "tasks",
-    ],
-    ["תקלות פעילות", incidents, "AI + Reminders, שבעה ימים", "incidents"],
-    [
-      "זמן תגובת AI",
-      data.ai?.averageLatencyMs == null
-        ? "אין נתונים"
-        : `${data.ai.averageLatencyMs}ms`,
-      `${data.ai?.failures ?? stats.aiFailures7} כשלים`,
-      "preview",
-    ],
-  ] as const;
+      detail: data.health ? `${data.health.latencyMs}ms DB` : "אין נתונים",
+      tone: "health",
+      target: "system",
+    },
+    {
+      label: "משתמשים פעילים",
+      value: stats.active7,
+      detail: "פעילות מזוהה ב־7 ימים",
+      tone: "users",
+      target: "active-users",
+    },
+    {
+      label: "ממתינים לאישור",
+      value: stats.pending,
+      detail: `מתוך ${stats.users}`,
+      tone: "approval",
+      target: "pending-users",
+    },
+    {
+      label: "משימות",
+      value: data.tasks?.total ?? stats.tasks,
+      detail: `${stats.completed} הושלמו`,
+      tone: "tasks",
+      target: "tasks",
+    },
+    {
+      label: "תקלות אחרונות",
+      value: data.incidents?.occurrenceCount ?? "אין נתונים",
+      detail: data.incidents
+        ? `${data.incidents.categoryCount} תחומים · ${data.incidents.windowDays} ימים`
+        : "אין נתונים",
+      tone: "incidents",
+      target: "incidents",
+    },
+    {
+      label: "זמן הכנת החלטת AI",
+      value:
+        data.ai?.averageLatencyMs == null
+          ? "אין נתונים"
+          : `${data.ai.averageLatencyMs}ms`,
+      detail: data.ai
+        ? `ממוצע ${data.ai.latencySampleCount} הצלחות`
+        : "אין נתונים",
+      tone: "preview",
+      target: "ai",
+    },
+  ];
   return (
     <section className="smith-summary control-summary" aria-label="סיכום מערכת">
-      {cards.map(([label, value, detail, tone]) => (
+      {cards.map((card) => (
         <article
-          className={`smith-card smith-summary-card ${tone}`}
-          key={label}
+          className={`smith-card smith-summary-card ${card.tone} actionable`}
+          key={card.label}
         >
-          <span>{label}</span>
-          <strong>{value}</strong>
-          <small>{detail}</small>
+          <button onClick={() => onOpen(card.target)}>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            <small>{card.detail}</small>
+            <em>פתח פרטים ←</em>
+          </button>
         </article>
       ))}
     </section>
   );
 }
 
-function DiagnosticsPanel({
+function QuickActions({
+  onRefresh,
+  onCheck,
+  onOpen,
   running,
-  results,
-  onRun,
 }: {
-  running: AdminDiagnosticCheck | null;
-  results: Partial<Record<AdminDiagnosticCheck, DiagnosticResult>>;
-  onRun: (check: AdminDiagnosticCheck) => void;
+  onRefresh: () => void;
+  onCheck: (check: AdminDiagnosticCheck) => void;
+  onOpen: (detail: OperationalDetail) => void;
+  running: boolean;
 }) {
   return (
-    <section className="smith-card control-diagnostics">
-      <div className="smith-panel-heading">
-        <div>
-          <h2>בדיקות מערכת</h2>
-          <p>בדיקות דטרמיניסטיות ידניות. אין כאן החלטה או פעולה של Smith.</p>
-        </div>
-        <span className="smith-status-chip">ADMIN TOOLS</span>
-      </div>
-      <div className="diagnostic-grid">
-        {diagnosticButtons.map((item) => {
-          const diagnostic = results[item.check];
-          const isRunning = running === item.check;
-          return (
-            <article
-              key={item.check}
-              data-status={diagnostic?.status ?? "idle"}
-            >
-              <button
-                onClick={() => onRun(item.check)}
-                disabled={running !== null}
-                aria-busy={isRunning}
-              >
-                {isRunning ? "מריץ בדיקה…" : item.label}
-              </button>
-              <small>{item.description}</small>
-              {diagnostic && (
-                <div className="diagnostic-result" role="status">
-                  <strong>{diagnostic.summary}</strong>
-                  <time dateTime={diagnostic.checkedAt}>
-                    {new Date(diagnostic.checkedAt).toLocaleString("he-IL")}
-                    {" · "}
-                    {diagnostic.durationMs}ms
-                  </time>
-                  {diagnostic.details && (
-                    <details>
-                      <summary>פרטים טכניים</summary>
-                      <pre dir="ltr">
-                        {JSON.stringify(diagnostic.details, null, 2)}
-                      </pre>
-                    </details>
-                  )}
-                </div>
-              )}
-            </article>
-          );
-        })}
-      </div>
+    <section className="control-quick-actions" aria-label="פעולות Admin מהירות">
+      <strong>פעולות מהירות</strong>
+      <button onClick={onRefresh}>רענן metrics</button>
+      <button onClick={() => onCheck("full-health")} disabled={running}>
+        הרץ Health Check
+      </button>
+      <button onClick={() => onCheck("openai")} disabled={running}>
+        בדוק OpenAI
+      </button>
+      <button onClick={() => onCheck("push-reminders")} disabled={running}>
+        בדוק Push
+      </button>
+      <button onClick={() => onOpen("incidents")}>הצג failures אחרונים</button>
+      <button onClick={() => onOpen("pending-users")}>
+        הצג משתמשים ממתינים
+      </button>
+      <a href="/admin/smith/audit">הצג פעילות אחרונה</a>
+      <a href="/admin/smith/audit">פתח Audit</a>
+      <a href="/admin/smith/setup">פתח Setup</a>
     </section>
   );
 }
@@ -601,93 +694,29 @@ function AgentOffPanel() {
     <section className="smith-card smith-chat-panel smith-agent-panel-off">
       <div className="smith-panel-heading">
         <div>
-          <h2>Smith Agent</h2>
-          <p>שכבת אוטונומיה עתידית — אינה נדרשת להפעלת מרכז הבקרה.</p>
+          <h2>Smith Autonomous Agent</h2>
+          <p>שכבת אוטונומיה עתידית; כלי ה־Admin אינם תלויים בה.</p>
         </div>
-        <span className="smith-connection-status" data-state="disconnected">
+        <span className="smith-connection-status" data-state="off">
           OFF
         </span>
       </div>
       <div className="smith-chat-empty">
         <img src="/smith/smith-avatar.svg" alt="" width="54" height="54" />
         <h3>Smith Agent כבוי כרגע</h3>
-        <p>
-          אין Chat פעיל, Runner אוטונומי, Preview אוטונומי או גישה ל־Production.
-        </p>
+        <p>אין Chat, Runner, Preview אוטונומי או גישה ל־Production.</p>
       </div>
       <div className="smith-quick-actions" aria-label="יכולות עתידיות">
-        {[
-          "Chat אוטונומי · Future",
-          "יצירת Preview · Future",
-          "Runner · Future",
-        ].map((label) => (
-          <button key={label} disabled>
-            {label}
-          </button>
-        ))}
-      </div>
-      <div className="smith-composer">
-        <textarea
-          rows={2}
-          placeholder="Smith Agent כבוי; השתמש בבדיקות המערכת הידניות."
-          disabled
-          aria-label="Smith Agent כבוי"
-        />
-        <button disabled>כבוי</button>
+        {["Chat · לא הוגדר", "Preview · לא הוגדר", "Runner · לא הוגדר"].map(
+          (label) => (
+            <button key={label} disabled title="היכולת כבויה במכוון">
+              {label}
+            </button>
+          ),
+        )}
       </div>
     </section>
   );
-}
-
-function EventsPanel({ events }: { events: ActivityEvent[] }) {
-  return (
-    <section className="smith-card smith-observations">
-      <div className="smith-panel-heading">
-        <div>
-          <h2>אירועים ותקלות אחרונות</h2>
-          <p>טלמטריה אמיתית מ־activity_events; לא ממצאי Smith.</p>
-        </div>
-        <span>{events.length} אירועים</span>
-      </div>
-      {events.length ? (
-        <div className="smith-timeline">
-          {events.slice(0, 10).map((event, index) => (
-            <article
-              key={
-                event.id ?? `${event.event_type}-${event.created_at}-${index}`
-              }
-              data-severity={
-                event.event_type.includes("failure") ? "error" : "info"
-              }
-            >
-              <time>
-                {new Date(event.created_at).toLocaleTimeString("he-IL")}
-              </time>
-              <i />
-              <div>
-                <strong dir="ltr">{event.event_type}</strong>
-                <span>{eventDescription(event)}</span>
-              </div>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <EmptyState text="אין אירועים להצגה." />
-      )}
-    </section>
-  );
-}
-
-function eventDescription(event: ActivityEvent) {
-  if (event.event_type === "ai.success") return "קריאת AI הסתיימה בהצלחה.";
-  if (event.event_type === "ai.failure") return "קריאת AI נכשלה.";
-  if (event.event_type === "cron.reminders.success")
-    return "ריצת התזכורות הסתיימה בהצלחה.";
-  if (event.event_type === "cron.reminders.failure")
-    return "ריצת התזכורות נכשלה.";
-  if (event.event_type === "admin.access.changed")
-    return "הרשאת משתמש עודכנה על ידי Admin.";
-  return "אירוע מערכת מתועד.";
 }
 
 function ServicePanel({
@@ -713,9 +742,9 @@ function ServicePanel({
     ],
     [
       "Storage",
-      storage?.status === "passed"
+      storage?.status === "pass"
         ? "connected"
-        : storage?.status === "failed"
+        : storage?.status === "fail"
           ? "blocked"
           : "not_configured",
       storage?.summary ?? "נדרש לבדוק ידנית",
@@ -738,11 +767,6 @@ function ServicePanel({
           ? "ריצה אחרונה נכשלה"
           : "אין נתונים / לא הוגדר",
     ],
-    [
-      "Agent API",
-      data.ai?.lastTestedAt ? "connected" : "not_configured",
-      data.ai?.lastTestedAt ? "פעילות AI נצפתה" : "אין נתונים",
-    ],
   ] as const;
   return (
     <section className="smith-card service-status-panel">
@@ -758,11 +782,11 @@ function ServicePanel({
         </time>
       </div>
       <div className="service-status-grid">
-        {services.map(([label, state, detail]) => (
+        {services.map(([label, state, value]) => (
           <span data-state={state} key={label}>
             <i />
             <b dir="ltr">{label}</b>
-            <small>{detail}</small>
+            <small>{value}</small>
           </span>
         ))}
       </div>
@@ -785,9 +809,9 @@ function TestsPanel({
         <h2>בדיקות אוטומטיות</h2>
         <span
           className="smith-connection-status"
-          data-state={latest?.status === "passed" ? "connected" : "local_only"}
+          data-state={latest?.status === "pass" ? "connected" : "local_only"}
         >
-          {latest?.status === "passed" ? "עבר כעת" : "Evidence מקומי"}
+          {latest?.status === "pass" ? "עבר כעת" : "Evidence מקומי"}
         </span>
       </div>
       {latest ? (
@@ -813,17 +837,26 @@ function PreviewApprovalPanel() {
   return (
     <section className="smith-card smith-small-panel">
       <div className="smith-panel-heading">
-        <h2>Preview ואישור Production</h2>
+        <h2>Preview ו־Production</h2>
         <span className="smith-connection-status" data-state="disconnected">
           מנותק
         </span>
       </div>
-      <EmptyState text="Preview אוטונומי ו־ProductionExecutor כבויים." />
+      <EmptyState text="Preview אוטונומי ו־ProductionExecutor כבויים במכוון." />
     </section>
   );
 }
 
-function AuditPanel({ items }: { items: ActivityEvent[] }) {
+function AuditPanel({
+  items,
+  onSelect,
+  expanded = false,
+}: {
+  items: OperationalEvent[];
+  onSelect: (event: OperationalEvent) => void;
+  expanded?: boolean;
+}) {
+  const visible = expanded ? items : items.slice(0, 8);
   return (
     <section className="smith-card smith-audit-panel">
       <div className="smith-panel-heading">
@@ -831,14 +864,16 @@ function AuditPanel({ items }: { items: ActivityEvent[] }) {
           <h2>פעילות אחרונה</h2>
           <p>Audit ופעילות Admin אמיתיים בלבד.</p>
         </div>
-        <span>{items.length} רשומות</span>
+        <span>{visible.length} רשומות</span>
       </div>
-      {items.length ? (
+      {visible.length ? (
         <ul className="control-activity-list">
-          {items.slice(0, 8).map((item, index) => (
-            <li key={item.id ?? `${item.event_type}-${index}`}>
-              <b dir="ltr">{item.event_type}</b>
-              <time>{new Date(item.created_at).toLocaleString("he-IL")}</time>
+          {visible.map((item) => (
+            <li key={item.id}>
+              <button onClick={() => onSelect(item)}>
+                <b dir="ltr">{item.event_type}</b>
+                <time>{new Date(item.created_at).toLocaleString("he-IL")}</time>
+              </button>
             </li>
           ))}
         </ul>
@@ -846,6 +881,71 @@ function AuditPanel({ items }: { items: ActivityEvent[] }) {
         <EmptyState text="אין פעילות להצגה." />
       )}
     </section>
+  );
+}
+
+function IncidentSummary({
+  incidents,
+  onOpen,
+}: {
+  incidents: AdminIncidentsResponse | null;
+  onOpen: (detail: OperationalDetail) => void;
+}) {
+  return (
+    <section className="smith-card incident-summary">
+      <div>
+        <span>הופעות ב־7 ימים</span>
+        <strong>{incidents?.occurrenceCount ?? "אין נתונים"}</strong>
+      </div>
+      <div>
+        <span>תחומים</span>
+        <strong>{incidents?.categoryCount ?? "אין נתונים"}</strong>
+      </div>
+      <div>
+        <span>לא פתורות</span>
+        <strong>{incidents?.unresolvedCount ?? "אין נתונים"}</strong>
+      </div>
+      <button onClick={() => onOpen("incidents")}>פתח פירוט תקלות</button>
+    </section>
+  );
+}
+
+function IntentionalBoundaries({
+  onOpen,
+}: {
+  onOpen: (detail: OperationalDetail) => void;
+}) {
+  return (
+    <section className="smith-card intentional-boundaries">
+      <h2>חיבורים מנותקים במכוון</h2>
+      <button onClick={() => onOpen("smith")}>
+        <b>Smith Agent</b>
+        <span>OFF — deliberately disabled</span>
+      </button>
+      <button onClick={() => onOpen("preview")}>
+        <b>Preview</b>
+        <span>DISCONNECTED</span>
+      </button>
+      <button onClick={() => onOpen("production")}>
+        <b>Production Executor</b>
+        <span>DISCONNECTED</span>
+      </button>
+    </section>
+  );
+}
+
+function Freshness({
+  updatedAt,
+  stale,
+}: {
+  updatedAt: string;
+  stale: boolean;
+}) {
+  return (
+    <span className="control-freshness" data-stale={stale}>
+      {stale ? "נתונים ישנים" : "עודכן"}:{" "}
+      {new Date(updatedAt).toLocaleString("he-IL")}
+    </span>
   );
 }
 
@@ -864,7 +964,7 @@ function AccessState({
     loading: ["טוען את מרכז הבקרה…", "קורא נתונים מממשקי Admin הקיימים."],
     unauthorized: ["נדרשת כניסת מנהל", "יש להתחבר דרך ממשק ה־Admin."],
     forbidden: ["אין הרשאת מנהל", "החשבון המחובר אינו מורשה למרכז הבקרה."],
-    error: ["לא ניתן לטעון את מרכז הבקרה", "אחד מממשקי הליבה לא הגיב בהצלחה."],
+    error: ["לא ניתן לטעון את מרכז הבקרה", "ממשק הליבה לא הגיב בהצלחה."],
     ready: ["", ""],
   }[state];
   return (
@@ -879,4 +979,17 @@ function AccessState({
       ) : null}
     </main>
   );
+}
+
+function sectionFromPath(pathname: string): Section {
+  const segment = pathname.split("/").filter(Boolean).at(-1);
+  if (
+    segment === "events" ||
+    segment === "tests" ||
+    segment === "audit" ||
+    segment === "setup"
+  ) {
+    return segment;
+  }
+  return "overview";
 }

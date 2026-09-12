@@ -1,5 +1,6 @@
 import { authorizeAdmin, HttpError } from "@/lib/server-auth";
 import { adminJsonError } from "@/lib/admin-api";
+import { redactOperationalData } from "@/lib/smith/redaction";
 import { createServiceClient } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
@@ -16,16 +17,20 @@ export async function GET(req: Request) {
     const admin = createServiceClient();
     let query = admin
       .from("activity_events")
-      .select("id,event_type,created_at")
+      .select("id,event_type,created_at,owner_id,metadata")
       .order("created_at", { ascending: false })
       .limit(limit);
     if (before) query = query.lt("created_at", before);
     const { data, error } = await query;
     if (error) throw new HttpError(503, "לא הצלחנו לטעון פעילות.");
-    const events = data ?? [];
+    const events = (data ?? []).map((event) => ({
+      ...event,
+      metadata: redactOperationalData(event.metadata ?? {}),
+    }));
     return Response.json({
       events,
-      nextBefore: events.length === limit ? events[events.length - 1]?.created_at : null,
+      nextBefore:
+        events.length === limit ? events[events.length - 1]?.created_at : null,
     });
   } catch (error) {
     return adminJsonError(error);

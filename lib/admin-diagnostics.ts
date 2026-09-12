@@ -21,13 +21,17 @@ function result(
   status: DiagnosticStatus,
   summary: string,
   details?: Record<string, unknown>,
+  warnings: string[] = [],
 ): DiagnosticResult {
+  const completedAt = new Date().toISOString();
   return {
     check,
     status,
     summary,
-    checkedAt: new Date().toISOString(),
+    startedAt: new Date(started).toISOString(),
+    completedAt,
     durationMs: Date.now() - started,
+    warnings,
     details: details
       ? (redactOperationalData(details) as Record<string, unknown>)
       : undefined,
@@ -42,20 +46,15 @@ export async function checkDatabase(): Promise<DiagnosticResult> {
       .from("user_roles")
       .select("user_id", { count: "exact", head: true });
     if (error) {
-      return result("database", started, "failed", "בדיקת מסד הנתונים נכשלה.", {
+      return result("database", started, "fail", "בדיקת מסד הנתונים נכשלה.", {
         code: error.code,
       });
     }
-    return result("database", started, "passed", "מסד הנתונים זמין ומגיב.", {
+    return result("database", started, "pass", "מסד הנתונים זמין ומגיב.", {
       userRoleRows: count,
     });
   } catch {
-    return result(
-      "database",
-      started,
-      "failed",
-      "חיבור מסד הנתונים אינו זמין.",
-    );
+    return result("database", started, "fail", "חיבור מסד הנתונים אינו זמין.");
   }
 }
 
@@ -67,16 +66,16 @@ export async function checkAuth(
     const db = createServiceClient();
     const { data, error } = await db.auth.admin.getUserById(adminUserId);
     if (error || !data.user) {
-      return result("auth", started, "failed", "Auth לא אימת את חשבון המנהל.", {
+      return result("auth", started, "fail", "Auth לא אימת את חשבון המנהל.", {
         code: error?.code ?? "user_missing",
       });
     }
-    return result("auth", started, "passed", "Auth וחשבון המנהל זמינים.", {
+    return result("auth", started, "pass", "Auth וחשבון המנהל זמינים.", {
       userId: data.user.id,
       emailConfirmed: Boolean(data.user.email_confirmed_at),
     });
   } catch {
-    return result("auth", started, "failed", "שירות Auth אינו זמין.");
+    return result("auth", started, "fail", "שירות Auth אינו זמין.");
   }
 }
 
@@ -103,16 +102,16 @@ export async function checkOpenAI(): Promise<DiagnosticResult> {
       },
     );
     if (!response.ok) {
-      return result("openai", started, "failed", "OpenAI החזיר תשובת שגיאה.", {
+      return result("openai", started, "fail", "OpenAI החזיר תשובת שגיאה.", {
         httpStatus: response.status,
         model,
       });
     }
-    return result("openai", started, "passed", "OpenAI והמודל זמינים.", {
+    return result("openai", started, "pass", "OpenAI והמודל זמינים.", {
       model,
     });
   } catch {
-    return result("openai", started, "failed", "לא התקבלה תשובה מ־OpenAI.", {
+    return result("openai", started, "fail", "לא התקבלה תשובה מ־OpenAI.", {
       model,
     });
   }
@@ -124,7 +123,7 @@ export async function checkStorage(): Promise<DiagnosticResult> {
     const db = createServiceClient();
     const { data, error } = await db.storage.listBuckets();
     if (error) {
-      return result("storage", started, "failed", "בדיקת Storage נכשלה.", {
+      return result("storage", started, "fail", "בדיקת Storage נכשלה.", {
         code: error.name,
       });
     }
@@ -133,16 +132,17 @@ export async function checkStorage(): Promise<DiagnosticResult> {
       return result(
         "storage",
         started,
-        "warning",
+        "partial",
         "Storage זמין, אך bucket ההקלטות לא נמצא.",
         { bucketCount: data.length },
+        ["recordings_bucket_missing"],
       );
     }
     if (recordings.public) {
       return result(
         "storage",
         started,
-        "failed",
+        "fail",
         "Storage זמין, אך bucket ההקלטות מוגדר כציבורי.",
         { bucketCount: data.length, recordingsPublic: true },
       );
@@ -150,7 +150,7 @@ export async function checkStorage(): Promise<DiagnosticResult> {
     return result(
       "storage",
       started,
-      "passed",
+      "pass",
       "Storage וה־bucket הפרטי זמינים.",
       {
         bucketCount: data.length,
@@ -158,7 +158,7 @@ export async function checkStorage(): Promise<DiagnosticResult> {
       },
     );
   } catch {
-    return result("storage", started, "failed", "Storage אינו זמין.");
+    return result("storage", started, "fail", "Storage אינו זמין.");
   }
 }
 
@@ -184,24 +184,35 @@ export async function checkPushAndReminders(): Promise<DiagnosticResult> {
     !pushConfigured || !cronConfigured
       ? "not_configured"
       : failed
-        ? "failed"
+        ? "fail"
         : lastRun
-          ? "passed"
-          : "warning";
+          ? "pass"
+          : "partial";
   const summary =
-    status === "passed"
+    status === "pass"
       ? "Push ותהליך התזכורות מוגדרים; הריצה האחרונה הצליחה."
-      : status === "failed"
+      : status === "fail"
         ? "ריצת התזכורות האחרונה נכשלה."
-        : status === "warning"
+        : status === "partial"
           ? "Push ו־Cron מוגדרים, אך אין עדיין תוצאת ריצה."
           : "Push או Cron אינם מוגדרים במלואם.";
-  return result("push-reminders", started, status, summary, {
-    pushConfigured,
-    cronConfigured,
-    lastRunAt: lastRun?.created_at ?? null,
-    lastRunStatus: lastRun?.event_type ?? null,
-  });
+  return result(
+    "push-reminders",
+    started,
+    status,
+    summary,
+    {
+      pushConfigured,
+      cronConfigured,
+      lastRunAt: lastRun?.created_at ?? null,
+      lastRunStatus: lastRun?.event_type ?? null,
+    },
+    [
+      ...(!pushConfigured ? ["push_not_configured"] : []),
+      ...(!cronConfigured ? ["cron_not_configured"] : []),
+      ...(status === "partial" ? ["no_reminder_run_evidence"] : []),
+    ],
+  );
 }
 
 export function checkAdminApiResponses(
@@ -279,7 +290,7 @@ export async function runLocalDiagnosticCommand(
     return result(
       check,
       started,
-      "passed",
+      "pass",
       check === "unit-tests"
         ? "בדיקות היחידה והאינטגרציה עברו."
         : "בדיקות Playwright עברו.",
@@ -299,7 +310,7 @@ export async function runLocalDiagnosticCommand(
       .filter(Boolean)
       .slice(-20)
       .join("\n");
-    return result(check, started, "failed", "הרצת הבדיקות נכשלה.", {
+    return result(check, started, "fail", "הרצת הבדיקות נכשלה.", {
       code: execution.code ?? "unknown",
       timedOut: Boolean(execution.killed),
       output,
@@ -310,8 +321,8 @@ export async function runLocalDiagnosticCommand(
 export async function runFullHealth(
   adminUserId: string,
   adminApiResponses: AdminApiCheckResponse[],
+  started = Date.now(),
 ): Promise<DiagnosticResult> {
-  const started = Date.now();
   const checks = await Promise.all([
     checkDatabase(),
     checkAuth(adminUserId),
@@ -320,15 +331,43 @@ export async function runFullHealth(
     checkPushAndReminders(),
   ]);
   checks.push(checkAdminApiResponses(adminApiResponses, started));
-  const failed = checks.filter((check) => check.status === "failed").length;
+  const failed = checks.filter((check) => check.status === "fail").length;
   const incomplete = checks.filter(
-    (check) => check.status === "warning" || check.status === "not_configured",
+    (check) => check.status === "partial" || check.status === "not_configured",
   ).length;
   const status: DiagnosticStatus = failed
-    ? "failed"
+    ? "fail"
     : incomplete
-      ? "warning"
-      : "passed";
+      ? "partial"
+      : "pass";
+  const subsystems = [
+    {
+      subsystem: "Application",
+      status: "pass",
+      summary: "ה־Admin diagnostic endpoint זמין.",
+    },
+    ...checks.map((check) => ({
+      subsystem:
+        check.check === "admin-apis"
+          ? "Admin APIs"
+          : check.check === "push-reminders"
+            ? "Push / Reminders"
+            : check.check === "openai"
+              ? "AI"
+              : check.check[0].toUpperCase() + check.check.slice(1),
+      status: check.status,
+      summary: check.summary,
+    })),
+  ];
+  const warnings = checks
+    .filter(
+      (check) =>
+        check.status === "partial" || check.status === "not_configured",
+    )
+    .map((check) => check.summary);
+  const failures = checks
+    .filter((check) => check.status === "fail")
+    .map((check) => check.summary);
   return result(
     "full-health",
     started,
@@ -339,12 +378,10 @@ export async function runFullHealth(
         ? `המערכת מגיבה, אך ${incomplete} רכיבים אינם מלאים.`
         : "כל בדיקות הבריאות עברו.",
     {
-      checks: checks.map((check) => ({
-        check: check.check,
-        status: check.status,
-        summary: check.summary,
-        durationMs: check.durationMs,
-      })),
+      subsystems,
+      failures,
+      warnings,
     },
+    warnings,
   );
 }

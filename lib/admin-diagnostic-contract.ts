@@ -11,15 +11,16 @@ export const ADMIN_DIAGNOSTIC_CHECKS = [
 ] as const;
 
 export type AdminDiagnosticCheck = (typeof ADMIN_DIAGNOSTIC_CHECKS)[number];
-export type DiagnosticStatus =
-  "passed" | "failed" | "warning" | "not_configured";
+export type DiagnosticStatus = "pass" | "fail" | "partial" | "not_configured";
 
 export type DiagnosticResult = {
   check: AdminDiagnosticCheck;
   status: DiagnosticStatus;
   summary: string;
-  checkedAt: string;
+  startedAt: string;
+  completedAt: string;
   durationMs: number;
+  warnings: string[];
   details?: Record<string, unknown>;
 };
 
@@ -38,7 +39,7 @@ export function isAdminDiagnosticCheck(
 export function summarizeAdminApiResponses(responses: AdminApiCheckResponse[]) {
   const failures = responses.filter((response) => !response.ok);
   return {
-    status: failures.length ? ("failed" as const) : ("passed" as const),
+    status: failures.length ? ("fail" as const) : ("pass" as const),
     summary: failures.length
       ? `${failures.length} ממשקי Admin החזירו שגיאה.`
       : "כל ממשקי Admin המרכזיים הגיבו בהצלחה.",

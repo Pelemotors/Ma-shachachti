@@ -1,30 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const smithState = {
-  enabled: false,
-  setup: {
-    github: "disconnected",
-    preview: "disconnected",
-    testEnvironment: "local_only",
-    playwright: "not_configured",
-    productionGate: "disconnected",
-  },
-  summary: {
-    systemHealth: null,
-    activeUsers: null,
-    activeIncidents: null,
-    readyPreviews: null,
-    pendingApprovals: null,
-  },
-  currentJob: null,
-  observations: [],
-  workItems: [],
-  previews: [],
-  tests: [],
-  approvals: [],
-  audit: [],
-};
-
 async function mockControlCenter(page: Page) {
   const responses: Record<string, unknown> = {
     "/api/admin/overview": {
@@ -42,8 +17,10 @@ async function mockControlCenter(page: Page) {
         reminders7: 3,
         reminderErrors: 1,
       },
+      series: [],
       recent: [
         {
+          id: "recent-1",
           event_type: "ai.failure",
           created_at: "2026-09-12T12:00:00.000Z",
         },
@@ -72,21 +49,85 @@ async function mockControlCenter(page: Page) {
       failures: 2,
       successRate: 80,
       averageLatencyMs: 640,
+      medianLatencyMs: 610,
+      p95LatencyMs: null,
+      latencySampleCount: 8,
+      successfulCallsWithRetry: 1,
+      retryMetadataSampleCount: 8,
       failureCodes: { unknown: 2 },
+      recentFailures: [
+        {
+          createdAt: "2026-09-12T12:00:00.000Z",
+          code: "unknown",
+          status: null,
+          latencyMs: 900,
+          message: null,
+          model: null,
+        },
+      ],
+      models: [],
       lastTestedAt: "2026-09-12T12:00:00.000Z",
+      lastSuccessAt: "2026-09-12T11:50:00.000Z",
+      lastFailureAt: "2026-09-12T12:00:00.000Z",
+      windowDays: 30,
+      sampleLimit: 500,
+      sampleTruncated: false,
+      latencyScope: "application_decision_preparation",
+    },
+    "/api/admin/incidents": {
+      occurrenceCount: 3,
+      categoryCount: 2,
+      unresolvedCount: 1,
+      incidents: [
+        {
+          id: "ai.failure",
+          eventType: "ai.failure",
+          title: "כשל בעיבוד AI",
+          subsystem: "ai",
+          severity: "error",
+          firstSeen: "2026-09-11T12:00:00.000Z",
+          lastSeen: "2026-09-12T12:00:00.000Z",
+          occurrenceCount: 2,
+          latestCode: "unknown",
+          latestMessage: null,
+          latestLatencyMs: 900,
+          status: "unresolved",
+          resolutionEvidenceAt: null,
+        },
+      ],
+      windowDays: 7,
+      sampleLimit: 1000,
+      sampleTruncated: false,
+      generatedAt: "2026-09-12T12:00:00.000Z",
     },
     "/api/admin/tasks": { total: 12, byStatus: { open: 8, done: 4 } },
-    "/api/admin/users": { users: new Array(9).fill({ approved: true }) },
-    "/api/admin/activity?limit=30": {
+    "/api/admin/users": {
+      users: [
+        {
+          id: "u1",
+          email: "pending@example.com",
+          emailConfirmed: false,
+          createdAt: "2026-09-11T12:00:00.000Z",
+          lastSignInAt: null,
+          role: "user",
+          approved: false,
+        },
+      ],
+    },
+    "/api/admin/activity?limit=100": {
       events: [
         {
           id: "event-1",
           event_type: "admin.access.changed",
           created_at: "2026-09-12T12:00:00.000Z",
         },
+        {
+          id: "event-2",
+          event_type: "ai.failure",
+          created_at: "2026-09-12T12:00:00.000Z",
+        },
       ],
     },
-    "/api/admin/smith/overview": smithState,
     "/api/admin/diagnostics/evidence": {
       playwright: {
         status: "PASSED",
@@ -134,6 +175,7 @@ test("Control Center renders real API values while Smith remains off", async ({
     page.getByRole("heading", { name: "מרכז הבקרה התפעולי" }),
   ).toBeVisible();
   await expect(page.getByText("Smith Agent כבוי כרגע")).toBeVisible();
+  await expect(page.getByText("OFF — deliberate")).toBeVisible();
   await expect(
     page.getByText("משתמשים פעילים").locator("..").getByText("5"),
   ).toBeVisible();
@@ -143,22 +185,31 @@ test("Control Center renders real API values while Smith remains off", async ({
   await expect(
     page.getByText("משימות").locator("..").getByText("12"),
   ).toBeVisible();
+  await expect(page.getByText("זמן הכנת החלטת AI")).toBeVisible();
   await expect(page.getByText("640ms").first()).toBeVisible();
-  await expect(page.getByText("ai.failure")).toBeVisible();
+  await expect(
+    page.locator(".smith-summary-card").filter({ hasText: "תקלות אחרונות" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "בדיקות מערכת" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "בדוק Database" }),
+    page.getByText("Preview אוטונומי ו־ProductionExecutor כבויים במכוון."),
   ).toBeVisible();
-  await expect(
-    page.getByText("Preview אוטונומי ו־ProductionExecutor כבויים."),
-  ).toBeVisible();
+});
 
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
+test("summary cards open operational detail drawers", async ({ page }) => {
+  await mockControlCenter(page);
+  await page.goto("/admin/smith");
+  await page.getByRole("button", { name: /זמן הכנת החלטת AI/ }).click();
+  await expect(page.getByRole("heading", { name: "ביצועי AI" })).toBeVisible();
+  await expect(page.getByText("הכנת החלטה בצד השרת")).toBeVisible();
+  await page.getByRole("button", { name: "סגירת פרטים" }).click();
+  await page.getByRole("button", { name: /תקלות אחרונות/ }).click();
+  await expect(page.locator("#operational-drawer-title")).toHaveText(
+    "תקלות אחרונות",
   );
-  expect(overflow).toBe(false);
+  await expect(page.getByText("כשל בעיבוד AI", { exact: true })).toBeVisible();
 });
 
 test("manual diagnostic reports real running and result state", async ({
@@ -172,19 +223,33 @@ test("manual diagnostic reports real running and result state", async ({
       contentType: "application/json",
       body: JSON.stringify({
         check: "database",
-        status: "passed",
+        status: "pass",
         summary: "מסד הנתונים זמין ומגיב.",
-        checkedAt: "2026-09-12T12:00:00.000Z",
+        startedAt: "2026-09-12T12:00:00.000Z",
+        completedAt: "2026-09-12T12:00:00.021Z",
         durationMs: 21,
+        warnings: [],
         details: { userRoleRows: 9 },
       }),
     });
   });
   await page.goto("/admin/smith");
-  await page.getByRole("button", { name: "בדוק Database" }).click();
-  await expect(page.getByRole("button", { name: "מריץ בדיקה…" })).toBeVisible();
+  await page.getByRole("button", { name: "הרץ בדיקה" }).first().click();
+  await expect(page.getByRole("button", { name: "מריץ…" })).toBeVisible();
   await expect(page.getByText("מסד הנתונים זמין ומגיב.")).toBeVisible();
   await expect(page.getByText("21ms")).toBeVisible();
+  await expect(page.getByText("PASS").first()).toBeVisible();
+});
+
+test("events route is a real filtered view", async ({ page }) => {
+  await mockControlCenter(page);
+  await page.goto("/admin/smith/events");
+  await expect(
+    page.getByRole("heading", { name: "אירועים ותקלות אחרונות" }).first(),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "שגיאות" })).toBeVisible();
+  await page.getByRole("button", { name: "שגיאות" }).click();
+  await expect(page.getByText("קריאת AI נכשלה")).toBeVisible();
 });
 
 test("mobile navigation remains touch reachable", async ({

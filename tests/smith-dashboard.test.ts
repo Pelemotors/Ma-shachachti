@@ -32,7 +32,7 @@ test("Admin Control Center uses real Admin APIs and keeps Smith off", () => {
     "ADMIN CONTROL CENTER",
     "אירועים ותקלות אחרונות",
     "Smith Agent כבוי כרגע",
-    "Preview אוטונומי ו־ProductionExecutor כבויים.",
+    "Preview אוטונומי ו־ProductionExecutor כבויים במכוון.",
     "אין פעילות להצגה.",
     "בדיקות מערכת",
   ]) {
@@ -43,6 +43,7 @@ test("Admin Control Center uses real Admin APIs and keeps Smith off", () => {
     "/api/admin/health",
     "/api/admin/activity",
     "/api/admin/ai",
+    "/api/admin/incidents",
     "/api/admin/tasks",
     "/api/admin/users",
   ]) {

@@ -25,19 +25,14 @@ The user-facing `components/chat-app.tsx` is not refactored for Smith.
 ## Route structure
 
 - `/admin` — existing Administration UI
-- `/admin/smith` — Smith Control Center dashboard
-- `/admin/smith/events`
-- `/admin/smith/previews`
-- `/admin/smith/tests`
-- `/admin/smith/approvals`
-- `/admin/smith/audit`
-- `/admin/smith/rollback`
-- `/admin/smith/setup`
-- `/admin/smith/work-items/[id]`
+- `/admin/smith` — operational Admin Control Center
+- `/admin/smith/events` — events and incidents
+- `/admin/smith/tests` — manual system checks
+- `/admin/smith/audit` — recent admin/system activity
+- `/admin/smith/setup` — connection and intentional-off states
 
-The first milestone implements the shared Smith shell and dashboard. Deeper
-routes may initially show truthful Empty, Disconnected or Not Configured
-states, then gain data views without changing their URLs.
+Dead Smith-only routes are not shown as functional navigation. Smith Agent,
+Preview and ProductionExecutor remain explicitly OFF or DISCONNECTED.
 
 ## Components
 

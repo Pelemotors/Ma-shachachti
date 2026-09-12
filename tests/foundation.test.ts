@@ -44,7 +44,10 @@ test("admin cannot self-lock", () => {
 });
 
 test("login page has signup and forgot password but no confirm-password field", () => {
-  const page = readFileSync(new URL("../app/login/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(
+    new URL("../app/login/page.tsx", import.meta.url),
+    "utf8",
+  );
   assert.match(page, /signUp/);
   assert.match(page, /resetPasswordForEmail/);
   assert.match(page, /אין לי חשבון — הרשמה/);
@@ -60,7 +63,10 @@ test("chat request can carry a session_id owned later by the server", () => {
   });
   assert.equal(parsed.ok, true);
   if (parsed.ok) {
-    assert.equal(parsed.request.session_id, "11111111-1111-4111-8111-111111111111");
+    assert.equal(
+      parsed.request.session_id,
+      "11111111-1111-4111-8111-111111111111",
+    );
   }
   const bad = parseChatRequest({ message: "שלום", session_id: "not-a-uuid" });
   assert.equal(bad.ok, false);
@@ -180,6 +186,7 @@ test("admin lean APIs do not read app_states", () => {
     "app/api/admin/ai/route.ts",
     "app/api/admin/tasks/route.ts",
     "app/api/admin/health/route.ts",
+    "app/api/admin/incidents/route.ts",
   ];
   for (const file of files) {
     const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -236,7 +243,8 @@ test("clearUserTasks only cancels the current user's open and done tasks", async
         ) {
           if (pending) {
             for (const row of rows) {
-              const userOk = !filters.user_id || row.user_id === filters.user_id;
+              const userOk =
+                !filters.user_id || row.user_id === filters.user_id;
               const statusOk = Array.isArray(filters["in:status"])
                 ? (filters["in:status"] as string[]).includes(row.status)
                 : true;
@@ -248,7 +256,8 @@ test("clearUserTasks only cancels the current user's open and done tasks", async
             );
           }
           const visible = rows.filter((row) => {
-            if (filters.user_id && row.user_id !== filters.user_id) return false;
+            if (filters.user_id && row.user_id !== filters.user_id)
+              return false;
             if (filters["neq:status"] && row.status === filters["neq:status"]) {
               return false;
             }
@@ -268,5 +277,8 @@ test("clearUserTasks only cancels the current user's open and done tasks", async
   assert.equal(rows[1]?.status, "cancelled");
   assert.equal(rows[2]?.status, "cancelled");
   assert.equal(rows[3]?.status, "open");
-  assert.equal(tasks.every((task) => task.status !== "cancelled"), true);
+  assert.equal(
+    tasks.every((task) => task.status !== "cancelled"),
+    true,
+  );
 });
