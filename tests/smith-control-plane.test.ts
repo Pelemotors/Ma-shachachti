@@ -161,3 +161,11 @@ test("control-plane migration denies regular and test users", () => {
   assert.match(migration, /for update skip locked/i);
   assert.match(migration, /expires_at <= created_at \+ interval '5 minutes'/i);
 });
+
+test("existing activity and chat telemetry use redaction and record failures", () => {
+  const activity = readFileSync("lib/activity.ts", "utf8");
+  const chatRoute = readFileSync("app/api/chat/route.ts", "utf8");
+  assert.match(activity, /redactOperationalData\(input\.metadata/);
+  assert.match(chatRoute, /trackAi\(telemetryUserId, "ai\.failure"/);
+  assert.doesNotMatch(chatRoute, /ai\.failure"[\s\S]{0,200}message:/);
+});

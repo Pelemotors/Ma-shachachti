@@ -48,8 +48,17 @@ test("Smith UI has no fake completion mechanism", () => {
 });
 
 test("all Smith Admin APIs require server Admin authorization", () => {
+  const setupRoute = readFileSync("app/api/admin/smith/setup/route.ts", "utf8");
+  const jobsRoute = readFileSync("app/api/admin/smith/jobs/route.ts", "utf8");
+  const observationsRoute = readFileSync(
+    "app/api/admin/smith/observations/route.ts",
+    "utf8",
+  );
   assert.match(overviewRoute, /await authorizeAdmin\(req\)/);
   assert.match(workItemsRoute, /await authorizeAdmin\(req\)/);
+  assert.match(setupRoute, /await authorizeAdmin\(req\)/);
+  assert.match(jobsRoute, /await authorizeAdmin\(req\)/);
+  assert.match(observationsRoute, /await authorizeAdmin\(req\)/);
   assert.match(overviewRoute, /emptySmithDashboard/);
   assert.match(workItemsRoute, /Smith Control Plane עדיין לא הוגדר/);
 });

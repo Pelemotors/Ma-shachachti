@@ -130,8 +130,10 @@ export async function POST(req: Request) {
     id: string;
     resumable: boolean;
   } | null = null;
+  let telemetryUserId: string | null = null;
   try {
     const { db, userId } = await authorize(req);
+    telemetryUserId = userId;
     const parsed = parseChatRequest(await req.json().catch(() => null));
     if (!parsed.ok) throw new HttpError(parsed.status, parsed.error);
     const {
@@ -338,6 +340,12 @@ export async function POST(req: Request) {
         activeTurn.userId,
         activeTurn.id,
       ).catch(() => undefined);
+    }
+    if (telemetryUserId) {
+      await trackAi(telemetryUserId, "ai.failure", {
+        latencyMs: Date.now() - started,
+        code: error instanceof HttpError ? String(error.status) : "unknown",
+      });
     }
     return jsonError(error);
   }
