@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { SmithControlCenter } from "@/components/admin/smith-control-center";
+import { isAdminControlSection } from "@/lib/admin-control-sections";
 import "../smith.css";
-
-const sections = new Set(["events", "tests", "audit", "setup"]);
 
 export default async function SmithSectionPage({
   params,
@@ -10,6 +9,6 @@ export default async function SmithSectionPage({
   params: Promise<{ section: string }>;
 }) {
   const { section } = await params;
-  if (!sections.has(section)) notFound();
+  if (section === "overview" || !isAdminControlSection(section)) notFound();
   return <SmithControlCenter />;
 }

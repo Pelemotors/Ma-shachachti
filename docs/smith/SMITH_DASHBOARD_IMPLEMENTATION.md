@@ -30,9 +30,11 @@ The user-facing `components/chat-app.tsx` is not refactored for Smith.
 - `/admin/smith/tests` — manual system checks
 - `/admin/smith/audit` — recent admin/system activity
 - `/admin/smith/setup` — connection and intentional-off states
+- `/admin/smith/previews`, `/approvals`, `/rollback` — real routes that
+  render a truthful “לא הוגדר עדיין” / DISCONNECTED state
 
-Dead Smith-only routes are not shown as functional navigation. Smith Agent,
-Preview and ProductionExecutor remain explicitly OFF or DISCONNECTED.
+Smith Agent, Preview and ProductionExecutor remain explicitly OFF or
+DISCONNECTED. Those routes must not 404.
 
 ## Components
 

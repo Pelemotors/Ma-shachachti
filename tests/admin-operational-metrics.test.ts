@@ -50,3 +50,15 @@ test("Control Center exposes interactive truthful operational UX", () => {
   assert.match(events, /חיפוש לפי סוג אירוע/);
   assert.match(events, /aria-pressed/);
 });
+
+test("legacy Smith routes stay reachable as disconnected pages", () => {
+  const route = read("app/admin/smith/[section]/page.tsx");
+  const sections = read("lib/admin-control-sections.ts");
+  const component = read("components/admin/smith-control-center.tsx");
+  assert.match(route, /isAdminControlSection/);
+  assert.match(sections, /previews/);
+  assert.match(sections, /approvals/);
+  assert.match(sections, /rollback/);
+  assert.match(component, /לא הוגדר עדיין/);
+  assert.match(component, /DisconnectedCapabilityPanel/);
+});

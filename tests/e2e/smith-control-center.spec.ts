@@ -241,6 +241,21 @@ test("manual diagnostic reports real running and result state", async ({
   await expect(page.getByText("PASS").first()).toBeVisible();
 });
 
+test("legacy Preview route is disconnected instead of 404", async ({
+  page,
+}) => {
+  await mockControlCenter(page);
+  await page.goto("/admin/smith/previews");
+  await expect(
+    page.getByRole("heading", { name: "Preview Lab" }).first(),
+  ).toBeVisible();
+  await expect(page.getByText("לא הוגדר עדיין").first()).toBeVisible();
+  await expect(page.getByText("DISCONNECTED").first()).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "This page could not be found." }),
+  ).toHaveCount(0);
+});
+
 test("events route is a real filtered view", async ({ page }) => {
   await mockControlCenter(page);
   await page.goto("/admin/smith/events");

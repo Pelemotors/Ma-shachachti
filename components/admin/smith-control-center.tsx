@@ -23,9 +23,15 @@ import type {
   AdminDiagnosticCheck,
   DiagnosticResult,
 } from "@/lib/admin-diagnostic-contract";
+import {
+  ADMIN_CONTROL_SECTIONS,
+  SMITH_FUTURE_SECTIONS,
+  isSmithFutureSection,
+  type AdminControlSection,
+} from "@/lib/admin-control-sections";
 
 type LoadState = "loading" | "ready" | "unauthorized" | "forbidden" | "error";
-type Section = "overview" | "events" | "tests" | "audit" | "setup";
+type Section = AdminControlSection;
 type ControlCenterData = {
   overview: AdminOverview;
   health: AdminHealth | null;
@@ -242,6 +248,18 @@ export function SmithControlCenter() {
     ],
     audit: ["Audit ופעילות", "אירועי Admin ומערכת מתועדים."],
     setup: ["מצב חיבורים", "מה פעיל, מה כבוי ומה מנותק במכוון."],
+    previews: [
+      SMITH_FUTURE_SECTIONS.previews.title,
+      SMITH_FUTURE_SECTIONS.previews.summary,
+    ],
+    approvals: [
+      SMITH_FUTURE_SECTIONS.approvals.title,
+      SMITH_FUTURE_SECTIONS.approvals.summary,
+    ],
+    rollback: [
+      SMITH_FUTURE_SECTIONS.rollback.title,
+      SMITH_FUTURE_SECTIONS.rollback.summary,
+    ],
   }[section];
 
   return (
@@ -357,6 +375,10 @@ export function SmithControlCenter() {
               <IntentionalBoundaries onOpen={setDetail} />
             </>
           )}
+
+          {isSmithFutureSection(section) && (
+            <DisconnectedCapabilityPanel section={section} onOpen={setDetail} />
+          )}
         </main>
       </div>
       <OperationalDetailDrawer
@@ -469,6 +491,26 @@ function Sidebar({
             >
               <span className={`smith-nav-icon ${icon}`} aria-hidden="true" />
               {label}
+            </a>
+          ))}
+        </nav>
+        <p className="smith-nav-label">Smith — לא הוגדר עדיין</p>
+        <nav aria-label="יכולות Smith עתידיות">
+          {(
+            [
+              ["previews", "Preview Lab", "/admin/smith/previews", "preview"],
+              ["approvals", "אישורים", "/admin/smith/approvals", "approval"],
+              ["rollback", "Rollback", "/admin/smith/rollback", "approval"],
+            ] as const
+          ).map(([id, label, href, icon]) => (
+            <a
+              className={section === id ? "active" : ""}
+              href={href}
+              key={href}
+            >
+              <span className={`smith-nav-icon ${icon}`} aria-hidden="true" />
+              {label}
+              <small>לא הוגדר</small>
             </a>
           ))}
         </nav>
@@ -910,6 +952,39 @@ function IncidentSummary({
   );
 }
 
+function DisconnectedCapabilityPanel({
+  section,
+  onOpen,
+}: {
+  section: keyof typeof SMITH_FUTURE_SECTIONS;
+  onOpen: (detail: OperationalDetail) => void;
+}) {
+  const capability = SMITH_FUTURE_SECTIONS[section];
+  const detail: OperationalDetail =
+    section === "previews"
+      ? "preview"
+      : section === "approvals" || section === "rollback"
+        ? "production"
+        : "smith";
+  return (
+    <section className="smith-card disconnected-capability">
+      <div className="smith-panel-heading">
+        <div>
+          <h2>{capability.title}</h2>
+          <p>{capability.summary}</p>
+        </div>
+        <span className="smith-connection-status" data-state="disconnected">
+          {capability.status}
+        </span>
+      </div>
+      <p className="smith-empty">לא הוגדר עדיין</p>
+      <button className="smith-secondary-button" onClick={() => onOpen(detail)}>
+        הסבר על המצב
+      </button>
+    </section>
+  );
+}
+
 function IntentionalBoundaries({
   onOpen,
 }: {
@@ -984,12 +1059,11 @@ function AccessState({
 function sectionFromPath(pathname: string): Section {
   const segment = pathname.split("/").filter(Boolean).at(-1);
   if (
-    segment === "events" ||
-    segment === "tests" ||
-    segment === "audit" ||
-    segment === "setup"
+    segment &&
+    segment !== "overview" &&
+    (ADMIN_CONTROL_SECTIONS as readonly string[]).includes(segment)
   ) {
-    return segment;
+    return segment as Section;
   }
   return "overview";
 }

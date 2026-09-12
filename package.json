@@ -13,7 +13,7 @@
     "agent:bundle": "node scripts/bundle-instructions.mjs",
     "smith:poc": "node scripts/smith-security-poc.mjs",
     "smith:runner": "node --experimental-strip-types scripts/smith-runner.ts",
-    "format:check": "prettier --check .github app/admin/smith app/api/admin/activity app/api/admin/ai app/api/admin/diagnostics app/api/admin/incidents app/api/admin/smith app/api/smith components/admin docs/smith lib/admin-control-contract.ts lib/admin-diagnostic-contract.ts lib/admin-diagnostics.ts lib/admin-incidents.ts lib/smith playwright.config.ts scripts/smith-security-poc.mjs scripts/smith-runner.ts \"tests/*smith*.test.ts\" tests/admin-diagnostics.test.ts tests/admin-operational-metrics.test.ts tests/e2e .prettierrc.json package.json --ignore-unknown",
+    "format:check": "prettier --check .github app/admin/smith app/api/admin/activity app/api/admin/ai app/api/admin/diagnostics app/api/admin/incidents app/api/admin/smith app/api/smith components/admin docs/smith lib/admin-control-contract.ts lib/admin-control-sections.ts lib/admin-diagnostic-contract.ts lib/admin-diagnostics.ts lib/admin-incidents.ts lib/smith playwright.config.ts scripts/smith-security-poc.mjs scripts/smith-runner.ts \"tests/*smith*.test.ts\" tests/admin-diagnostics.test.ts tests/admin-operational-metrics.test.ts tests/e2e .prettierrc.json package.json --ignore-unknown",
     "lint": "npm run typecheck"
   },
   "engines": {
