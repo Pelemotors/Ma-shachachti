@@ -2,7 +2,7 @@
   "phase": "1A",
   "environment": "Supabase Local",
   "productionConnected": false,
-  "generatedAt": "2026-09-12T13:33:13.889Z",
+  "generatedAt": "2026-09-12T15:18:57.674Z",
   "result": "PASSED",
   "roleConfiguration": {
     "rolcanlogin": false,
