@@ -1,0 +1,95 @@
+{
+  "phase": "1A",
+  "environment": "Supabase Local",
+  "productionConnected": false,
+  "generatedAt": "2026-09-12T13:33:13.889Z",
+  "result": "PASSED",
+  "roleConfiguration": {
+    "rolcanlogin": false,
+    "rolcreatedb": false,
+    "rolcreaterole": false,
+    "rolinherit": false,
+    "rolreplication": false,
+    "rolsuper": false
+  },
+  "roleMembership": {
+    "anon_member": false,
+    "authenticated_member": false,
+    "authenticator_member": true,
+    "service_role_member": false
+  },
+  "assertions": [
+    {
+      "check": "initial_login",
+      "outcome": "PASSED",
+      "jwtRole": "smith_test",
+      "environment": "smith_test"
+    },
+    {
+      "check": "smith_test_probe_crud",
+      "outcome": "PASSED"
+    },
+    {
+      "check": "alternate_client_public_table",
+      "outcome": "DENIED",
+      "error": {
+        "code": "42501",
+        "status": null,
+        "message": "permission denied for schema public"
+      }
+    },
+    {
+      "check": "public_table_insert",
+      "outcome": "DENIED",
+      "error": {
+        "code": "42501",
+        "status": null,
+        "message": "permission denied for schema public"
+      }
+    },
+    {
+      "check": "public_rpc",
+      "outcome": "DENIED",
+      "error": {
+        "code": "42501",
+        "status": null,
+        "message": "permission denied for schema public"
+      }
+    },
+    {
+      "check": "direct_rest_public",
+      "outcome": "DENIED",
+      "status": 403
+    },
+    {
+      "check": "production_style_storage",
+      "outcome": "DENIED",
+      "error": {
+        "code": "AccessDenied",
+        "status": 400,
+        "message": "permission denied for schema storage"
+      }
+    },
+    {
+      "check": "refresh_token",
+      "outcome": "PASSED",
+      "jwtRole": "smith_test"
+    },
+    {
+      "check": "new_session_token_reissue",
+      "outcome": "PASSED",
+      "jwtRole": "smith_test"
+    },
+    {
+      "check": "production_user_role",
+      "outcome": "PASSED",
+      "jwtRole": "authenticated",
+      "environment": "production"
+    },
+    {
+      "check": "authenticated_control_access",
+      "outcome": "PASSED"
+    }
+  ],
+  "secretsPersisted": false
+}
