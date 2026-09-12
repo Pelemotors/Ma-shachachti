@@ -1,0 +1,8 @@
+# Smith-sensitive changes require explicit repository-owner review.
+/.github/ @Pelemotors
+/app/api/smith/ @Pelemotors
+/lib/server-auth.ts @Pelemotors
+/lib/smith/production-gate.ts @Pelemotors
+/supabase/migrations/ @Pelemotors
+/database/migrations/ @Pelemotors
+/vercel.json @Pelemotors
