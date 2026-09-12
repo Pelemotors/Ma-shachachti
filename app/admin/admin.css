@@ -53,6 +53,18 @@
   background: var(--pink);
   color: #fff;
 }
+.admin-smith-link {
+  display: block;
+  margin-top: 12px;
+  padding: 13px 16px;
+  border: 1px solid #cfe8df;
+  border-radius: 15px;
+  background: #eef9f5;
+  color: #137f65;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
 .admin-content {
   padding: 38px 44px 80px;
   min-width: 0;

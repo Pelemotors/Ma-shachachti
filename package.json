@@ -11,7 +11,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "agent:bundle": "node scripts/bundle-instructions.mjs",
     "smith:poc": "node scripts/smith-security-poc.mjs",
-    "format:check": "prettier --check .github docs/smith scripts/smith-security-poc.mjs tests/smith-security-poc.test.ts .prettierrc.json package.json --ignore-unknown",
+    "format:check": "prettier --check .github app/admin/smith app/api/admin/smith components/admin docs/smith lib/smith scripts/smith-security-poc.mjs \"tests/smith*.test.ts\" .prettierrc.json package.json --ignore-unknown",
     "lint": "npm run typecheck"
   },
   "engines": {

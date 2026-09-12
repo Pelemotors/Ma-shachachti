@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 120" fill="none">
+  <g stroke="#8ECCD0" stroke-width="1.25" opacity=".5" stroke-linecap="round">
+    <path d="M8 92h35l17-17h34l18-18h42"/>
+    <path d="M19 31h30l15 15h30"/>
+    <path d="M106 103V82l15-15"/>
+    <path d="M141 27h31l15 15h25"/>
+    <path d="M154 57v31l12 12h38"/>
+    <path d="M79 8v24"/>
+  </g>
+  <g fill="#8ECCD0" opacity=".65">
+    <circle cx="8" cy="92" r="3"/>
+    <circle cx="94" cy="75" r="3"/>
+    <circle cx="154" cy="57" r="3"/>
+    <circle cx="19" cy="31" r="3"/>
+    <circle cx="79" cy="8" r="3"/>
+    <circle cx="212" cy="42" r="3"/>
+    <circle cx="204" cy="100" r="3"/>
+  </g>
+</svg>

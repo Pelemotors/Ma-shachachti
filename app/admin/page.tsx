@@ -238,6 +238,9 @@ export default function Admin() {
                 {id === "users" && s?.pending ? ` · ${s.pending}` : ""}
               </button>
             ))}
+            <a className="admin-smith-link" href="/admin/smith">
+              ✦　Smith Control Center
+            </a>
           </nav>
         </aside>
 
