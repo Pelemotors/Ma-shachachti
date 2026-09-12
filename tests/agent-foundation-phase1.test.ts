@@ -271,3 +271,25 @@ test("no prohibited routing or legacy state was added", () => {
     assert.doesNotMatch(source, /app_states|keyword router|ranking engine/i);
   }
 });
+
+test("privilege hardening removes default grants and covers session foreign keys", () => {
+  const migration = readFileSync(
+    new URL(
+      "database/migrations/20260912_lean_privilege_hardening.sql",
+      root,
+    ),
+    "utf8",
+  );
+  assert.match(migration, /revoke all on table[\s\S]*from anon, authenticated/);
+  assert.match(
+    migration,
+    /revoke all on function public\.execute_lean_action_idempotent[\s\S]*from public, anon, authenticated/,
+  );
+  assert.match(
+    migration,
+    /grant execute on function public\.execute_lean_action_idempotent[\s\S]*to authenticated/,
+  );
+  assert.match(migration, /agent_turns_user_session_idx/);
+  assert.match(migration, /agent_proposals_user_session_idx/);
+  assert.doesNotMatch(migration, /grant\s+.*truncate/i);
+});

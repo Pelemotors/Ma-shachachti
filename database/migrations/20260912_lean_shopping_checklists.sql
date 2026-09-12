@@ -81,7 +81,7 @@ create schema if not exists private;
 revoke all on schema private from public;
 
 create or replace function private.legacy_stable_uuid(
-  owner_id uuid, entity_kind text, position integer, legacy_id text
+  p_owner_id uuid, p_entity_kind text, p_position integer, p_legacy_id text
 ) returns uuid
 language sql immutable strict
 set search_path = ''
@@ -90,12 +90,12 @@ as $$
     substr(v, 1, 8) || '-' || substr(v, 9, 4) || '-5' ||
     substr(v, 14, 3) || '-a' || substr(v, 18, 3) || '-' || substr(v, 21, 12)
   )::uuid
-  from (select md5(owner_id::text || ':' || entity_kind || ':' ||
-    position::text || ':' || legacy_id) v) hashes;
+  from (select md5(p_owner_id::text || ':' || p_entity_kind || ':' ||
+    p_position::text || ':' || p_legacy_id) v) hashes;
 $$;
 
 create or replace function private.legacy_uuid_or_stable(
-  owner_id uuid, entity_kind text, position integer, legacy_id jsonb
+  p_owner_id uuid, p_entity_kind text, p_position integer, p_legacy_id jsonb
 ) returns uuid
 language plpgsql immutable
 set search_path = ''
@@ -103,13 +103,18 @@ as $$
 declare raw text;
 begin
   raw := '';
-  if legacy_id is not null and jsonb_typeof(legacy_id) = 'string' then
-    raw := legacy_id #>> '{}';
+  if p_legacy_id is not null and jsonb_typeof(p_legacy_id) = 'string' then
+    raw := p_legacy_id #>> '{}';
   end if;
   if raw ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
   then return raw::uuid;
   end if;
-  return private.legacy_stable_uuid(owner_id, entity_kind, position, raw);
+  return private.legacy_stable_uuid(
+    p_owner_id,
+    p_entity_kind,
+    p_position,
+    raw
+  );
 end;
 $$;
 
