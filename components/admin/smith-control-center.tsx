@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { authFetch } from "@/lib/supabase-browser";
+import { supabase } from "@/lib/supabase-browser";
 import type {
   SmithConnectionState,
   SmithDashboardData,
@@ -30,6 +30,20 @@ const connectionLabels: Record<SmithConnectionState, string> = {
   local_only: "מקומי בלבד",
 };
 
+async function fetchSmithOverview() {
+  const sessionResult = await Promise.race([
+    supabase?.auth.getSession(),
+    new Promise<null>((resolve) => {
+      window.setTimeout(() => resolve(null), 1_500);
+    }),
+  ]);
+  const token = sessionResult?.data.session?.access_token;
+  return fetch("/api/admin/smith/overview", {
+    cache: "no-store",
+    headers: { Authorization: token ? `Bearer ${token}` : "" },
+  });
+}
+
 export function SmithControlCenter() {
   const [state, setState] = useState<LoadState>("loading");
   const [dashboard, setDashboard] = useState<SmithDashboardData | null>(null);
@@ -38,9 +52,7 @@ export function SmithControlCenter() {
   async function load() {
     setState("loading");
     const response = await Promise.race([
-      authFetch("/api/admin/smith/overview", {
-        cache: "no-store",
-      }),
+      fetchSmithOverview(),
       new Promise<null>((resolve) => {
         window.setTimeout(() => resolve(null), 10_000);
       }),

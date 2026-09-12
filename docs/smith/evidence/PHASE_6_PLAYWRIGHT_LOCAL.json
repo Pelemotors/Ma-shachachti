@@ -1,0 +1,44 @@
+{
+  "phase": "Phase 6 local disconnected UI",
+  "status": "PASSED",
+  "environment": "local",
+  "productionMutation": false,
+  "hostedTestEnvironmentUsed": false,
+  "baseCommit": "6bac2f821265c84172eba9d57e6e46d5ae98c6cb",
+  "sourceState": "base commit plus the uncommitted Playwright milestone diff",
+  "approvalEvidence": false,
+  "executedAt": "2026-09-12T15:06:14.961Z",
+  "command": "npm run test:e2e",
+  "projects": ["desktop-chromium", "mobile-chromium"],
+  "results": {
+    "defined": 6,
+    "passed": 5,
+    "skipped": 1,
+    "failed": 0
+  },
+  "coverage": [
+    "unauthenticated Admin boundary",
+    "truthful disconnected and empty states",
+    "absence of fake summary values",
+    "desktop horizontal-overflow check",
+    "mobile navigation visibility and interaction"
+  ],
+  "fixtureBoundary": {
+    "kind": "isolated route fixture",
+    "operationalValues": null,
+    "productionData": false,
+    "productionCredentials": false,
+    "serviceRole": false,
+    "remotePreviewClaimed": false
+  },
+  "artifacts": {
+    "failureScreenshotsPersisted": false,
+    "tracePersisted": false,
+    "note": "Playwright artifacts are gitignored and retained only on failure."
+  },
+  "limitations": [
+    "No hosted smith_test flow was executed.",
+    "No real Preview provider was contacted.",
+    "No visual result is valid as exact-SHA Production approval evidence."
+  ]
+}

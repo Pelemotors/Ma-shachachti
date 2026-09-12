@@ -36,5 +36,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Disconnected Control Center E2E
+        run: npm run test:e2e
+
       # lint is an alias of typecheck in package.json. No ESLint is installed.
-      # Playwright E2E is added only after its isolated test environment exists.
+      # Hosted smith_test scenarios remain disabled until the shared-project gate passes.

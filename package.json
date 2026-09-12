@@ -9,9 +9,10 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:e2e": "playwright test",
     "agent:bundle": "node scripts/bundle-instructions.mjs",
     "smith:poc": "node scripts/smith-security-poc.mjs",
-    "format:check": "prettier --check .github app/admin/smith app/api/admin/smith app/api/smith components/admin docs/smith lib/smith scripts/smith-security-poc.mjs \"tests/smith*.test.ts\" .prettierrc.json package.json --ignore-unknown",
+    "format:check": "prettier --check .github app/admin/smith app/api/admin/smith app/api/smith components/admin docs/smith lib/smith playwright.config.ts scripts/smith-security-poc.mjs \"tests/smith*.test.ts\" tests/e2e .prettierrc.json package.json --ignore-unknown",
     "lint": "npm run typecheck"
   },
   "engines": {
@@ -27,6 +28,7 @@
     "zod": "4.6.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "26.4.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
