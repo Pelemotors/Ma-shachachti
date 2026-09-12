@@ -84,4 +84,14 @@ Disconnected response and performs no mutation.
 - tests and Preview provider operational
 - negative branch-target tests passing
 
-No active runner workflow is installed at the current milestone.
+`scripts/smith-runner.ts` is the future local-runtime entrypoint. It uses the
+TypeScript Cursor SDK one-shot pattern against an explicit checkout directory.
+It fails closed unless `SMITH_RUNNER_ENABLED=true`, requires a clean bounded
+branch at an exact base SHA, strips ambient GitHub/Production credentials,
+removes the Actions checkout push header, restricts tools and validates all
+changed paths after the run. It does not push.
+
+No active runner workflow is installed at the current milestone. Activation
+must use a separate host step to validate and push the bounded branch after the
+SDK process exits; Git credentials must never be available inside the SDK
+agent's shell.
