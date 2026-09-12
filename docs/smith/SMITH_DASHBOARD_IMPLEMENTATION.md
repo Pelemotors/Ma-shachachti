@@ -2,11 +2,14 @@
 
 ## Scope
 
-The Control Center is the operational interface for the Smith control plane. It
-does not replace Smith's state machine, jobs, events or security boundaries.
-The supplied visual reference guides density, hierarchy and calm visual
-character only. Its numbers, users, previews, tests and approvals are not data
-fixtures.
+The Admin Control Center is an operational interface for the existing
+application and is available independently of the future Smith control plane.
+It reuses real Admin APIs for users, tasks, health, AI and activity. Smith
+remains a visible but disabled future capability; it is not the source of the
+dashboard's application data.
+
+`SMITH_CONTROL_ENABLED` controls only Smith-specific autonomous capabilities.
+It must not disable Admin metrics or deterministic diagnostics.
 
 ## Existing code reused
 
@@ -38,17 +41,15 @@ states, then gain data views without changing their URLs.
 
 ## Components
 
-- `SmithControlCenter` — auth/data boundary and refresh behavior
-- `SmithHeader` — Admin identity, search state and environment indicators
-- `SmithSidebar` — Admin and Smith route navigation
-- `SmithIdentityCard` — current persisted job, or “ממתין למשימה”
-- `SummaryCards` — five operational summaries
-- `SmithChatPanel` — persistent-chat surface; disabled until its API is enabled
-- `ObservationPanel` — dense operational timeline
-- `PreviewPanel` — latest real Preview or empty/disconnected state
-- `TestPanel` — latest SHA-valid test run or empty state
-- `ApprovalPanel` — approval request only, never direct deploy
-- `AuditPanel` — recent persisted actions
+- `SmithControlCenter` — Admin auth/data boundary and coordinated refresh
+- `SummaryCards` — real health, user, task, incident and AI metrics
+- `DiagnosticsPanel` — explicit server-side checks with timestamps and results
+- `AgentOffPanel` — truthful disabled Smith Agent surface
+- `EventsPanel` — real `activity_events`, without attributing them to Smith
+- `ServicePanel` — DB/Auth/OpenAI/Storage/Push/Cron state
+- `TestPanel` — committed local evidence or a newly executed local result
+- `PreviewApprovalPanel` — explicitly disconnected autonomous boundaries
+- `AuditPanel` — recent real Admin/application activity
 
 ## Layout
 
@@ -76,28 +77,22 @@ Tokens are scoped to `.smith-admin` and follow the Master Plan:
 Technical identifiers use LTR, left-aligned monospace. Motion respects
 `prefers-reduced-motion`.
 
-## Summary-card data sources
+## Operational data sources
 
-| Card           | Data source                                   | Initial behavior                                            |
-| -------------- | --------------------------------------------- | ----------------------------------------------------------- |
-| בריאות מערכת   | Existing verified health API; no inferred 98% | `—` until a defined metric exists                           |
-| משתמשים פעילים | Existing Admin overview aggregate             | `—` if unavailable                                          |
-| תקלות פעילות   | `smith_observations` error/critical records   | `0` only when control plane is connected and query succeeds |
-| Preview מוכן   | non-stale `smith_previews` with `ready`       | `—` while provider/control plane is disconnected            |
-| ממתין לאישור   | `smith_approvals` with `requested`            | `—` while control plane is disconnected                     |
+- system health and DB latency: `/api/admin/health`
+- active and pending users: `/api/admin/overview` and `/api/admin/users`
+- task totals: `/api/admin/tasks`
+- AI attempts, failures and latency: `/api/admin/ai`
+- recent events and audit activity: `/api/admin/overview` and
+  `/api/admin/activity`
 
-No sparkline is rendered until a persisted historical series exists.
+Missing metrics render as `אין נתונים`; numbers are never synthesized.
 
 ## Initial truthful states
 
-Panels begin empty:
-
-- Observations: `לא זוהו אירועים חריגים כרגע.`
-- Preview: `אין Preview שמוכן לבדיקה.`
-- Approval: `אין שינויים שממתינים לאישור.`
-- Tests: `עדיין לא הורצה בדיקה עבור עבודה זו.`
-- Audit: `אין פעילות להצגה.`
-- Chat: `כתוב ל-Smith מה תרצה לבדוק, לשפר או לבנות.`
+The Admin Control Center is active. Smith Agent, autonomous chat, autonomous
+runner, autonomous Preview creation and ProductionExecutor remain off.
+Operational-event wording does not claim that Smith detected an event.
 
 Integrations begin:
 
@@ -116,7 +111,15 @@ never because an environment variable merely exists. Intermediate wiring uses
 
 - `GET /api/admin/smith/overview` requires `authorizeAdmin`.
 - When `SMITH_CONTROL_ENABLED` is not exactly `true`, it returns only empty and
-  disconnected states and never queries a missing hosted schema.
+  disconnected Smith-specific states. Existing Admin data continues loading.
+- `POST /api/admin/diagnostics/[check]` accepts only a compile-time allowlist,
+  requires `authorizeAdmin`, and exposes no command or argument input.
+- Unit/integration and Playwright execution is available only when
+  `NODE_ENV=development`; it uses exact `npm` arguments, no shell, a timeout,
+  bounded output and a reduced environment.
+- Remote-safe diagnostics are read-only. They verify DB, Auth, Admin APIs,
+  OpenAI model access, Storage metadata and Push/Reminder telemetry without
+  mutating Production.
 - Control-plane reads use a server-only client after Admin authorization.
 - Regular users and `smith_test` have no schema usage.
 - Mutations return `503 Not configured` until their backing control plane is

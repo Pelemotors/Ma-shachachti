@@ -27,18 +27,26 @@ test("Smith dashboard defaults to truthful empty values", () => {
   assert.deepEqual(dashboard.approvals, []);
 });
 
-test("Smith UI contains required empty and disconnected states", () => {
+test("Admin Control Center uses real Admin APIs and keeps Smith off", () => {
   for (const text of [
-    "לא זוהו אירועים חריגים כרגע.",
-    "אין Preview שמוכן לבדיקה.",
-    "אין שינויים שממתינים לאישור.",
-    "עדיין לא הורצה בדיקה עבור עבודה זו.",
+    "ADMIN CONTROL CENTER",
+    "אירועים ותקלות אחרונות",
+    "Smith Agent כבוי כרגע",
+    "Preview אוטונומי ו־ProductionExecutor כבויים.",
     "אין פעילות להצגה.",
-    "כתוב ל־Smith מה תרצה לבדוק, לשפר או לבנות.",
-    "Preview Provider עדיין לא הוגדר.",
-    "מנוע בדיקות הדפדפן עדיין לא מחובר.",
+    "בדיקות מערכת",
   ]) {
     assert.match(component, new RegExp(text));
+  }
+  for (const endpoint of [
+    "/api/admin/overview",
+    "/api/admin/health",
+    "/api/admin/activity",
+    "/api/admin/ai",
+    "/api/admin/tasks",
+    "/api/admin/users",
+  ]) {
+    assert.match(component, new RegExp(endpoint));
   }
 });
 
