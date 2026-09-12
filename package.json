@@ -10,6 +10,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "agent:bundle": "node scripts/bundle-instructions.mjs",
+    "format:check": "prettier --check .github docs/smith .prettierrc.json package.json --ignore-unknown",
     "lint": "npm run typecheck"
   },
   "engines": {
