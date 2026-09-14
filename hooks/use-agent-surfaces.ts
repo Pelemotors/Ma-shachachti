@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { authFetch } from "@/lib/supabase-browser";
+import { isAccountAccessDenied } from "@/lib/account-access";
 import { isSessionId } from "@/lib/chat-sessions";
 import type { SurfaceContext } from "@/lib/chat-request";
 import type { ChatSurface } from "@/lib/home-surfaces";
@@ -145,10 +146,13 @@ export function useAgentSurfaces(input: {
           turn_id: turnId,
         }),
       });
-      if (response.status === 401) {
+      const body = await response.json().catch(() => ({}));
+      if (
+        response.status === 401 ||
+        isAccountAccessDenied(response.status, body.error)
+      ) {
         throw new Error("unauthorized");
       }
-      const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(
           typeof body.error === "string"
@@ -228,11 +232,14 @@ export function useAgentSurfaces(input: {
                 })),
               }),
             });
-            if (response.status === 401) {
+            const body = await response.json().catch(() => ({}));
+            if (
+              response.status === 401 ||
+              isAccountAccessDenied(response.status, body.error)
+            ) {
               input.onUnauthorized();
               throw new Error("unauthorized");
             }
-            const body = await response.json().catch(() => ({}));
             if (!response.ok || !Array.isArray(body.tasks)) {
               throw new Error("schedule_failed");
             }
@@ -277,11 +284,14 @@ export function useAgentSurfaces(input: {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ id: proposal.id }),
             });
-            if (response.status === 401) {
+            const body = await response.json().catch(() => ({}));
+            if (
+              response.status === 401 ||
+              isAccountAccessDenied(response.status, body.error)
+            ) {
               input.onUnauthorized();
               throw new Error("unauthorized");
             }
-            const body = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error("proposal_failed");
             if (Array.isArray(body.tasks)) input.publishTasks(body.tasks);
             return {

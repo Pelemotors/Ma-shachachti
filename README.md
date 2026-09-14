@@ -1,19 +1,22 @@
 # מה שכחתי? — Lean V1
 
-זהו rebuild נקי של המוצר. הקוד הישן נשמר ב־`legacy/pre-lean-rebuild` ואינו משמש כליבה של הגרסה הזו.
+Rebuild נקי של המוצר. הקוד הישן נשמר ב־`legacy/pre-lean-rebuild` ואינו משמש כליבה של הגרסה הזו.
 
 ## מה עובד עכשיו
 
-- כניסה עם Supabase Auth והמשתמשים הקיימים.
-- בדיקת `user_roles.approved` בצד השרת.
-- שיחה אישית עם סוכן AI.
-- טבלת משימות לכל משתמש (`tasks`) עם RLS.
-- זיכרון העדפות אישי (`agent_memory`) עם RLS.
-- הסוכן מקבל את המשימות והזיכרון, מחליט, והקוד מבצע פעולות סגורות בלבד.
-- קובץ ההנחיות הגלובלי נשמר ב־bundle: `lib/agent/instructions.ts`.
+- **Auth** — כניסה עם Supabase Auth; בדיקת `user_roles.approved` בצד השרת.
+- **Agent / Chat** — שיחה אישית עם סוכן AI; הנחיות גלובליות ב־`lib/agent/instructions.ts`.
+- **Tasks** — משימות לכל משתמש (`tasks`) עם RLS; יצירה/עדכון/השלמה דרך פעולות סגורות.
+- **Planning / Schedule** — לו״ז יומי, תכנון משימות (`planned_start` / `due_at`) ושמירת תוכנית.
+- **Shopping** — רשימת קניות עם RLS ו־API ייעודי.
+- **Checklists** — צ׳קליסטים חוזרים עם RLS ו־API ייעודי.
+- **Proposals** — הצעות סוכן לאישור/דחייה לפני ביצוע פעולות.
+- **Recordings** — בנק הקלטות, תמלול, שמירה ב־Storage ושמירת 7 ימים.
+- **Memory / Profile** — זיכרון העדפות (`agent_memory`) ופרופיל משתמש / onboarding.
+- **Admin** — Control Room לניהול משתמשים, סטטוס ומדדי AI.
 
-לולאה: **משתמש → הודעה → סוכן → פעולה על Todo/Memory → שמירה → תצוגה מעודכנת.**
+לולאה: **משתמש → הודעה → סוכן → פעולה סגורה → שמירה → תצוגה מעודכנת.**
 
-## מה בכוונה לא קיים עדיין
+## הרצה מקומית
 
-Planning, Shopping, Routines, First Scan, Proposals, Forecasting, Deep Access, AppState, revision engine וכל שכבות ה־orchestration הישנות.
+ראה `.env.example` לרשימת משתני הסביבה הנדרשים.

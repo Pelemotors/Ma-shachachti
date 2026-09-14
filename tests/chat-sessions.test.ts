@@ -212,4 +212,21 @@ test("chat route keeps current tasks and global memory, and isolates session his
   assert.match(app, /openPreviousSession/);
   assert.match(app, /startNewChat/);
   assert.match(app, /session_id: sessionId/);
+  assert.match(app, /isAccountAccessDenied/);
+  assert.match(app, /leaveForLogin/);
+  assert.match(app, /auth\.signOut/);
+  assert.doesNotMatch(
+    app,
+    /if\s*\(\s*response\.status\s*===\s*403\s*\)\s*\{\s*(?:await\s+)?leaveForLogin/,
+  );
+});
+
+test("chat route records AI upstream failures without changing the response contract", () => {
+  const route = readFileSync(
+    new URL("../app/api/chat/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(route, /trackAi\(trackedUserId,\s*"ai\.failure"/);
+  assert.match(route, /error instanceof AgentUpstreamError/);
+  assert.match(route, /return jsonError\(error\)/);
 });

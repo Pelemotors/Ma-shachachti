@@ -124,6 +124,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const started = Date.now();
+  let trackedUserId: string | null = null;
   let activeTurn: {
     db: SupabaseClient;
     userId: string;
@@ -132,6 +133,7 @@ export async function POST(req: Request) {
   } | null = null;
   try {
     const { db, userId } = await authorize(req);
+    trackedUserId = userId;
     const parsed = parseChatRequest(await req.json().catch(() => null));
     if (!parsed.ok) throw new HttpError(parsed.status, parsed.error);
     const {
@@ -338,6 +340,12 @@ export async function POST(req: Request) {
         activeTurn.userId,
         activeTurn.id,
       ).catch(() => undefined);
+    }
+    if (trackedUserId && error instanceof AgentUpstreamError) {
+      await trackAi(trackedUserId, "ai.failure", {
+        code: error.code,
+        latencyMs: Date.now() - started,
+      });
     }
     return jsonError(error);
   }

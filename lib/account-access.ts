@@ -11,6 +11,11 @@ export function pendingAccountMessage() {
   return "החשבון עדיין ממתין לאישור.";
 }
 
+/** True only for account-approval denial — not session ownership or other 403s. */
+export function isAccountAccessDenied(status: number, error?: unknown) {
+  return status === 403 && error === pendingAccountMessage();
+}
+
 export function signupCreatedMessage() {
   return "החשבון נוצר. לאחר אישור מנהל אפשר יהיה להיכנס.";
 }

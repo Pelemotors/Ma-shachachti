@@ -130,7 +130,9 @@ test("concurrent proposal action execution shares one atomic receipt", async () 
   assert.equal(fake.mutations(), 1);
 });
 
-function proposalDb(options: { failFinalSaveOnce?: boolean } = {}) {
+function proposalDb(
+  options: { failFinalSaveOnce?: boolean; rejectOnClaim?: boolean } = {},
+) {
   const proposal = {
     id: proposalId,
     user_id: userId,
@@ -161,6 +163,10 @@ function proposalDb(options: { failFinalSaveOnce?: boolean } = {}) {
         return { data: null, error: null };
       }
       if (operation === "update" && patch) {
+        if (options.rejectOnClaim && patch.status === "executing") {
+          proposal.status = "rejected";
+          return { data: null, error: null };
+        }
         if (patch.status === "approved" && failFinalSaveOnce) {
           failFinalSaveOnce = false;
           return { data: null, error: { message: "save failed" } };
@@ -249,6 +255,15 @@ test("concurrent approve calls execute every proposal action once", async () => 
   assert.equal(right.ok, true);
   assert.equal(fake.proposal.status, "approved");
   assert.equal(fake.mutationCount(), 1);
+});
+
+test("lost pending claim aborts without downstream actions when proposal left the race", async () => {
+  const fake = proposalDb({ rejectOnClaim: true });
+  const result = await approveProposal(fake.db, userId, proposalId);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.status, 409);
+  assert.equal(fake.mutationCount(), 0);
+  assert.equal(fake.proposal.status, "rejected");
 });
 
 function messageDb() {

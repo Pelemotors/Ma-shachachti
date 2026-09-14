@@ -126,13 +126,34 @@ export async function approveProposal(db: Db, userId: string, id: string) {
   }
 
   if (proposal.status === "pending") {
-    const { error: claimError } = await db
+    const { data: claimed, error: claimError } = await db
       .from("agent_proposals")
       .update({ status: "executing", updated_at: new Date().toISOString() })
       .eq("user_id", userId)
       .eq("id", id)
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .select("id,status")
+      .maybeSingle();
     if (claimError) throw claimError;
+    if (!claimed) {
+      const again = await loadOwnedProposal(db, userId, id);
+      if (again?.status === "approved") {
+        return {
+          ok: true as const,
+          alreadyExecuted: true,
+          results: again.action_results ?? [],
+          reply: composeReply("", again.action_results ?? []),
+        };
+      }
+      if (again?.status !== "executing") {
+        return {
+          ok: false as const,
+          status: 409,
+          error: "ההצעה כבר אינה ממתינה.",
+        };
+      }
+      // Lost the pending claim but another request holds executing — resume like retry.
+    }
   }
 
   const results = await executeIdempotentActions(db, {
@@ -140,7 +161,7 @@ export async function approveProposal(db: Db, userId: string, id: string) {
     scopeId: id,
     actions: inspected.accepted,
   });
-  const { error: saveError } = await db
+  const { data: saved, error: saveError } = await db
     .from("agent_proposals")
     .update({
       status: "approved",
@@ -149,8 +170,22 @@ export async function approveProposal(db: Db, userId: string, id: string) {
     })
     .eq("user_id", userId)
     .eq("id", id)
-    .eq("status", "executing");
+    .eq("status", "executing")
+    .select("id")
+    .maybeSingle();
   if (saveError) throw new Error("proposal_result_save_failed");
+  if (!saved) {
+    const again = await loadOwnedProposal(db, userId, id);
+    if (again?.status === "approved") {
+      return {
+        ok: true as const,
+        alreadyExecuted: true,
+        results: again.action_results ?? results,
+        reply: composeReply("", again.action_results ?? results),
+      };
+    }
+    throw new Error("proposal_result_save_failed");
+  }
   return {
     ok: true as const,
     alreadyExecuted: false,

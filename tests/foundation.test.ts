@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   canSelfApprove,
+  isAccountAccessDenied,
   isAdminAccess,
   isApprovedAccount,
   isSelfLockout,
@@ -29,6 +30,17 @@ test("pending users are not treated as approved and cannot self-approve", () => 
   assert.equal(canSelfApprove(), false);
   assert.equal(pendingAccountMessage().includes("ממתין"), true);
   assert.equal(signupCreatedMessage().includes("נוצר"), true);
+});
+
+test("account access denial is only the pending-approval 403 message", () => {
+  assert.equal(isAccountAccessDenied(403, pendingAccountMessage()), true);
+  assert.equal(
+    isAccountAccessDenied(403, "שיחת היעד אינה שייכת לחשבון הזה."),
+    false,
+  );
+  assert.equal(isAccountAccessDenied(403, "אין הרשאת מנהל."), false);
+  assert.equal(isAccountAccessDenied(401, pendingAccountMessage()), false);
+  assert.equal(isAccountAccessDenied(200, pendingAccountMessage()), false);
 });
 
 test("only an approved admin has control-room access", () => {

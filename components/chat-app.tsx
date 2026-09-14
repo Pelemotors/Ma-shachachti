@@ -28,6 +28,9 @@ import {
   type UserProfile,
 } from "@/lib/user-profile";
 import {
+  isAccountAccessDenied,
+} from "@/lib/account-access";
+import {
   clearActiveChatSession,
   readActiveChatSession,
   storedSessionNeedsFallback,
@@ -135,6 +138,12 @@ export function ChatApp() {
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const mutations = useRef(new OptimisticMutationLayer());
   const initialQuery = useRef(searchParams.toString());
+
+  async function leaveForLogin() {
+    await supabase?.auth.signOut();
+    router.replace("/login");
+  }
+
   const agentSurfaces = useAgentSurfaces({
     initialDate: initialRoute.date ?? todayContext().date,
     sessionId,
@@ -146,7 +155,9 @@ export function ChatApp() {
       if (userId) writeActiveChatSession(userId, id);
     },
     publishTasks,
-    onUnauthorized: () => router.replace("/login"),
+    onUnauthorized: () => {
+      void leaveForLogin();
+    },
     mutations: mutations.current,
     onFailure: setFailure,
   });
@@ -193,6 +204,14 @@ export function ChatApp() {
       }
       const profileResponse = await authFetch("/api/profile").catch(() => null);
       const profileBody = await profileResponse?.json().catch(() => ({}));
+      if (
+        profileResponse &&
+        (profileResponse.status === 401 ||
+          isAccountAccessDenied(profileResponse.status, profileBody?.error))
+      ) {
+        await leaveForLogin();
+        return;
+      }
       if (alive && profileResponse?.ok && profileBody?.profile) {
         setProfile(profileBody.profile as UserProfile);
         setProfileReady(true);
@@ -200,19 +219,30 @@ export function ChatApp() {
       const routeSession = decodeAppRoute(initialQuery.current).sessionId;
       const preferred = routeSession ?? readActiveChatSession(nextUserId);
       let response = await authFetch(chatHistoryUrl(preferred));
+      let body = await response.json().catch(() => ({}));
+      if (
+        response.status === 401 ||
+        isAccountAccessDenied(response.status, body.error)
+      ) {
+        await leaveForLogin();
+        return;
+      }
       if (
         preferred &&
         storedSessionNeedsFallback(response.status)
       ) {
         clearActiveChatSession(nextUserId);
         response = await authFetch("/api/chat");
+        body = await response.json().catch(() => ({}));
+        if (
+          response.status === 401 ||
+          isAccountAccessDenied(response.status, body.error)
+        ) {
+          await leaveForLogin();
+          return;
+        }
       }
       if (!alive) return;
-      if (response.status === 401) {
-        router.replace("/login");
-        return;
-      }
-      const body = await response.json().catch(() => ({}));
       if (!response.ok) setError(body.error ?? "לא הצלחנו לטעון את השיחה.");
       else {
         setMessages(body.messages ?? []);
@@ -385,11 +415,14 @@ export function ChatApp() {
       setSending(false);
       return false;
     }
-    if (response.status === 401) {
-      router.replace("/login");
+    const body = await response.json().catch(() => ({}));
+    if (
+      response.status === 401 ||
+      isAccountAccessDenied(response.status, body.error)
+    ) {
+      await leaveForLogin();
       return;
     }
-    const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       setError(body.error ?? "הסוכן לא הצליח לענות כרגע.");
       setMessages((current) =>
@@ -571,11 +604,14 @@ export function ChatApp() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(action),
     });
-    if (response.status === 401) {
-      router.replace("/login");
+    const body = await response.json().catch(() => ({}));
+    if (
+      response.status === 401 ||
+      isAccountAccessDenied(response.status, body.error)
+    ) {
+      await leaveForLogin();
       throw new Error("unauthorized");
     }
-    const body = await response.json().catch(() => ({}));
     if (!response.ok || !Array.isArray(body.tasks)) throw new Error("task_failed");
     return body.tasks as TaskRow[];
   }
@@ -631,11 +667,14 @@ export function ChatApp() {
       setError("לא הצלחנו לעדכן את המשימה.");
       return false;
     }
-    if (response.status === 401) {
-      router.replace("/login");
+    const body = await response.json().catch(() => ({}));
+    if (
+      response.status === 401 ||
+      isAccountAccessDenied(response.status, body.error)
+    ) {
+      await leaveForLogin();
       return false;
     }
-    const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       setError(body.error ?? "לא הצלחנו לעדכן את המשימה.");
       return false;
@@ -678,8 +717,12 @@ export function ChatApp() {
       setError("לא הצלחנו לפתוח את השיחה.");
       return;
     }
-    if (response.status === 401) {
-      router.replace("/login");
+    const body = await response.json().catch(() => ({}));
+    if (
+      response.status === 401 ||
+      isAccountAccessDenied(response.status, body.error)
+    ) {
+      await leaveForLogin();
       return;
     }
     if (storedSessionNeedsFallback(response.status)) {
@@ -687,7 +730,6 @@ export function ChatApp() {
       setError("השיחה הזו אינה זמינה יותר.");
       return;
     }
-    const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       setError(body.error ?? "לא הצלחנו לפתוח את השיחה.");
       return;
