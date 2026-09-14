@@ -19,9 +19,19 @@ export function validPushEndpoint(endpoint: string) {
   }
 }
 
+export function vapidPublicKey() {
+  // Prefer non-NEXT_PUBLIC so systemd/runtime env works after `next start`
+  // without requiring a rebuild. NEXT_PUBLIC_* may be inlined empty at build.
+  return (
+    process.env.VAPID_PUBLIC_KEY?.trim() ||
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() ||
+    ""
+  );
+}
+
 export function vapidConfigured() {
   return Boolean(
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() &&
+    vapidPublicKey() &&
       process.env.VAPID_PRIVATE_KEY?.trim() &&
       process.env.VAPID_SUBJECT?.trim(),
   );

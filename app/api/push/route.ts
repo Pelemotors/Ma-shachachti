@@ -4,6 +4,7 @@ import {
   PushSubscriptionInput,
   pushRuntimeReady,
   vapidConfigured,
+  vapidPublicKey,
 } from "@/lib/push";
 
 export const runtime = "nodejs";
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
   try {
     await authorize(req);
     return Response.json({
-      publicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null,
+      publicKey: vapidPublicKey() || null,
       ready: vapidConfigured(),
       deliveryReady: pushRuntimeReady(),
     });

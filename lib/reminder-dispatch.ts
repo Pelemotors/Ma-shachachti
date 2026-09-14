@@ -8,6 +8,8 @@ import {
   type ReminderTask,
 } from "./reminder-plan.ts";
 
+import { vapidPublicKey } from "./push.ts";
+
 export type PushRow = {
   endpoint: string;
   subscription: {
@@ -30,7 +32,7 @@ export type PushDeliveryResult = {
 
 export function configureWebPush() {
   const subject = process.env.VAPID_SUBJECT?.trim();
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
+  const publicKey = vapidPublicKey();
   const privateKey = process.env.VAPID_PRIVATE_KEY?.trim();
   if (!subject || !publicKey || !privateKey) return false;
   webpush.setVapidDetails(subject, publicKey, privateKey);
