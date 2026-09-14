@@ -44,6 +44,19 @@ export const StoredPresentationSchema = z.discriminatedUnion("type", [
       )
       .max(8),
   }).strict(),
+  z.object({
+    type: z.literal("insights"),
+    items: z
+      .array(
+        z.object({
+          kind: z.enum(["inference", "suggestion", "gap"]),
+          title: z.string(),
+          detail: z.string().nullable(),
+          related_task_id: z.string().uuid().nullable(),
+        }).strict(),
+      )
+      .max(10),
+  }).strict(),
 ]);
 
 export function validateStoredPresentation(

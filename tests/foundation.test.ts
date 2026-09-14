@@ -201,8 +201,13 @@ test("admin lean APIs do not read app_states", () => {
 });
 
 test("agent instructions mention proactive memory and opt-in reminders", () => {
-  assert.match(AGENT_INSTRUCTIONS, /silent=true/);
-  assert.match(AGENT_INSTRUCTIONS, /Reminder מופעל רק כאשר ברור/);
+  const capabilities = readFileSync(
+    new URL("../lib/agent/capabilities.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(capabilities, /silent=true/);
+  assert.match(capabilities, /Reminder כבויה כברירת מחדל/);
+  assert.match(AGENT_INSTRUCTIONS, /הסוכן האישי/);
 });
 
 test("clearUserTasks only cancels the current user's open and done tasks", async () => {

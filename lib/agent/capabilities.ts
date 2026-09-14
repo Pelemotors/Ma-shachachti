@@ -45,9 +45,15 @@ export const RUNTIME_CAPABILITIES = {
   },
   presentations: {
     kind: "presentation",
-    operations: ["task_list", "schedule_plan", "task_suggestions"],
+    operations: ["task_list", "schedule_plan", "task_suggestions", "insights"],
     instructions:
-      "Presentation היא תצוגה בלבד ואינה Persistence. השתמש רק במזהי Tasks שנמסרו בהקשר.",
+      "Presentation היא תצוגה בלבד ואינה Persistence. insights מיועד להסקה/פערים ב־deep-check בלבד. השתמש רק במזהי Tasks שנמסרו בהקשר.",
+  },
+  "context-access": {
+    kind: "context-read",
+    operations: ["context_requests"],
+    instructions:
+      "בקש Deep Access רק כשחסר מידע קריטי. entity אחד מהרשימה הסגורה; לכל היותר סיבוב נוסף אחד.",
   },
   consequences: {
     kind: "context-write",

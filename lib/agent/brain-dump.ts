@@ -1,0 +1,264 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { inspectActions } from "../action-schema.ts";
+import { loadMemory, loadTasks } from "../actions.ts";
+import { loadConsequences } from "../consequences.ts";
+import { loadChecklists, loadShopping } from "../lists.ts";
+import { loadAgentProfile } from "../user-profile.ts";
+import { createAgentProposal } from "../proposals.ts";
+import { executeIdempotentActions } from "./idempotent-actions.ts";
+import { requestAgentDecision } from "./openai-orchestrator.ts";
+import { buildCompactContext } from "./context/compact.ts";
+import { buildAgentPrompt } from "./prompt-builder.ts";
+import {
+  fulfillContextRequests,
+  parseContextRequests,
+} from "./context/deep-access.ts";
+import { todayContext } from "../time.ts";
+import { latestOrCreateChatSession } from "../chat-sessions.ts";
+import { recordActivity } from "../activity.ts";
+import {
+  claimAgentTurn,
+  completeAgentTurn,
+  failAgentTurn,
+} from "./turn-receipts.ts";
+
+function brainDumpModeText() {
+  try {
+    return readFileSync(
+      join(process.cwd(), "lib/agent/instructions/modes/brain-dump.md"),
+      "utf8",
+    ).trim();
+  } catch {
+    return "עבד תמלול Brain Dump לפעולות ברורות או proposal. אין תשובת צ׳אט.";
+  }
+}
+
+export type BrainDumpResult = {
+  recording_id: string;
+  executed: number;
+  proposal_id: string | null;
+  summary: string;
+  llm_calls: number;
+};
+
+/**
+ * Process a Brain Dump transcript asynchronously — no chat reply persisted.
+ */
+export async function processBrainDumpTranscript(input: {
+  db: SupabaseClient;
+  userId: string;
+  recordingId: string;
+  transcript: string;
+  apiKey: string;
+  model?: string;
+}): Promise<BrainDumpResult> {
+  const started = Date.now();
+  const transcript = input.transcript.trim();
+  if (!transcript) {
+    return {
+      recording_id: input.recordingId,
+      executed: 0,
+      proposal_id: null,
+      summary: "תמלול ריק",
+      llm_calls: 0,
+    };
+  }
+
+  const session = await latestOrCreateChatSession(input.db, input.userId);
+  if (!session) throw new Error("brain_dump_session_unavailable");
+
+  const turnClaim = await claimAgentTurn(input.db, {
+    userId: input.userId,
+    sessionId: session.id,
+    turnKey: input.recordingId,
+  });
+  if (turnClaim.kind === "completed") {
+    const previous = turnClaim.response as Partial<BrainDumpResult>;
+    return {
+      recording_id: input.recordingId,
+      executed: Number(previous.executed ?? 0),
+      proposal_id:
+        typeof previous.proposal_id === "string" ? previous.proposal_id : null,
+      summary:
+        typeof previous.summary === "string"
+          ? previous.summary
+          : "ההקלטה כבר עובדה",
+      llm_calls: Number(previous.llm_calls ?? 0),
+    };
+  }
+  if (turnClaim.kind === "processing") {
+    return {
+      recording_id: input.recordingId,
+      executed: 0,
+      proposal_id: null,
+      summary: "העיבוד עדיין רץ",
+      llm_calls: 0,
+    };
+  }
+
+  try {
+    const [tasks, memory, profile, shopping, checklists] = await Promise.all([
+      loadTasks(input.db, input.userId),
+      loadMemory(input.db, input.userId),
+      loadAgentProfile(input.db, input.userId),
+      loadShopping(input.db, input.userId),
+      loadChecklists(input.db, input.userId),
+    ]);
+    const consequenceMap = await loadConsequences(
+      input.db,
+      input.userId,
+      tasks.filter((task) => task.status === "open").map((task) => task.id),
+    );
+
+    const compact = buildCompactContext({
+      surface: null,
+      surfaceContext: null,
+      profile,
+      currentTime: todayContext().currentTime,
+      queryHint: transcript,
+      allTasks: tasks,
+      allMemory: memory,
+      consequences: [...consequenceMap.values()],
+      shopping,
+      checklists,
+    });
+
+    const base = buildAgentPrompt({ compact, surface: null });
+    const instructions = `${base.instructions}
+
+## הוראות Brain Dump
+${brainDumpModeText()}
+`;
+
+    const model =
+      input.model?.trim() ||
+      process.env.OPENAI_MODEL?.trim() ||
+      "gpt-5.6-luna";
+    const messages = [
+      {
+        role: "user",
+        content: `Brain Dump transcript (לא שיחת צ׳אט):\n\n${transcript.slice(0, 6000)}`,
+      },
+    ];
+
+    let requested = await requestAgentDecision({
+      apiKey: input.apiKey,
+      model,
+      instructions,
+      messages,
+    });
+    let llmCalls = requested.attempts;
+
+    const requests = parseContextRequests(
+      requested.decision && "context_requests" in requested.decision
+        ? requested.decision.context_requests
+        : [],
+    );
+    if (requested.decision?.ok && requests.length) {
+      const appendix = await fulfillContextRequests({
+        db: input.db,
+        userId: input.userId,
+        requests,
+        alreadyTaskIds: new Set(compact.tasks.map((t) => t.id)),
+        alreadyMemoryIds: new Set(compact.memories.map((m) => m.id)),
+      });
+      if (appendix) {
+        const second = await requestAgentDecision({
+          apiKey: input.apiKey,
+          model,
+          instructions: `${instructions}\n\n## Deep Access — תוצאות\n${appendix}`,
+          messages: [
+            ...messages,
+            {
+              role: "user",
+              content:
+                "קיבלת Deep Access. ענה מחדש. אל תבקש עוד context_requests. אין תשובת צ׳אט.",
+            },
+          ],
+        });
+        llmCalls += second.attempts;
+        requested = second;
+      }
+    }
+
+    const decision = requested.decision;
+    if (!decision?.ok) {
+      await failAgentTurn(input.db, input.userId, turnClaim.id);
+      await recordActivity(input.db, {
+        ownerId: input.userId,
+        eventType: "ai.failure",
+        metadata: {
+          surface: "brain-dump",
+          recordingId: input.recordingId,
+          latencyMs: Date.now() - started,
+        },
+      }).catch(() => undefined);
+      return {
+        recording_id: input.recordingId,
+        executed: 0,
+        proposal_id: null,
+        summary: "לא הצלחנו לעבד את ההקלטה",
+        llm_calls: llmCalls,
+      };
+    }
+
+    const inspected = inspectActions(decision.actions);
+    const results = await executeIdempotentActions(input.db, {
+      scope: "turn",
+      scopeId: turnClaim.id,
+      actions: inspected.accepted,
+    });
+
+    let proposalId: string | null = null;
+    if (decision.proposal) {
+      const proposal = await createAgentProposal(input.db, {
+        userId: input.userId,
+        sessionId: session.id,
+        turnId: turnClaim.id,
+        proposal: decision.proposal,
+      });
+      proposalId = proposal.id;
+    }
+
+    const summary =
+      decision.proposal?.summary ||
+      (results.some((row) => row.ok)
+        ? `בוצעו ${results.filter((row) => row.ok).length} פעולות מההקלטה`
+        : "ההקלטה נשמרה; לא זוהו פעולות ברורות");
+
+    const result: BrainDumpResult = {
+      recording_id: input.recordingId,
+      executed: results.filter((row) => row.ok).length,
+      proposal_id: proposalId,
+      summary,
+      llm_calls: llmCalls,
+    };
+
+    await completeAgentTurn(input.db, input.userId, turnClaim.id, {
+      ...result,
+      chatReply: false,
+    });
+    await recordActivity(input.db, {
+      ownerId: input.userId,
+      eventType: "ai.success",
+      metadata: {
+        surface: "brain-dump",
+        recordingId: input.recordingId,
+        latencyMs: Date.now() - started,
+        llmCalls,
+        executed: result.executed,
+        proposal: Boolean(proposalId),
+        chatReply: false,
+      },
+    }).catch(() => undefined);
+
+    return result;
+  } catch (error) {
+    await failAgentTurn(input.db, input.userId, turnClaim.id).catch(
+      () => undefined,
+    );
+    throw error;
+  }
+}

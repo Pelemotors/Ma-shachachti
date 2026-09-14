@@ -4,9 +4,14 @@ import { loadMemory, loadTasks } from "@/lib/actions";
 import { loadConsequences, persistConsequenceUpdates } from "@/lib/consequences";
 import {
   applySurfaceTurnPolicy,
-  buildInstructions,
+  buildTurnPrompt,
   surfaceInputHint,
 } from "@/lib/agent/turn";
+import { buildCompactContext } from "@/lib/agent/context/compact";
+import {
+  fulfillContextRequests,
+  parseContextRequests,
+} from "@/lib/agent/context/deep-access";
 import {
   AgentUpstreamError,
   requestAgentDecision,
@@ -41,6 +46,7 @@ import { validateStoredPresentation } from "@/lib/chat-presentation";
 import { loadAgentProfile } from "@/lib/user-profile";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadChecklists, loadShopping } from "@/lib/lists";
+import { todayContext } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -178,18 +184,15 @@ export async function POST(req: Request) {
     if (turnClaim.decision && !agent) {
       throw new Error("invalid_stored_turn_decision");
     }
-    if (!agent) {
-      const { data: recent, error: historyError } = await db
-        .from("chat_messages")
-        .select("role,content,created_at")
-        .eq("user_id", userId)
-        .eq("session_id", sessionId)
-        .order("created_at", { ascending: false })
-        .limit(24);
-      if (historyError)
-        throw new HttpError(503, "לא הצלחנו לטעון את ההקשר לשיחה.");
+    let llmCalls = 0;
+    let deepAccessUsed = false;
+    let promptModules: string[] = [];
+    let promptChars = 0;
+    let memoryCount = 0;
 
-      const [memory, consequences, profile, shopping, checklists] = await Promise.all([
+    if (!agent) {
+      const [memory, consequences, profile, shopping, checklists] =
+        await Promise.all([
           loadMemory(db, userId),
           loadConsequences(
             db,
@@ -202,6 +205,30 @@ export async function POST(req: Request) {
         ]).catch(() => {
           throw new HttpError(503, "לא הצלחנו לטעון את הקשר המשתמש לשיחה.");
         });
+
+      const compact = buildCompactContext({
+        surface,
+        surfaceContext,
+        profile,
+        currentTime: todayContext().currentTime,
+        queryHint: message,
+        allTasks: tasks,
+        allMemory: memory,
+        consequences: [...consequences.values()],
+        shopping,
+        checklists,
+      });
+
+      const { data: recent, error: historyError } = await db
+        .from("chat_messages")
+        .select("role,content,created_at")
+        .eq("user_id", userId)
+        .eq("session_id", sessionId)
+        .order("created_at", { ascending: false })
+        .limit(compact.historyLimit);
+      if (historyError)
+        throw new HttpError(503, "לא הצלחנו לטעון את ההקשר לשיחה.");
+
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) throw new HttpError(503, "חיבור ה-AI עדיין לא הוגדר.");
       const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-luna";
@@ -214,21 +241,65 @@ export async function POST(req: Request) {
         content: `${surfaceInputHint(surface, surfaceContext)}${message}`,
       });
 
-      const requested = await requestAgentDecision({
+      let prompt = buildTurnPrompt({
+        compact,
+        surface,
+        surfaceContext,
+      });
+      promptModules = prompt.modules;
+      promptChars = prompt.approxChars;
+      memoryCount = prompt.memoryCount;
+
+      let requested = await requestAgentDecision({
         apiKey,
         model,
-        instructions: buildInstructions({
-          tasks,
-          memory,
-          profile,
-          consequences,
-          shopping,
-          checklists,
-          surface,
-          surfaceContext,
-        }),
+        instructions: prompt.instructions,
         messages: openaiInput,
       });
+      llmCalls += requested.attempts;
+
+      const firstDecision = requested.decision;
+      const requests = parseContextRequests(
+        firstDecision && "context_requests" in firstDecision
+          ? firstDecision.context_requests
+          : [],
+      );
+      if (firstDecision?.ok && requests.length > 0) {
+        const appendix = await fulfillContextRequests({
+          db,
+          userId,
+          requests,
+          alreadyTaskIds: new Set(compact.tasks.map((task) => task.id)),
+          alreadyMemoryIds: new Set(compact.memories.map((row) => row.id)),
+        });
+        if (appendix) {
+          deepAccessUsed = true;
+          prompt = buildTurnPrompt({
+            compact,
+            surface,
+            surfaceContext,
+            deepAccessAppendix: appendix,
+          });
+          promptModules = prompt.modules;
+          promptChars = prompt.approxChars;
+          const second = await requestAgentDecision({
+            apiKey,
+            model,
+            instructions: prompt.instructions,
+            messages: [
+              ...openaiInput,
+              {
+                role: "user",
+                content:
+                  "קיבלת Deep Access. ענה מחדש לפי אותה בקשה עם המידע הנוסף. אל תבקש עוד context_requests.",
+              },
+            ],
+          });
+          llmCalls += second.attempts;
+          requested = second;
+        }
+      }
+
       const stored = await saveAgentTurnDecision(
         db,
         userId,
@@ -259,7 +330,6 @@ export async function POST(req: Request) {
       content: message,
     });
 
-    // No capability mutation is reachable before a complete, validated decision.
     const inspected = inspectActions(scoped.actions);
     if (inspected.results.length > 0) {
       throw new Error("invalid_scoped_actions");
@@ -331,6 +401,12 @@ export async function POST(req: Request) {
       latencyMs,
       attempts: agent.attempts,
       recovered: Boolean(agent.recoveredReply),
+      llmCalls,
+      deepAccess: deepAccessUsed,
+      promptChars,
+      memoryCount,
+      modules: promptModules,
+      surface: surface ?? "chat",
     });
     return Response.json(responseBody);
   } catch (error) {

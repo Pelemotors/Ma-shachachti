@@ -70,10 +70,11 @@ import { todayContext } from "@/lib/time";
 import { chatTurnRequest, createPendingChatTurn } from "@/lib/chat-optimistic";
 import type { SurfaceContext } from "@/lib/chat-request";
 import {
-  FocusSurface,
+  ForgottenSurface,
   FreeTimeSurface,
   ScheduleAgentPanel,
 } from "@/components/personal-agent-surfaces";
+import { BrainDumpRecorder } from "@/components/brain-dump-recorder";
 import { useAgentSurfaces } from "@/hooks/use-agent-surfaces";
 import { ChecklistsView, ShoppingView } from "@/components/lean-lists";
 import { RecordingBank } from "@/components/recording-bank";
@@ -471,7 +472,7 @@ export function ChatApp() {
   }
 
   function openSurface(surface: (typeof HOME_SURFACES)[number]) {
-    openView(surface.id === "focus" ? "focus" : surface.id);
+    openView(surface.id === "forgotten" ? "forgotten" : surface.id);
   }
 
   async function respondToProposal(
@@ -889,8 +890,10 @@ export function ChatApp() {
                   ? "הרשימות שלי"
                 : view === "recordings"
                   ? "בנק ההקלטות"
-                : view === "focus"
-                  ? "מיקוד"
+                : view === "forgotten" || view === "focus"
+                  ? "מה שכחתי?"
+                : view === "deep-check"
+                  ? "בדוק לעומק"
                 : view === "schedule"
                   ? "הלוז שלי"
                   : view === "free-time"
@@ -974,6 +977,11 @@ export function ChatApp() {
                 </button>
               ))}
             </div>
+            <BrainDumpRecorder
+              enabled={!sending}
+              onStatus={() => setError("")}
+              onError={setError}
+            />
             <nav className="home-quick-links" aria-label="קיצורי דרך">
               {HOME_QUICK_LINKS.map((item) => (
                 <button key={item.id} type="button" onClick={() => openView(item.id)}>
@@ -1193,10 +1201,14 @@ export function ChatApp() {
             }}
             onSignOut={() => void logout()}
           />
-        ) : view === "focus" ? (
-          <FocusSurface
-            state={surfaceTurns.focus}
+        ) : view === "forgotten" || view === "focus" || view === "deep-check" ? (
+          <ForgottenSurface
+            state={surfaceTurns.forgotten}
+            deepCheckState={surfaceTurns["deep-check"]}
             onRun={(context, retry) =>
+              void agentSurfaces.run(context, retry)
+            }
+            onDeepCheck={(context, retry) =>
               void agentSurfaces.run(context, retry)
             }
           />

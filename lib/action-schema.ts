@@ -81,6 +81,7 @@ export const AGENT_TURN_JSON_SCHEMA = {
     "proposal",
     "presentation",
     "consequence_updates",
+    "context_requests",
   ],
   properties: {
     reply: { type: "string" },
@@ -400,8 +401,57 @@ export const AGENT_TURN_JSON_SCHEMA = {
             },
           },
         },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "items"],
+          properties: {
+            type: { type: "string", enum: ["insights"] },
+            items: {
+              type: "array",
+              maxItems: 10,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["kind", "title", "detail", "related_task_id"],
+                properties: {
+                  kind: {
+                    type: "string",
+                    enum: ["inference", "suggestion", "gap"],
+                  },
+                  title: { type: "string", minLength: 1, maxLength: 200 },
+                  detail: nullable({
+                    type: "string",
+                    maxLength: 400,
+                  }),
+                  related_task_id: nullable({
+                    type: "string",
+                    pattern: UUID_RE.source,
+                  }),
+                },
+              },
+            },
+          },
+        },
         { type: "null" },
       ],
+    },
+    context_requests: {
+      type: "array",
+      maxItems: 4,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["entity", "query", "limit"],
+        properties: {
+          entity: {
+            type: "string",
+            enum: ["tasks", "memories", "shopping", "checklists", "consequences"],
+          },
+          query: nullable({ type: "string", maxLength: 120 }),
+          limit: nullable({ type: "integer", minimum: 1, maximum: 50 }),
+        },
+      },
     },
     consequence_updates: {
       type: "array",
@@ -486,8 +536,35 @@ export const AgentPresentationSchema = z.union([
       )
       .max(8),
   }).strict(),
+  z.object({
+    type: z.literal("insights"),
+    items: z
+      .array(
+        z.object({
+          kind: z.enum(["inference", "suggestion", "gap"]),
+          title: z.string().trim().min(1).max(200),
+          detail: z.string().trim().max(400).nullable().optional(),
+          related_task_id: z.string().uuid().nullable().optional(),
+        }).strict(),
+      )
+      .max(10),
+  }).strict(),
   z.null(),
 ]);
+
+const ContextRequestSchema = z
+  .object({
+    entity: z.enum([
+      "tasks",
+      "memories",
+      "shopping",
+      "checklists",
+      "consequences",
+    ]),
+    query: z.string().trim().max(120).nullable().optional(),
+    limit: z.number().int().min(1).max(50).nullable().optional(),
+  })
+  .strict();
 
 const ConsequenceUpdateSchema = z.object({
   task_id: z.string().uuid(),
@@ -741,6 +818,17 @@ function normalizePresentation(
       })),
     };
   }
+  if (presentation.type === "insights") {
+    return {
+      type: "insights",
+      items: presentation.items.map((item) => ({
+        kind: item.kind,
+        title: item.title,
+        detail: item.detail ?? null,
+        related_task_id: item.related_task_id ?? null,
+      })),
+    };
+  }
   return {
     type: "schedule_plan",
     date: presentation.date,
@@ -763,6 +851,7 @@ export function parseDecision(text: string) {
       proposal?: unknown;
       presentation?: unknown;
       consequence_updates?: unknown;
+      context_requests?: unknown;
     };
     if (typeof parsed.reply !== "string" || !Array.isArray(parsed.actions)) {
       return { ok: false as const };
@@ -790,6 +879,13 @@ export function parseDecision(text: string) {
           : parsed.consequence_updates,
       );
     if (!consequences.success) return { ok: false as const };
+    const contextRequests = z
+      .array(ContextRequestSchema)
+      .max(4)
+      .safeParse(
+        parsed.context_requests === undefined ? [] : parsed.context_requests,
+      );
+    if (!contextRequests.success) return { ok: false as const };
     return {
       ok: true as const,
       reply: parsed.reply.trim(),
@@ -797,6 +893,11 @@ export function parseDecision(text: string) {
       proposal: proposalResult.data,
       presentation: normalizePresentation(presentationResult.data),
       consequence_updates: consequences.data,
+      context_requests: contextRequests.data.map((row) => ({
+        entity: row.entity,
+        query: row.query ?? null,
+        limit: row.limit ?? null,
+      })),
     };
   } catch {
     return { ok: false as const };

@@ -68,10 +68,13 @@ export function useAgentSurfaces(input: {
 }) {
   const [operation, setOperation] = useState<"save" | "proposal" | null>(null);
   const [surfaceTurns, setSurfaceTurns] = useState(() => ({
-    focus: idleSurfaceState({ type: "focus" }),
+    forgotten: idleSurfaceState({ type: "forgotten" }),
+    "deep-check": idleSurfaceState({ type: "deep-check" }),
     schedule: idleSurfaceState({
       type: "schedule",
       date: input.initialDate,
+      day_start: "08:00",
+      day_end: "22:00",
     }),
     "free-time": idleSurfaceState({
       type: "free-time",
@@ -83,7 +86,12 @@ export function useAgentSurfaces(input: {
   function resetSchedule(date: string) {
     setSurfaceTurns((current) => ({
       ...current,
-      schedule: idleSurfaceState({ type: "schedule", date }),
+      schedule: idleSurfaceState({
+        type: "schedule",
+        date,
+        day_start: "08:00",
+        day_end: "22:00",
+      }),
     }));
   }
 
@@ -119,10 +127,12 @@ export function useAgentSurfaces(input: {
       previousTurnId: previous.turnId,
     });
     const objective =
-      context.type === "focus"
-        ? "עזור לי להתמקד במה שראוי לתשומת לב עכשיו"
+      context.type === "forgotten"
+        ? "מה שכחתי?"
+        : context.type === "deep-check"
+          ? "בדוק לעומק"
         : context.type === "schedule"
-          ? `הצע לי תכנון לתאריך ${context.date}`
+          ? `צור לי לו״ז לתאריך ${context.date} בין ${context.day_start} ל־${context.day_end}`
           : "הצע לי מה מתאים לחלון הזמן הפנוי";
     setSurfaceTurns((current) => ({
       ...current,
@@ -319,7 +329,10 @@ export function useAgentSurfaces(input: {
   }
 
   return {
-    surfaceTurns,
+    surfaceTurns: {
+      ...surfaceTurns,
+      focus: surfaceTurns.forgotten,
+    },
     operation,
     resetSchedule,
     run,

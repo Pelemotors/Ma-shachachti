@@ -95,12 +95,12 @@ test("chat retry preserves turn id and typed surface context", () => {
     "שלום",
     "schedule",
     "turn-stable",
-    { type: "schedule", date: "2026-09-12" },
+    { type: "schedule", date: "2026-09-12", day_start: "08:00", day_end: "22:00" },
   );
   assert.deepEqual(chatTurnRequest(turn, session), {
     message: "שלום",
     surface: "schedule",
-    surface_context: { type: "schedule", date: "2026-09-12" },
+    surface_context: { type: "schedule", date: "2026-09-12", day_start: "08:00", day_end: "22:00" },
     session_id: session,
     turn_id: "turn-stable",
   });

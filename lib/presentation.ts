@@ -2,6 +2,7 @@ import { UUID_RE } from "./action-schema.ts";
 import { DATE_RE, TIME_RE, dueTimeFromDueAt, todayContext } from "./time.ts";
 import type {
   ClientPresentation,
+  PresentedInsight,
   PresentedScheduleItem,
   PresentedSuggestion,
   PresentedTask,
@@ -177,6 +178,56 @@ export function resolveSuggestionPresentation(
   return { type: "task_suggestions", items };
 }
 
+export function resolveInsightsPresentation(
+  presentation: unknown,
+): Extract<ClientPresentation, { type: "insights" }> | null {
+  if (
+    !presentation ||
+    typeof presentation !== "object" ||
+    Array.isArray(presentation)
+  ) {
+    return null;
+  }
+  const raw = presentation as { type?: unknown; items?: unknown };
+  if (raw.type !== "insights" || !Array.isArray(raw.items)) return null;
+  const items: PresentedInsight[] = [];
+  const seen = new Set<string>();
+  for (const value of raw.items.slice(0, 10)) {
+    if (!value || typeof value !== "object") continue;
+    const item = value as {
+      kind?: unknown;
+      title?: unknown;
+      detail?: unknown;
+      related_task_id?: unknown;
+    };
+    if (
+      item.kind !== "inference" &&
+      item.kind !== "suggestion" &&
+      item.kind !== "gap"
+    ) {
+      continue;
+    }
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    if (!title || seen.has(title.toLowerCase())) continue;
+    seen.add(title.toLowerCase());
+    items.push({
+      kind: item.kind,
+      title,
+      detail:
+        typeof item.detail === "string" && item.detail.trim()
+          ? item.detail.trim()
+          : null,
+      related_task_id:
+        typeof item.related_task_id === "string" &&
+        UUID_RE.test(item.related_task_id)
+          ? item.related_task_id
+          : null,
+    });
+  }
+  if (!items.length) return null;
+  return { type: "insights", items };
+}
+
 export function resolveAgentPresentation(
   presentation: unknown,
   tasks: TaskRow[],
@@ -195,9 +246,13 @@ export function resolveAgentPresentation(
   if (type === "task_suggestions") {
     return resolveSuggestionPresentation(presentation);
   }
+  if (type === "insights") {
+    return resolveInsightsPresentation(presentation);
+  }
+  const forgotten = surface === "forgotten" || surface === "focus";
   return resolveTaskListPresentation(presentation, tasks, {
-    max: surface === "forgotten" ? 6 : 20,
-    openOnly: surface === "forgotten",
+    max: forgotten ? 6 : 20,
+    openOnly: forgotten,
   });
 }
 
@@ -261,6 +316,13 @@ export function replyForPresentation(
       reply,
       presentation.items.map((item) => item.title),
       "הנה כמה הצעות.",
+    );
+  }
+  if (presentation.type === "insights") {
+    return sanitizeCardReply(
+      reply,
+      presentation.items.map((item) => item.title),
+      "הנה כמה תובנות לבדיקה.",
     );
   }
   return reply.trim();

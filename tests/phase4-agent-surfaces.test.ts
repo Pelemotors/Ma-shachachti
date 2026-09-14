@@ -12,13 +12,13 @@ test("typed surface contexts accept valid values and reject invalid values", () 
   const valid = [
     {
       message: "מיקוד",
-      surface: "focus",
-      surface_context: { type: "focus" },
+      surface: "forgotten",
+      surface_context: { type: "forgotten" },
     },
     {
       message: "תכנון",
       surface: "schedule",
-      surface_context: { type: "schedule", date: "2026-09-12" },
+      surface_context: { type: "schedule", date: "2026-09-12", day_start: "08:00", day_end: "22:00" },
     },
     {
       message: "זמן פנוי",
@@ -29,8 +29,8 @@ test("typed surface contexts accept valid values and reject invalid values", () 
   for (const body of valid) assert.equal(parseChatRequest(body).ok, true);
 
   const invalid = [
-    { ...valid[0], surface_context: { type: "focus", extra: true } },
-    { ...valid[1], surface_context: { type: "schedule", date: "2026-02-30" } },
+    { ...valid[0], surface_context: { type: "forgotten", extra: true } },
+    { ...valid[1], surface_context: { type: "schedule", date: "2026-02-30", day_start: "08:00", day_end: "22:00" } },
     { ...valid[2], surface_context: { type: "free-time", minutes: 0 } },
     { ...valid[2], surface_context: { type: "free-time", minutes: 481 } },
     { ...valid[2], surface_context: { type: "free-time", minutes: 10.5 } },
@@ -38,7 +38,7 @@ test("typed surface contexts accept valid values and reject invalid values", () 
       ...valid[2],
       surface_context: { type: "free-time", minutes: 10, effort: "extreme" },
     },
-    { ...valid[0], surface_context: { type: "schedule", date: "2026-09-12" } },
+    { ...valid[0], surface_context: { type: "schedule", date: "2026-09-12", day_start: "08:00", day_end: "22:00" } },
   ];
   for (const body of invalid) assert.equal(parseChatRequest(body).ok, false);
 });
@@ -48,7 +48,7 @@ test("all surfaces use the existing chat orchestrator", () => {
     new URL("../app/api/chat/route.ts", import.meta.url),
     "utf8",
   );
-  assert.match(route, /buildInstructions/);
+  assert.match(route, /buildTurnPrompt|buildInstructions/);
   assert.match(route, /requestAgentDecision/);
   assert.match(route, /surfaceContext/);
   assert.doesNotMatch(route, /rank|keywordRouter|recommendationEngine/);
@@ -71,12 +71,12 @@ test("schedule context is date scoped and mutations wait for approval or save", 
     tasks: [],
     memory: [],
     surface: "schedule",
-    surfaceContext: { type: "schedule", date: "2026-09-14" },
+    surfaceContext: { type: "schedule", date: "2026-09-14", day_start: "08:00", day_end: "22:00" },
     now: new Date("2026-09-12T10:00:00.000Z"),
   });
   assert.match(instructions, /תאריך היעד הוא 2026-09-14/);
-  assert.match(instructions, /due_at הוא התחייבות קבועה/);
-  assert.match(instructions, /planned_start_at.*תכנון מוצע/);
+  assert.match(instructions, /day_start=08:00/);
+  assert.match(instructions, /schedule_plan/);
 
   const scoped = applySurfaceTurnPolicy({
     surface: "schedule",

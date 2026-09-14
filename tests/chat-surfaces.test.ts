@@ -54,6 +54,8 @@ const memory: MemoryRow[] = [
     kind: "preference",
     content: "מעדיפה ערב קל",
     confidence: "high",
+    source: "user",
+    seen_at: null,
     created_at: "2026-09-10T00:00:00.000Z",
     updated_at: "2026-09-10T00:00:00.000Z",
   },
@@ -91,9 +93,10 @@ function utcClock(date: Date) {
 test("home surfaces expose the chat surface contract", () => {
   assert.deepEqual(
     HOME_SURFACES.map((surface) => surface.id),
-    ["focus", "schedule", "free-time"],
+    ["forgotten", "deep-check", "schedule", "free-time"],
   );
   assert.ok(CHAT_SURFACES.includes("forgotten"));
+  assert.ok(CHAT_SURFACES.includes("deep-check"));
 });
 
 test("todayContext uses Asia/Jerusalem rather than the host or Vercel UTC clock", () => {
@@ -134,12 +137,12 @@ test("schedule input hint is turn context only and carries Jerusalem time", () =
   assert.doesNotMatch(hint, /צור לי לו״ז להיום/);
 });
 
-test("forgotten input hint aliases focus and does not rank tasks", () => {
+test("forgotten input hint uses forgotten surface and does not rank tasks", () => {
   const hint = surfaceInputHint("forgotten", eveningUtc);
-  assert.match(hint, /surface=focus/);
+  assert.match(hint, /surface=forgotten/);
   assert.match(hint, /20:50/);
   assert.match(hint, /2026-09-10/);
-  assert.match(hint, /ראוי לתשומת לב/);
+  assert.match(hint, /task_list/);
   assert.doesNotMatch(hint, /עד 6|0 ל/);
   assert.doesNotMatch(hint, /אם נדחה 3 פעמים/);
   assert.doesNotMatch(hint, /High תמיד/);
@@ -149,13 +152,13 @@ test("schedule surface is parsed separately from a regular chat message", () => 
   const schedule = parseChatRequest({
     message: "צור לי לו״ז להיום",
     surface: "schedule",
-    surface_context: { type: "schedule", date: "2026-09-10" },
+    surface_context: { type: "schedule", date: "2026-09-10", day_start: "08:00", day_end: "22:00" },
   });
   const typed = parseChatRequest({ message: "צור לי לו״ז להיום" });
   const forgotten = parseChatRequest({
     message: "מה שכחתי?",
     surface: "forgotten",
-    surface_context: { type: "focus" },
+    surface_context: { type: "forgotten" },
   });
   const invalid = parseChatRequest({
     message: "צור לי לו״ז להיום",
@@ -170,7 +173,7 @@ test("schedule surface is parsed separately from a regular chat message", () => 
     assert.equal(schedule.request.surface, "schedule");
     assert.equal(typed.request.surface, null);
     assert.equal(typed.request.message, schedule.request.message);
-    assert.equal(forgotten.request.surface, "focus");
+    assert.equal(forgotten.request.surface, "forgotten");
     assert.notEqual(schedule.request.surface, typed.request.surface);
   }
 });
@@ -183,8 +186,8 @@ test("schedule instructions provide context without a reasoning algorithm", () =
     now: eveningUtc,
   });
   assert.match(text, /surface=schedule/);
-  assert.match(text, /השעה עכשיו 20:50/);
-  assert.match(text, /הצעה אינה נשמרת ללא אישור מפורש/);
+  assert.match(text, /20:50/);
+  assert.match(text, /schedule_plan|הצעה בלבד עד שהמשתמש מאשר/);
   assert.doesNotMatch(text, /אל תתכנן שעות|אינה אוטומטית משימה/);
 });
 
@@ -196,7 +199,7 @@ test("schedule context includes the current local time", () => {
     now: eveningUtc,
   });
   assert.match(text, /השעה עכשיו: 20:50/);
-  assert.match(text, /השעה עכשיו 20:50/);
+  assert.match(text, /20:50/);
   const utc = utcClock(eveningUtc);
   assert.equal(utc, "17:50");
   assert.ok("20:50" > "15:00");

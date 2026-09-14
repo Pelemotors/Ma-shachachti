@@ -60,24 +60,30 @@ function SurfaceStatus({
   return null;
 }
 
-export function FocusSurface({
+export function ForgottenSurface({
   state,
+  deepCheckState,
   onRun,
+  onDeepCheck,
 }: {
   state: SurfaceTurnState;
+  deepCheckState: SurfaceTurnState;
   onRun: RunSurfaceTurn;
+  onDeepCheck: RunSurfaceTurn;
 }) {
-  const run = () => onRun({ type: "focus" });
+  const run = () => onRun({ type: "forgotten" });
+  const deep = () => onDeepCheck({ type: "deep-check" });
   return (
-    <section className="tasks-panel agent-surface" aria-labelledby="focus-title">
-      <h1 id="focus-title">מיקוד</h1>
-      <p className="muted">הסוכן יבחר מה ראוי לתשומת לב עכשיו.</p>
+    <section className="tasks-panel agent-surface" aria-labelledby="forgotten-title">
+      <h1 id="forgotten-title">מה שכחתי?</h1>
+      <p className="muted">מה חשוב להחזיר עכשיו לתודעה מתוך מה שכבר ידוע.</p>
       {state.status === "idle" ? (
         <button className="settings-action" type="button" onClick={run}>
-          בקש מיקוד
+          בדוק מה שכחתי
         </button>
       ) : null}
       <SurfaceStatus state={state} onRetry={() => onRun(state.context, true)} />
+      {state.status === "success" && state.reply ? <p>{state.reply}</p> : null}
       {state.status === "success" &&
       state.presentation?.type === "task_list" ? (
         <PresentedTaskList tasks={state.presentation.tasks} />
@@ -88,13 +94,73 @@ export function FocusSurface({
         />
       ) : null}
       {state.status === "success" ? (
-        <button className="text-button" type="button" onClick={run}>
-          רענן מיקוד
-        </button>
+        <div className="surface-options">
+          <button className="text-button" type="button" onClick={run}>
+            רענן
+          </button>
+          <button
+            className="settings-action"
+            type="button"
+            disabled={deepCheckState.status === "loading"}
+            onClick={deep}
+          >
+            בדוק לעומק
+          </button>
+        </div>
+      ) : null}
+      <SurfaceStatus
+        state={deepCheckState}
+        onRetry={() => onDeepCheck(deepCheckState.context, true)}
+      />
+      {deepCheckState.status === "success" && deepCheckState.reply ? (
+        <p>{deepCheckState.reply}</p>
+      ) : null}
+      {deepCheckState.status === "success" &&
+      deepCheckState.presentation?.type === "insights" ? (
+        <ul className="task-suggestions insights-list">
+          {deepCheckState.presentation.items.map((item) => (
+            <li key={`${item.kind}-${item.title}`}>
+              <div className="task-copy">
+                <small>{item.kind === "inference" ? "הסקה" : item.kind === "gap" ? "פער" : "הצעה"}</small>
+                <span>{item.title}</span>
+                {item.detail ? <small>{item.detail}</small> : null}
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : null}
     </section>
   );
 }
+
+/** @deprecated Prefer ForgottenSurface */
+export function FocusSurface({
+  state,
+  onRun,
+}: {
+  state: SurfaceTurnState;
+  onRun: RunSurfaceTurn;
+}) {
+  return (
+    <ForgottenSurface
+      state={state}
+      deepCheckState={idleDeepCheckFallback}
+      onRun={onRun}
+      onDeepCheck={() => undefined}
+    />
+  );
+}
+
+const idleDeepCheckFallback: SurfaceTurnState = {
+  status: "idle",
+  context: { type: "deep-check" },
+  reply: "",
+  presentation: null,
+  proposal: null,
+  messageId: null,
+  turnId: null,
+  error: "",
+};
 
 const MINUTE_CHOICES = [5, 10, 20, 30, 60] as const;
 const EFFORT_LABELS: Record<FreeTimeEffort, string> = {
@@ -233,17 +299,24 @@ export function ScheduleAgentPanel({
   savingPlan: boolean;
   proposalBusy: boolean;
 }) {
-  const run = () => onRun({ type: "schedule", date });
+  const run = () =>
+    onRun({
+      type: "schedule",
+      date,
+      day_start: "08:00",
+      day_end: "22:00",
+    });
   return (
     <section className="agent-surface" aria-labelledby="agent-schedule-title">
       <h2 id="agent-schedule-title">תכנון עם הסוכן</h2>
+      <p className="muted">מתכנן את היום המלא ({date}) בין 08:00 ל־22:00.</p>
       <button
         className="settings-action"
         type="button"
         disabled={state.status === "loading"}
         onClick={run}
       >
-        בקש הצעה לתאריך הזה
+        צור לי לו״ז להיום
       </button>
       <SurfaceStatus state={state} onRetry={() => onRun(state.context, true)} />
       {state.status === "success" && state.reply ? <p>{state.reply}</p> : null}

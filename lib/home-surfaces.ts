@@ -1,18 +1,27 @@
 export const CHAT_SURFACES = [
-  "focus",
   "forgotten",
+  "deep-check",
   "schedule",
   "free-time",
+  /** @deprecated Alias of forgotten for older clients/URLs */
+  "focus",
 ] as const;
 export type ChatSurface = (typeof CHAT_SURFACES)[number];
 
 export const HOME_SURFACES = [
   {
-    id: "focus",
-    title: "מיקוד",
-    subtitle: "מה ראוי לתשומת לב עכשיו",
-    objective: "עזור לי למצוא מיקוד במה שראוי לתשומת לב עכשיו",
+    id: "forgotten",
+    title: "מה שכחתי?",
+    subtitle: "מה חשוב להחזיר עכשיו לתודעה",
+    objective: "מה שכחתי?",
     primary: true,
+  },
+  {
+    id: "deep-check",
+    title: "בדוק לעומק",
+    subtitle: "חפש מה אולי חסר או נגזר מהמידע",
+    objective: "בדוק לעומק",
+    primary: false,
   },
   {
     id: "schedule",

@@ -31,18 +31,30 @@ const validDecision = JSON.stringify({
   proposal: null,
   presentation: null,
   consequence_updates: [],
+  context_requests: [],
 });
 
 test("generated instruction bundle has no drift", () => {
-  const markdown = readFileSync(
-    new URL("lib/agent/INSTRUCTIONS.he.md", root),
-    "utf8",
+  const normalize = (markdown) => markdown.replace(/\r\n/g, "\n").trimEnd();
+  const core = normalize(
+    readFileSync(new URL("lib/agent/instructions/core.md", root), "utf8"),
+  );
+  const modes = Object.fromEntries(
+    ["forgotten", "deep-check", "schedule", "free-time"].map((id) => [
+      id,
+      normalize(
+        readFileSync(
+          new URL(`lib/agent/instructions/modes/${id}.md`, root),
+          "utf8",
+        ),
+      ),
+    ]),
   );
   const bundled = readFileSync(
     new URL("lib/agent/instructions.ts", root),
     "utf8",
   );
-  assert.equal(bundled, generateInstructionsSource(markdown));
+  assert.equal(bundled, generateInstructionsSource({ core, modes }));
 });
 
 test("runtime registry publishes only implemented Phase 1 capabilities", () => {
@@ -52,6 +64,7 @@ test("runtime registry publishes only implemented Phase 1 capabilities", () => {
     "shopping",
     "checklists",
     "presentations",
+    "context-access",
     "consequences",
     "schedule-save",
   ]);
@@ -91,11 +104,10 @@ test("memory correction keeps the existing id", () => {
 
 test("temporary state is not required to become memory", () => {
   const instructions = readFileSync(
-    new URL("lib/agent/INSTRUCTIONS.he.md", root),
+    new URL("lib/agent/instructions/core.md", root),
     "utf8",
   );
-  assert.match(instructions, /מצב רגעי אינו Memory/);
-  assert.match(instructions, /לא צריך להפוך אוטומטית ל-Memory/);
+  assert.match(instructions, /אירוע אחד הוא לא העדפה/);
   assert.doesNotMatch(
     readFileSync(new URL("lib/actions.ts", root), "utf8"),
     /classifier|auto.?memory|working.?memory/i,
@@ -113,7 +125,7 @@ test("existing memory is included in future agent context", () => {
     created_at: "2026-09-12T00:00:00.000Z",
     updated_at: "2026-09-12T00:00:00.000Z",
   };
-  const instructions = buildInstructions({ tasks: [], memory });
+  const instructions = buildInstructions({ tasks: [], memory: [memory] });
   assert.match(instructions, /מעדיף תשובות קצרות/);
 });
 

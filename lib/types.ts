@@ -168,6 +168,16 @@ export type AgentSuggestionItem = {
   reason: string | null;
 };
 
+export const INSIGHT_KINDS = ["inference", "suggestion", "gap"] as const;
+export type InsightKind = (typeof INSIGHT_KINDS)[number];
+
+export type AgentInsightItem = {
+  kind: InsightKind;
+  title: string;
+  detail: string | null;
+  related_task_id: string | null;
+};
+
 export type AgentPresentation =
   | {
       type: "task_list";
@@ -181,6 +191,10 @@ export type AgentPresentation =
   | {
       type: "task_suggestions";
       items: AgentSuggestionItem[];
+    }
+  | {
+      type: "insights";
+      items: AgentInsightItem[];
     }
   | null;
 
@@ -222,6 +236,13 @@ export type PresentedSuggestion = {
   reason: string | null;
 };
 
+export type PresentedInsight = {
+  kind: InsightKind;
+  title: string;
+  detail: string | null;
+  related_task_id: string | null;
+};
+
 export type ClientPresentation =
   | {
       type: "task_list";
@@ -236,4 +257,8 @@ export type ClientPresentation =
   | {
       type: "task_suggestions";
       items: PresentedSuggestion[];
+    }
+  | {
+      type: "insights";
+      items: PresentedInsight[];
     };

@@ -331,7 +331,10 @@ test("follow-up explanation turn is allowed to have empty actions", () => {
     JSON.stringify({
       reply: "היציאה מסומנת שעה קבועה כי זו התחייבות אמיתית. הניקיון הוא רק שיבוץ.",
       actions: [],
+      proposal: null,
       presentation: null,
+      consequence_updates: [],
+      context_requests: [],
     }),
   );
   assert.equal(parsed.ok, true);
@@ -339,7 +342,7 @@ test("follow-up explanation turn is allowed to have empty actions", () => {
     assert.deepEqual(parsed.actions, []);
     assert.equal(parsed.presentation, null);
   }
-  assert.match(AGENT_INSTRUCTIONS, /הבן את הכוונה מתוך ההקשר הכולל/);
+  assert.match(AGENT_INSTRUCTIONS, /הבן מה המשתמש רוצה שיקרה/);
   assert.doesNotMatch(AGENT_INSTRUCTIONS, /אם ההודעה מכילה \"למה\"/);
 });
 
@@ -488,8 +491,7 @@ test("instructions keep the agent as the brain and separate due from planned", (
     now: new Date("2026-09-11T06:00:00.000Z"),
   });
   assert.match(text, /task_suggestions/);
-  assert.match(text, /הקוד לא אמור להחליט את הדברים האלה במקומך/);
-  assert.match(text, /אל תהפוך שעה שאתה עצמך הצעת לשעת יעד קשיחה/);
-  assert.match(text, /Planned Time/);
+  assert.match(text, /אתה המוח, המערכת היא הידיים/);
+  assert.match(text, /אתה מחליט\. הקוד מבצע/);
   assert.doesNotMatch(text, /אם surface=schedule: presentation\.type = "schedule_plan"\.\nאחרת presentation = null/);
 });

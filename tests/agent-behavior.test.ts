@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { AGENT_INSTRUCTIONS } from "../lib/agent/instructions.ts";
+import {
+  AGENT_CORE_INSTRUCTIONS,
+  AGENT_MODE_INSTRUCTIONS,
+} from "../lib/agent/instructions.ts";
 
-const instructions = AGENT_INSTRUCTIONS;
+const instructions = AGENT_CORE_INSTRUCTIONS;
 const actionsSrc = readFileSync(
   new URL("../lib/actions.ts", import.meta.url),
   "utf8",
@@ -14,22 +17,22 @@ const schemaSrc = readFileSync(
 );
 
 test("agent stays a personal home-operations agent", () => {
-  assert.match(
-    instructions,
-    /הסוכן האישי של המשתמש לניהול הבית והחיים התפעוליים שסביבו/,
-  );
-  assert.match(instructions, /להפחית מהמשתמש עומס מחשבתי/);
+  assert.match(instructions, /הסוכן האישי של המשתמש לניהול העומס התפעולי/);
+  assert.match(instructions, /להפחית ממנו את הצורך לזכור/);
 });
 
 test("the agent is the brain and code does not infer intent", () => {
-  assert.match(instructions, /אתה שכבת החשיבה של המערכת/);
-  assert.match(instructions, /הקוד לא אמור להחליט את הדברים האלה במקומך/);
-  assert.match(instructions, /אל תעבוד לפי מילות מפתח בלבד/);
+  assert.match(instructions, /אתה המוח, המערכת היא הידיים/);
+  assert.match(instructions, /אל תיתן למבנה הנתונים/);
+  assert.match(instructions, /אל תבחר פעולה רק בגלל מילה מסוימת/);
 });
 
-test("runtime capabilities are the source of truth", () => {
-  assert.match(instructions, /היכולות שלך מגיעות מה-Runtime/);
-  assert.match(instructions, /השתמש רק במה שהמערכת באמת פרסמה/);
+test("runtime capabilities stay outside the core constitution", () => {
+  assert.doesNotMatch(instructions, /היכולות שלך מגיעות מה-Runtime/);
+  assert.match(
+    AGENT_MODE_INSTRUCTIONS.forgotten,
+    /מה שכחתי/,
+  );
 });
 
 test("no keyword follow-up router exists in execution code", () => {
@@ -38,6 +41,6 @@ test("no keyword follow-up router exists in execution code", () => {
 });
 
 test("clarification is only used when it materially matters", () => {
-  assert.match(instructions, /שאל רק כאשר פרט חסר באמת/);
-  assert.match(instructions, /אל תשאל שוב משהו שכבר ידוע/);
+  assert.match(instructions, /שאל רק כאשר מידע חסר באמת/);
+  assert.match(instructions, /אל תמציא/);
 });

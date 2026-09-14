@@ -92,7 +92,7 @@ test("shared states and mobile safety rules cover the new views", () => {
 test("home navigation and route encoder cover every requested destination", () => {
   const ids = [...HOME_SURFACES.map((item) => item.id), ...HOME_QUICK_LINKS.map((item) => item.id)];
   for (const view of [
-    "chat", "tasks", "focus", "schedule", "free-time",
+    "chat", "tasks", "forgotten", "deep-check", "schedule", "free-time",
     "shopping", "checklists", "recordings", "settings",
   ] as const) {
     assert.ok(APP_VIEWS.includes(view));

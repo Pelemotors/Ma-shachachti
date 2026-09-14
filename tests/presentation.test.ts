@@ -170,5 +170,6 @@ test("agent turn schema requires proposal and presentation", () => {
     "proposal",
     "presentation",
     "consequence_updates",
+    "context_requests",
   ]);
 });

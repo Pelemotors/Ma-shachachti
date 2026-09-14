@@ -1,13 +1,23 @@
 import { isChatSurface, type ChatSurface } from "./home-surfaces.ts";
 import { isSessionId } from "./chat-sessions.ts";
 import { isValidScheduleDate } from "./app-route-state.ts";
+import { TIME_RE } from "./time.ts";
 
 export const FREE_TIME_EFFORTS = ["low", "medium", "high"] as const;
 export type FreeTimeEffort = (typeof FREE_TIME_EFFORTS)[number];
 
+export const DEFAULT_DAY_START = "08:00";
+export const DEFAULT_DAY_END = "22:00";
+
 export type SurfaceContext =
-  | { type: "focus" }
-  | { type: "schedule"; date: string }
+  | { type: "forgotten" }
+  | { type: "deep-check" }
+  | {
+      type: "schedule";
+      date: string;
+      day_start: string;
+      day_end: string;
+    }
   | {
       type: "free-time";
       minutes: number;
@@ -22,6 +32,10 @@ export type ParsedChatRequest = {
   turn_id: string;
 };
 
+function normalizeSurface(surface: ChatSurface): ChatSurface {
+  return surface === "focus" ? "forgotten" : surface;
+}
+
 function parseSurfaceContext(
   value: unknown,
 ): { ok: true; value: SurfaceContext | null } | { ok: false } {
@@ -31,15 +45,41 @@ function parseSurfaceContext(
   }
   const context = value as Record<string, unknown>;
   const keys = Object.keys(context);
-  if (context.type === "focus" && keys.length === 1) {
-    return { ok: true, value: { type: "focus" } };
+  if (
+    (context.type === "forgotten" || context.type === "focus") &&
+    keys.length === 1
+  ) {
+    return { ok: true, value: { type: "forgotten" } };
+  }
+  if (context.type === "deep-check" && keys.length === 1) {
+    return { ok: true, value: { type: "deep-check" } };
   }
   if (
     context.type === "schedule" &&
-    keys.length === 2 &&
-    isValidScheduleDate(context.date)
+    isValidScheduleDate(context.date) &&
+    keys.every((key) =>
+      ["type", "date", "day_start", "day_end"].includes(key),
+    ) &&
+    keys.includes("date")
   ) {
-    return { ok: true, value: { type: "schedule", date: context.date } };
+    const day_start =
+      typeof context.day_start === "string" && TIME_RE.test(context.day_start)
+        ? context.day_start
+        : DEFAULT_DAY_START;
+    const day_end =
+      typeof context.day_end === "string" && TIME_RE.test(context.day_end)
+        ? context.day_end
+        : DEFAULT_DAY_END;
+    if (day_end <= day_start) return { ok: false };
+    return {
+      ok: true,
+      value: {
+        type: "schedule",
+        date: context.date,
+        day_start,
+        day_end,
+      },
+    };
   }
   if (
     context.type === "free-time" &&
@@ -122,7 +162,8 @@ export function parseChatRequest(
   if (!context.ok || !context.value) {
     return { ok: false, status: 400, error: "הקשר המשטח אינו תקין." };
   }
-  const expectedType = raw.surface === "forgotten" ? "focus" : raw.surface;
+  const surface = normalizeSurface(raw.surface);
+  const expectedType = surface;
   if (context.value.type !== expectedType) {
     return { ok: false, status: 400, error: "הקשר המשטח אינו תואם." };
   }
@@ -130,7 +171,7 @@ export function parseChatRequest(
     ok: true,
     request: {
       message,
-      surface: raw.surface === "forgotten" ? "focus" : raw.surface,
+      surface,
       surface_context: context.value,
       session_id,
       turn_id,
