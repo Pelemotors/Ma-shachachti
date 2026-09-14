@@ -116,6 +116,10 @@ export function DevicePermissionsPanel() {
       {localError || push.error ? (
         <p className="error-box">{localError || push.error}</p>
       ) : null}
+      <p className="muted" style={{ marginTop: "0.75rem" }}>
+        כדי שההתראה תקפוץ גם כשהמסך נעול (במיוחד באייפון): הוסיפו את האפליקציה
+        למסך הבית, השאירו הרשאת התראות פעילה, ואל תחסמו התראות ברמת המערכת.
+      </p>
     </section>
   );
 }

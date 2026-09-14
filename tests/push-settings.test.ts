@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   DEFAULT_REMINDER_MINUTES,
@@ -280,9 +280,19 @@ test("service worker registration has one shared owner and valid local assets", 
     "utf8",
   );
   assert.match(owner, /registrationPromise \?\?=/);
+  assert.match(owner, /sw\.js\?v=/);
   assert.doesNotMatch(app, /serviceWorker\.register/);
   assert.match(worker, /showNotification/);
+  assert.match(worker, /requireInteraction:\s*true/);
+  assert.match(worker, /urgency|vibrate/);
+  assert.match(worker, /icon-192\.png/);
   assert.match(worker, /clients\.openWindow/);
   assert.match(worker, /url\.origin !== self\.location\.origin/);
   assert.match(icon, /<svg/);
+  assert.ok(
+    existsSync(new URL("../public/icon-192.png", import.meta.url)),
+  );
+  assert.ok(
+    existsSync(new URL("../public/badge-72.png", import.meta.url)),
+  );
 });

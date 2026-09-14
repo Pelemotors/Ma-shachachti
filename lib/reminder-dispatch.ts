@@ -69,8 +69,9 @@ export async function deliverToSubscriptions(
 
 export const sendWebPush: PushSender = async (subscription, payload) => {
   await webpush.sendNotification(subscription, payload, {
-    TTL: 3600,
-    urgency: "normal",
+    // High urgency → Android/FCM treats as heads-up / wake-capable more often.
+    TTL: 86_400,
+    urgency: "high",
   });
 };
 
@@ -203,6 +204,8 @@ export async function dispatchDueReminders(
       body: task.title,
       url: "/app",
       tag: `task-${task.id}`,
+      icon: "/icon-192.png",
+      badge: "/badge-72.png",
       data: { taskId: task.id, url: "/app" },
     });
     let result: PushDeliveryResult;

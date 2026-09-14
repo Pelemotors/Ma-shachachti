@@ -37,6 +37,8 @@ export async function POST(req: Request) {
           body: "התראת הבדיקה הגיעה בהצלחה.",
           tag: "push-test",
           url: "/app",
+          icon: "/icon-192.png",
+          badge: "/badge-72.png",
           data: { url: "/app" },
         }),
       );

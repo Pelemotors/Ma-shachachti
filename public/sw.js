@@ -24,13 +24,30 @@ self.addEventListener("push", (event) => {
   } catch {
     /* ignore */
   }
-  const url = safeUrl(data.url);
+  const url = safeUrl(data.url ?? data.data?.url);
+  const title = data.title || "מה שכחתי?";
+  const body = data.body || "יש משימה שצריך לשים לב אליה";
+  const tag = data.tag || "task-reminder";
+
   event.waitUntil(
-    self.registration.showNotification(data.title || "מה שכחתי?", {
-      body: data.body || "יש משימה שצריך לשים לב אליה",
-      tag: data.tag || "task-reminder",
-      icon: data.icon || "/icon.svg",
-      badge: data.badge || "/icon.svg",
+    self.registration.showNotification(title, {
+      body,
+      tag,
+      // Heads-up / lock-screen style — stay visible until the user acts.
+      requireInteraction: true,
+      renotify: true,
+      silent: false,
+      vibrate: [220, 100, 220, 100, 320],
+      dir: "rtl",
+      lang: "he",
+      // PNG icons — Android often ignores SVG for system notifications.
+      icon: data.icon || "/icon-192.png",
+      badge: data.badge || "/badge-72.png",
+      timestamp: Date.now(),
+      actions: [
+        { action: "open", title: "פתח" },
+        { action: "dismiss", title: "סגור" },
+      ],
       data: {
         url,
         taskId: data.data?.taskId ?? data.taskId ?? null,
@@ -40,7 +57,10 @@ self.addEventListener("push", (event) => {
 });
 
 self.addEventListener("notificationclick", (event) => {
+  const action = event.action;
   event.notification.close();
+  if (action === "dismiss") return;
+
   const target = safeUrl(event.notification.data?.url);
   event.waitUntil(
     clients
@@ -55,4 +75,12 @@ self.addEventListener("notificationclick", (event) => {
         return clients.openWindow(target);
       }),
   );
+});
+
+// Keep SW active so push can wake the device even when the tab is gone.
+self.addEventListener("install", (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
 });

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "מה שכחתי?" },
   formatDetection: { telephone: false },
-  icons: { icon: "/icon.svg" },
+  icons: { icon: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }, { url: "/icon.svg", type: "image/svg+xml" }] },
 };
 
 export const viewport: Viewport = {

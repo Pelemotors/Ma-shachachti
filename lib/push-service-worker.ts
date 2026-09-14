@@ -7,7 +7,7 @@ export function ensurePushServiceWorker() {
     return Promise.reject(new Error("service_worker_unsupported"));
   }
   registrationPromise ??= navigator.serviceWorker
-    .register("/sw.js", {
+    .register("/sw.js?v=heads-up-1", {
       scope: "/",
       updateViaCache: "none",
     })
