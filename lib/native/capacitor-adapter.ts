@@ -35,6 +35,14 @@ function unwrap<T>(raw: unknown): T {
   return raw as T;
 }
 
+function isNativePlatform() {
+  if (typeof window === "undefined") return false;
+  return Boolean(
+    (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } })
+      .Capacitor?.isNativePlatform?.(),
+  );
+}
+
 async function call<T>(
   method: string,
   fallback: () => Promise<T>,
@@ -47,6 +55,28 @@ async function call<T>(
     const raw = await fn(payload);
     return unwrap<T>(raw);
   } catch {
+    return fallback();
+  }
+}
+
+async function callSecure<T>(
+  method: string,
+  fallback: () => Promise<T>,
+  empty: T,
+  payload?: Record<string, unknown>,
+): Promise<T> {
+  const native = plugin();
+  const fn = native?.[method];
+  if (!fn) {
+    // Never park auth secrets in WebView localStorage on a native shell.
+    if (isNativePlatform()) return empty;
+    return fallback();
+  }
+  try {
+    const raw = await fn(payload);
+    return unwrap<T>(raw);
+  } catch {
+    if (isNativePlatform()) return empty;
     return fallback();
   }
 }
@@ -143,15 +173,31 @@ export function createCapacitorNativeCapability(): NativeCapability {
     captureImage: () => call<ImagePickResult>("captureImage", web.captureImage),
     openAppSettings: () => call("openAppSettings", web.openAppSettings),
     getTimezone: () => call("getTimezone", web.getTimezone),
-    secureGet: (key) => call("secureGet", () => web.secureGet(key), { key }),
-    secureSet: (key, value) =>
-      call("secureSet", () => web.secureSet(key, value), { key, value }),
-    secureRemove: (key) =>
-      call("secureRemove", () => web.secureRemove(key), { key }),
-    stageBlob: (key, value) =>
-      call("stageBlob", () => web.stageBlob(key, value), { key, value }),
-    readStaged: (key) => call("readStaged", () => web.readStaged(key), { key }),
-    clearStaged: (key) =>
-      call("clearStaged", () => web.clearStaged(key), { key }),
+    secureGet: (key) =>
+      callSecure("secureGet", () => web.secureGet(key), null, { key }),
+    secureSet: async (key, value) => {
+      await callSecure("secureSet", () => web.secureSet(key, value), undefined, {
+        key,
+        value,
+      });
+    },
+    secureRemove: async (key) => {
+      await callSecure("secureRemove", () => web.secureRemove(key), undefined, {
+        key,
+      });
+    },
+    stageBlob: async (key, value) => {
+      await callSecure("stageBlob", () => web.stageBlob(key, value), undefined, {
+        key,
+        value,
+      });
+    },
+    readStaged: (key) =>
+      callSecure("readStaged", () => web.readStaged(key), null, { key }),
+    clearStaged: async (key) => {
+      await callSecure("clearStaged", () => web.clearStaged(key), undefined, {
+        key,
+      });
+    },
   };
 }

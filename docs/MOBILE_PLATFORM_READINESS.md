@@ -68,6 +68,12 @@ npm run ios:sync    # CocoaPods/Xcode required on macOS
 - [ ] Deep link logged-out → login → resume
 - [ ] Push open routes to `/app?...`
 
-## Privacy
+## Secure session storage
 
-No contacts/SMS/location/fingerprinting. Microphone and camera only after explicit user action.
+| Platform | Mechanism |
+|----------|-----------|
+| **Web/PWA** | Supabase default browser storage (unchanged) |
+| **iOS** | Keychain (`kSecClassGenericPassword`) via `MaNativePlugin.secure*` |
+| **Android** | `EncryptedSharedPreferences` + `MasterKey` in Android Keystore (`SecureSessionStore`) |
+
+Android never persists access/refresh tokens in plaintext `SharedPreferences`. Legacy `ma_native_secure` plaintext prefs are migrated once into the encrypted store and wiped.

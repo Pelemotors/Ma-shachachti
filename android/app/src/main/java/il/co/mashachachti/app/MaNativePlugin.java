@@ -2,7 +2,6 @@ package il.co.mashachachti.app;
 
 import android.Manifest;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.media.MediaRecorder;
 import android.net.Uri;
@@ -37,15 +36,14 @@ import java.util.UUID;
   }
 )
 public class MaNativePlugin extends Plugin {
-  private static final String PREFS = "ma_native_secure";
   private static final String INSTALL_KEY = "installation_id";
   private static final String SHARE_KEY = "pending_share";
   private static final String PUSH_KEY = "push_token";
   private MediaRecorder recorder;
   private File recordingFile;
 
-  private SharedPreferences securePrefs() {
-    return getContext().getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE);
+  private SecureSessionStore secureStore() {
+    return SecureSessionStore.getInstance(getContext());
   }
 
   private void resolveValue(PluginCall call, Object value) {
@@ -83,13 +81,16 @@ public class MaNativePlugin extends Plugin {
 
   @PluginMethod
   public void getInstallationId(PluginCall call) {
-    SharedPreferences prefs = securePrefs();
-    String id = prefs.getString(INSTALL_KEY, null);
-    if (id == null) {
-      id = UUID.randomUUID().toString();
-      prefs.edit().putString(INSTALL_KEY, id).apply();
+    try {
+      String id = secureStore().get(INSTALL_KEY);
+      if (id == null) {
+        id = UUID.randomUUID().toString();
+        secureStore().put(INSTALL_KEY, id);
+      }
+      resolveValue(call, id);
+    } catch (Exception e) {
+      call.reject("secure_store_unavailable");
     }
-    resolveValue(call, id);
   }
 
   @PluginMethod
@@ -138,11 +139,19 @@ public class MaNativePlugin extends Plugin {
 
   @PluginMethod
   public void getPushToken(PluginCall call) {
-    resolveValue(call, securePrefs().getString(PUSH_KEY, null));
+    try {
+      resolveValue(call, secureStore().get(PUSH_KEY));
+    } catch (Exception e) {
+      resolveValue(call, null);
+    }
   }
 
   public void storePushToken(String token) {
-    securePrefs().edit().putString(PUSH_KEY, token).apply();
+    try {
+      secureStore().put(PUSH_KEY, token);
+    } catch (Exception ignored) {
+      /* push token persistence must not crash the app */
+    }
   }
 
   @PluginMethod
@@ -234,12 +243,12 @@ public class MaNativePlugin extends Plugin {
 
   @PluginMethod
   public void getPendingSharedPayload(PluginCall call) {
-    String raw = securePrefs().getString(SHARE_KEY, null);
-    if (raw == null) {
-      resolveValue(call, null);
-      return;
-    }
     try {
+      String raw = secureStore().get(SHARE_KEY);
+      if (raw == null) {
+        resolveValue(call, null);
+        return;
+      }
       call.resolve(new JSObject(raw));
     } catch (Exception e) {
       resolveValue(call, null);
@@ -248,12 +257,20 @@ public class MaNativePlugin extends Plugin {
 
   @PluginMethod
   public void clearSharedPayload(PluginCall call) {
-    securePrefs().edit().remove(SHARE_KEY).apply();
+    try {
+      secureStore().remove(SHARE_KEY);
+    } catch (Exception ignored) {
+      /* clear must not crash */
+    }
     call.resolve();
   }
 
   public void stageSharedPayload(JSONObject json) {
-    securePrefs().edit().putString(SHARE_KEY, json.toString()).apply();
+    try {
+      secureStore().put(SHARE_KEY, json.toString());
+    } catch (Exception ignored) {
+      /* share staging must not crash the app */
+    }
   }
 
   @PluginMethod
@@ -285,35 +302,64 @@ public class MaNativePlugin extends Plugin {
 
   @PluginMethod
   public void secureGet(PluginCall call) {
-    resolveValue(call, securePrefs().getString(call.getString("key"), null));
+    try {
+      resolveValue(call, secureStore().get(call.getString("key")));
+    } catch (Exception e) {
+      // Corrupted/unavailable store → null forces session re-auth, never crash.
+      resolveValue(call, null);
+    }
   }
 
   @PluginMethod
   public void secureSet(PluginCall call) {
-    securePrefs().edit().putString(call.getString("key"), call.getString("value")).apply();
-    call.resolve();
+    try {
+      secureStore().put(call.getString("key"), call.getString("value"));
+      call.resolve();
+    } catch (Exception e) {
+      call.reject("secure_write_failed");
+    }
   }
 
   @PluginMethod
   public void secureRemove(PluginCall call) {
-    securePrefs().edit().remove(call.getString("key")).apply();
+    try {
+      secureStore().remove(call.getString("key"));
+    } catch (Exception ignored) {
+      try {
+        secureStore().clearAll();
+      } catch (Exception ignoredAgain) {
+        /* logout must still complete */
+      }
+    }
     call.resolve();
   }
 
   @PluginMethod
   public void stageBlob(PluginCall call) {
-    securePrefs().edit().putString("stage:" + call.getString("key"), call.getString("value")).apply();
-    call.resolve();
+    try {
+      secureStore().put("stage:" + call.getString("key"), call.getString("value"));
+      call.resolve();
+    } catch (Exception e) {
+      call.reject("secure_stage_failed");
+    }
   }
 
   @PluginMethod
   public void readStaged(PluginCall call) {
-    resolveValue(call, securePrefs().getString("stage:" + call.getString("key"), null));
+    try {
+      resolveValue(call, secureStore().get("stage:" + call.getString("key")));
+    } catch (Exception e) {
+      resolveValue(call, null);
+    }
   }
 
   @PluginMethod
   public void clearStaged(PluginCall call) {
-    securePrefs().edit().remove("stage:" + call.getString("key")).apply();
+    try {
+      secureStore().remove("stage:" + call.getString("key"));
+    } catch (Exception ignored) {
+      /* clear must not crash */
+    }
     call.resolve();
   }
 
