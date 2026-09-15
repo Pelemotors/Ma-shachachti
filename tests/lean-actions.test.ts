@@ -163,7 +163,7 @@ test("empty actions with an execution claim are not shown as success", () => {
   assert.equal(reply, "לא בוצעה פעולה במערכת.");
 });
 
-test("successful action keeps extra conversational text that does not claim execution", () => {
+test("successful mutation shows confirmation only — not LLM talk", () => {
   const reply = composeReply("אין לי יכולת לקבוע התראה לשעה 17:00.", [
     {
       ok: true,
@@ -173,7 +173,7 @@ test("successful action keeps extra conversational text that does not claim exec
     },
   ]);
   assert.match(reply, /שמרתי את המשימה "יום הורים" לתאריך 23\/10\/2026/);
-  assert.match(reply, /אין לי יכולת לקבוע התראה לשעה 17:00/);
+  assert.doesNotMatch(reply, /אין לי יכולת לקבוע התראה/);
 });
 
 test("successful result text is built from execution, not from the model claim", () => {
@@ -181,8 +181,7 @@ test("successful result text is built from execution, not from the model claim",
     { ok: true, type: "task.create", title: "יום הורים", due_on: "2026-10-23" },
   ]);
   assert.match(reply, /שמרתי את המשימה "יום הורים" לתאריך 23\/10\/2026/);
-  assert.match(reply, /אין תזכורת לשעה/);
-  assert.doesNotMatch(reply, /הוספתי/);
+  assert.doesNotMatch(reply, /הוספתי|אין תזכורת לשעה/);
 });
 
 test("parseDecision rejects unstructured text", () => {

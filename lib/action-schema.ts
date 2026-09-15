@@ -9,6 +9,7 @@ import {
 } from "./types.ts";
 
 import { DATE_RE, TIME_RE } from "./time.ts";
+import { applyPresentationContract } from "./agent/presentation-contract.ts";
 
 export { DATE_RE, TIME_RE };
 
@@ -797,11 +798,13 @@ export function composeReply(llmReply: string, results: ActionResult[]) {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  if (facts && talk) return `${facts}\n${talk}`;
-  if (facts) return facts;
-  if (talk) return talk;
-  if (claimsExecution(llmReply)) return "לא בוצעה פעולה במערכת.";
-  return llmReply.trim();
+  return applyPresentationContract({
+    facts,
+    talk,
+    results,
+    llmReply,
+    claimsExecution,
+  }).userReply;
 }
 
 function normalizePresentation(
