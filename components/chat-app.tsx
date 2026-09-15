@@ -364,7 +364,7 @@ export function ChatApp() {
     retryTurnId?: string,
     surfaceContext: SurfaceContext | null = null,
   ) {
-    if (!message || sending) return;
+    if (!message || sending) return false;
 
     const turn = createPendingChatTurn(
       message,
@@ -422,7 +422,7 @@ export function ChatApp() {
       isAccountAccessDenied(response.status, body.error)
     ) {
       await leaveForLogin();
-      return;
+      return false;
     }
     if (!response.ok) {
       setError(body.error ?? "הסוכן לא הצליח לענות כרגע.");
@@ -468,6 +468,31 @@ export function ChatApp() {
     if (await sendMessage(message)) {
       setText("");
       if (userId) writeChatDraft(userId, sessionId, "");
+    }
+  }
+
+  const voiceSendLock = useRef(false);
+
+  async function sendVoiceTranscript(transcript: string) {
+    const piece = transcript.trim();
+    if (!piece || voiceSendLock.current) return;
+    voiceSendLock.current = true;
+    try {
+      let merged = piece;
+      setText((current) => {
+        merged = appendTranscript(current, piece);
+        return merged;
+      });
+      setError("");
+      if (!merged.trim()) return;
+      const ok = await sendMessage(merged.trim());
+      if (ok) {
+        setText("");
+        if (userId) writeChatDraft(userId, sessionId, "");
+      }
+      // On failure: draft kept for retry without re-recording.
+    } finally {
+      voiceSendLock.current = false;
     }
   }
 
@@ -1406,9 +1431,7 @@ export function ChatApp() {
             <VoiceRecorder
               enabled={!sending}
               onText={(transcript) => {
-                setText((current) => appendTranscript(current, transcript));
-                setError("");
-                requestAnimationFrame(() => draftRef.current?.focus());
+                void sendVoiceTranscript(transcript);
               }}
               onError={setError}
             />

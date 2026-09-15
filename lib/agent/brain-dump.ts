@@ -8,7 +8,11 @@ import { loadChecklists, loadShopping } from "../lists.ts";
 import { loadAgentProfile } from "../user-profile.ts";
 import { createAgentProposal } from "../proposals.ts";
 import { executeIdempotentActions } from "./idempotent-actions.ts";
-import { requestAgentDecision } from "./openai-orchestrator.ts";
+import {
+  AGENT_TOTAL_DEADLINE_MS,
+  AgentUpstreamError,
+  requestAgentDecision,
+} from "./openai-orchestrator.ts";
 import { buildCompactContext } from "./context/compact.ts";
 import { buildAgentPrompt } from "./prompt-builder.ts";
 import {
@@ -23,6 +27,11 @@ import {
   completeAgentTurn,
   failAgentTurn,
 } from "./turn-receipts.ts";
+import {
+  classifyAgentError,
+  logAgentFailure,
+  type AgentFailureCategory,
+} from "./failure.ts";
 
 function brainDumpModeText() {
   try {
@@ -35,16 +44,28 @@ function brainDumpModeText() {
   }
 }
 
+export type BrainDumpStage =
+  | "recorded"
+  | "transcribed"
+  | "interpreting"
+  | "executing"
+  | "partial_success"
+  | "completed"
+  | "failed";
+
 export type BrainDumpResult = {
   recording_id: string;
   executed: number;
   proposal_id: string | null;
   summary: string;
   llm_calls: number;
+  stage: BrainDumpStage;
+  failure_category: AgentFailureCategory | null;
 };
 
 /**
  * Process a Brain Dump transcript asynchronously — no chat reply persisted.
+ * Stages: transcribed → interpreting → executing → completed|partial_success|failed
  */
 export async function processBrainDumpTranscript(input: {
   db: SupabaseClient;
@@ -63,6 +84,8 @@ export async function processBrainDumpTranscript(input: {
       proposal_id: null,
       summary: "תמלול ריק",
       llm_calls: 0,
+      stage: "failed",
+      failure_category: "empty_output",
     };
   }
 
@@ -86,6 +109,13 @@ export async function processBrainDumpTranscript(input: {
           ? previous.summary
           : "ההקלטה כבר עובדה",
       llm_calls: Number(previous.llm_calls ?? 0),
+      stage:
+        previous.stage === "partial_success" ||
+        previous.stage === "completed" ||
+        previous.stage === "failed"
+          ? previous.stage
+          : "completed",
+      failure_category: null,
     };
   }
   if (turnClaim.kind === "processing") {
@@ -95,9 +125,12 @@ export async function processBrainDumpTranscript(input: {
       proposal_id: null,
       summary: "העיבוד עדיין רץ",
       llm_calls: 0,
+      stage: "interpreting",
+      failure_category: null,
     };
   }
 
+  let stage: BrainDumpStage = "interpreting";
   try {
     const [tasks, memory, profile, shopping, checklists] = await Promise.all([
       loadTasks(input.db, input.userId),
@@ -123,6 +156,7 @@ export async function processBrainDumpTranscript(input: {
       consequences: [...consequenceMap.values()],
       shopping,
       checklists,
+      purpose: "brain-dump",
     });
 
     const base = buildAgentPrompt({ compact, surface: null });
@@ -142,12 +176,14 @@ ${brainDumpModeText()}
         content: `Brain Dump transcript (לא שיחת צ׳אט):\n\n${transcript.slice(0, 6000)}`,
       },
     ];
+    const deadlineAt = Date.now() + AGENT_TOTAL_DEADLINE_MS;
 
     let requested = await requestAgentDecision({
       apiKey: input.apiKey,
       model,
       instructions,
       messages,
+      deadlineAt,
     });
     let llmCalls = requested.attempts;
 
@@ -164,7 +200,7 @@ ${brainDumpModeText()}
         alreadyTaskIds: new Set(compact.tasks.map((t) => t.id)),
         alreadyMemoryIds: new Set(compact.memories.map((m) => m.id)),
       });
-      if (appendix) {
+      if (appendix && deadlineAt - Date.now() >= 5_000) {
         const second = await requestAgentDecision({
           apiKey: input.apiKey,
           model,
@@ -177,6 +213,7 @@ ${brainDumpModeText()}
                 "קיבלת Deep Access. ענה מחדש. אל תבקש עוד context_requests. אין תשובת צ׳אט.",
             },
           ],
+          deadlineAt,
         });
         llmCalls += second.attempts;
         requested = second;
@@ -185,6 +222,17 @@ ${brainDumpModeText()}
 
     const decision = requested.decision;
     if (!decision?.ok) {
+      const category = requested.lastParseCategory ?? "schema_violation";
+      logAgentFailure({
+        category,
+        turnId: input.recordingId,
+        mode: "brain-dump",
+        latencyMs: Date.now() - started,
+        retryCount: llmCalls,
+        model,
+        reason: "interpretation_failed",
+      });
+      // Soft-fail: transcript remains on recording; turn fails so retry can reclaim.
       await failAgentTurn(input.db, input.userId, turnClaim.id);
       await recordActivity(input.db, {
         ownerId: input.userId,
@@ -193,18 +241,24 @@ ${brainDumpModeText()}
           surface: "brain-dump",
           recordingId: input.recordingId,
           latencyMs: Date.now() - started,
+          category,
+          stage: "failed",
         },
       }).catch(() => undefined);
       return {
         recording_id: input.recordingId,
         executed: 0,
         proposal_id: null,
-        summary: "לא הצלחנו לעבד את ההקלטה",
+        summary: "לא הצלחנו לעבד את ההקלטה. התמלול נשמר — אפשר לנסות שוב.",
         llm_calls: llmCalls,
+        stage: "failed",
+        failure_category: category,
       };
     }
 
+    stage = "executing";
     const inspected = inspectActions(decision.actions);
+    // Clear items still execute even if some actions were rejected.
     const results = await executeIdempotentActions(input.db, {
       scope: "turn",
       scopeId: turnClaim.id,
@@ -222,18 +276,41 @@ ${brainDumpModeText()}
       proposalId = proposal.id;
     }
 
+    const executed = results.filter((row) => row.ok).length;
+    const rejected = inspected.results.length;
+    const partial =
+      (executed > 0 && (Boolean(proposalId) || rejected > 0)) ||
+      (executed > 0 && decision.proposal != null);
+    stage =
+      executed > 0 && (proposalId || rejected > 0)
+        ? "partial_success"
+        : executed > 0 || proposalId
+          ? "completed"
+          : proposalId
+            ? "completed"
+            : "completed";
+    if (executed === 0 && !proposalId) {
+      stage = "completed";
+    } else if (partial || (executed > 0 && proposalId)) {
+      stage = "partial_success";
+    }
+
     const summary =
       decision.proposal?.summary ||
-      (results.some((row) => row.ok)
-        ? `בוצעו ${results.filter((row) => row.ok).length} פעולות מההקלטה`
-        : "ההקלטה נשמרה; לא זוהו פעולות ברורות");
+      (executed > 0
+        ? `בוצעו ${executed} פעולות מההקלטה${proposalId ? " (יש גם פריטים לאישור)" : ""}`
+        : proposalId
+          ? "נשמרו פריטים לאישור מההקלטה"
+          : "ההקלטה נשמרה; לא זוהו פעולות ברורות");
 
     const result: BrainDumpResult = {
       recording_id: input.recordingId,
-      executed: results.filter((row) => row.ok).length,
+      executed,
       proposal_id: proposalId,
       summary,
       llm_calls: llmCalls,
+      stage,
+      failure_category: null,
     };
 
     await completeAgentTurn(input.db, input.userId, turnClaim.id, {
@@ -250,15 +327,50 @@ ${brainDumpModeText()}
         llmCalls,
         executed: result.executed,
         proposal: Boolean(proposalId),
+        stage,
         chatReply: false,
       },
     }).catch(() => undefined);
 
     return result;
   } catch (error) {
+    const category =
+      error instanceof AgentUpstreamError
+        ? error.category
+        : classifyAgentError(error);
+    logAgentFailure({
+      category,
+      turnId: input.recordingId,
+      mode: "brain-dump",
+      latencyMs: Date.now() - started,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
     await failAgentTurn(input.db, input.userId, turnClaim.id).catch(
       () => undefined,
     );
+    // Soft-fail transport/timeout: keep HTTP success shape from route, transcript survives.
+    if (error instanceof AgentUpstreamError) {
+      await recordActivity(input.db, {
+        ownerId: input.userId,
+        eventType: "ai.failure",
+        metadata: {
+          surface: "brain-dump",
+          recordingId: input.recordingId,
+          latencyMs: Date.now() - started,
+          category,
+          stage: "failed",
+        },
+      }).catch(() => undefined);
+      return {
+        recording_id: input.recordingId,
+        executed: 0,
+        proposal_id: null,
+        summary: "לא הצלחנו לעבד את ההקלטה. התמלול נשמר — אפשר לנסות שוב.",
+        llm_calls: 0,
+        stage: "failed",
+        failure_category: category,
+      };
+    }
     throw error;
   }
 }

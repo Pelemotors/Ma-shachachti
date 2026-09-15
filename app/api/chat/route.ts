@@ -13,6 +13,7 @@ import {
   parseContextRequests,
 } from "@/lib/agent/context/deep-access";
 import {
+  AGENT_TOTAL_DEADLINE_MS,
   AgentUpstreamError,
   requestAgentDecision,
 } from "@/lib/agent/openai-orchestrator";
@@ -39,6 +40,7 @@ import {
 import {
   replyForPresentation,
   resolveAgentPresentation,
+  resolveInsightsPresentation,
 } from "@/lib/presentation";
 import { createAgentProposal } from "@/lib/proposals";
 import { createServiceClient } from "@/lib/supabase-admin";
@@ -47,6 +49,12 @@ import { loadAgentProfile } from "@/lib/user-profile";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadChecklists, loadShopping } from "@/lib/lists";
 import { todayContext } from "@/lib/time";
+import {
+  classifyAgentError,
+  logAgentFailure,
+} from "@/lib/agent/failure";
+import { ensureUserReply, DEEP_CHECK_FALLBACK_REPLY } from "@/lib/agent/surface-fallback";
+import type { ChatSurface } from "@/lib/home-surfaces";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -58,11 +66,21 @@ type StoredMessage = {
   created_at: string;
 };
 
-function jsonError(error: unknown) {
+function jsonError(
+  error: unknown,
+  meta?: { turnId?: string; mode?: string; latencyMs?: number },
+) {
   if (error instanceof HttpError) {
     return Response.json({ error: error.message }, { status: error.status });
   }
   if (error instanceof AgentUpstreamError) {
+    logAgentFailure({
+      category: error.category,
+      turnId: meta?.turnId,
+      mode: meta?.mode,
+      latencyMs: meta?.latencyMs,
+      reason: error.code,
+    });
     if (error.code === "rate_limited") {
       return Response.json(
         { error: "הסוכן עמוס כרגע. אפשר לנסות שוב בעוד רגע." },
@@ -74,7 +92,13 @@ function jsonError(error: unknown) {
       { status: 502 },
     );
   }
-  console.error("Lean chat error");
+  logAgentFailure({
+    category: classifyAgentError(error),
+    turnId: meta?.turnId,
+    mode: meta?.mode,
+    latencyMs: meta?.latencyMs,
+    reason: error instanceof Error ? error.message : "unknown",
+  });
   return Response.json(
     { error: "הסוכן לא הצליח לענות כרגע. אפשר לנסות שוב." },
     { status: 500 },
@@ -131,6 +155,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const started = Date.now();
   let trackedUserId: string | null = null;
+  let trackedSurface: ChatSurface | null = null;
+  let trackedSessionId: string | null = null;
+  let trackedTurnKey: string | null = null;
+  let trackedMessage = "";
   let activeTurn: {
     db: SupabaseClient;
     userId: string;
@@ -149,6 +177,9 @@ export async function POST(req: Request) {
       session_id: requestedSession,
       turn_id: turnKey,
     } = parsed.request;
+    trackedSurface = surface;
+    trackedTurnKey = turnKey;
+    trackedMessage = message;
 
     let sessionId = requestedSession;
     if (sessionId) {
@@ -160,6 +191,7 @@ export async function POST(req: Request) {
       if (!session) throw new HttpError(503, "לא הצלחנו לפתוח שיחה.");
       sessionId = session.id;
     }
+    trackedSessionId = sessionId;
 
     const turnClaim = await claimAgentTurn(db, {
       userId,
@@ -232,6 +264,7 @@ export async function POST(req: Request) {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) throw new HttpError(503, "חיבור ה-AI עדיין לא הוגדר.");
       const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-luna";
+      const deadlineAt = Date.now() + AGENT_TOTAL_DEADLINE_MS;
       const openaiInput = (recent ?? [])
         .slice()
         .reverse()
@@ -255,6 +288,7 @@ export async function POST(req: Request) {
         model,
         instructions: prompt.instructions,
         messages: openaiInput,
+        deadlineAt,
       });
       llmCalls += requested.attempts;
 
@@ -272,7 +306,7 @@ export async function POST(req: Request) {
           alreadyTaskIds: new Set(compact.tasks.map((task) => task.id)),
           alreadyMemoryIds: new Set(compact.memories.map((row) => row.id)),
         });
-        if (appendix) {
+        if (appendix && deadlineAt - Date.now() >= 5_000) {
           deepAccessUsed = true;
           prompt = buildTurnPrompt({
             compact,
@@ -294,6 +328,7 @@ export async function POST(req: Request) {
                   "קיבלת Deep Access. ענה מחדש לפי אותה בקשה עם המידע הנוסף. אל תבקש עוד context_requests.",
               },
             ],
+            deadlineAt,
           });
           llmCalls += second.attempts;
           requested = second;
@@ -349,12 +384,25 @@ export async function POST(req: Request) {
       );
     }
     const nextTasks = await loadTasks(db, userId);
-    const presentation = resolveAgentPresentation(
+    let presentation = resolveAgentPresentation(
       scoped.presentation,
       nextTasks,
       new Date(),
       surface,
     );
+    // Prefer partial valid insights over total failure for deep-check.
+    if (surface === "deep-check" && !presentation && scoped.presentation) {
+      presentation = resolveInsightsPresentation(scoped.presentation);
+      if (!presentation) {
+        logAgentFailure({
+          category: "invalid_insights",
+          turnId: turnKey,
+          mode: surface,
+          latencyMs: Date.now() - started,
+          retryCount: agent.attempts,
+        });
+      }
+    }
     const storedPresentation = validateStoredPresentation(presentation);
     const proposalRecord =
       decision?.proposal != null
@@ -368,13 +416,21 @@ export async function POST(req: Request) {
     const proposal = proposalRecord
       ? { ...proposalRecord, result_reply: null }
       : null;
-    const reply = replyForPresentation(
+    const composed = replyForPresentation(
       decision
         ? composeReply(decision.reply, results)
         : (agent.recoveredReply ?? ""),
       presentation,
     );
-    if (!reply) throw new HttpError(502, "הסוכן לא החזיר תשובה.");
+    const reply = ensureUserReply({
+      reply: composed,
+      surface,
+      presentation,
+    });
+    if (!reply) {
+      // Last-resort guard — should be unreachable after ensureUserReply.
+      throw new HttpError(502, "הסוכן לא החזיר תשובה.");
+    }
 
     const saved = await persistTurnMessage(db, {
       userId,
@@ -410,6 +466,74 @@ export async function POST(req: Request) {
     });
     return Response.json(responseBody);
   } catch (error) {
+    // Deep-check: never fail the UI with 502 for empty/invalid model output.
+    // Return a honest fallback so the user can retry.
+    if (
+      trackedSurface === "deep-check" &&
+      activeTurn &&
+      trackedSessionId &&
+      trackedTurnKey &&
+      (error instanceof AgentUpstreamError ||
+        (error instanceof HttpError && error.status === 502))
+    ) {
+      logAgentFailure({
+        category:
+          error instanceof AgentUpstreamError
+            ? error.category
+            : "empty_output",
+        turnId: trackedTurnKey,
+        mode: "deep-check",
+        latencyMs: Date.now() - started,
+        reason: error instanceof Error ? error.message : "fallback",
+      });
+      try {
+        await persistTurnMessage(activeTurn.db, {
+          userId: activeTurn.userId,
+          sessionId: trackedSessionId,
+          turnId: activeTurn.id,
+          role: "user",
+          content: trackedMessage || "בדוק לעומק",
+        }).catch(() => undefined);
+        const saved = await persistTurnMessage(activeTurn.db, {
+          userId: activeTurn.userId,
+          sessionId: trackedSessionId,
+          turnId: activeTurn.id,
+          role: "assistant",
+          content: DEEP_CHECK_FALLBACK_REPLY,
+          presentation: null,
+        });
+        const tasks = await loadTasks(activeTurn.db, activeTurn.userId).catch(
+          () => [],
+        );
+        const responseBody = {
+          reply: DEEP_CHECK_FALLBACK_REPLY,
+          id: saved.id,
+          created_at: saved.created_at,
+          tasks,
+          presentation: null,
+          proposal: null,
+          session_id: trackedSessionId,
+          turn_id: trackedTurnKey,
+          partial: true,
+        };
+        await completeAgentTurn(
+          activeTurn.db,
+          activeTurn.userId,
+          activeTurn.id,
+          responseBody,
+        );
+        activeTurn = null;
+        if (trackedUserId) {
+          await trackAi(trackedUserId, "ai.failure", {
+            code: "deep_check_fallback",
+            latencyMs: Date.now() - started,
+          });
+        }
+        return Response.json(responseBody);
+      } catch {
+        /* fall through to normal error */
+      }
+    }
     if (activeTurn && !activeTurn.resumable) {
       await failAgentTurn(
         activeTurn.db,
@@ -420,9 +544,14 @@ export async function POST(req: Request) {
     if (trackedUserId && error instanceof AgentUpstreamError) {
       await trackAi(trackedUserId, "ai.failure", {
         code: error.code,
+        category: error.category,
         latencyMs: Date.now() - started,
       });
     }
-    return jsonError(error);
+    return jsonError(error, {
+      turnId: activeTurn?.id ?? trackedTurnKey ?? undefined,
+      mode: trackedSurface ?? "chat",
+      latencyMs: Date.now() - started,
+    });
   }
 }

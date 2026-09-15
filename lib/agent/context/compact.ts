@@ -59,6 +59,8 @@ export function buildCompactContext(input: {
   consequences: ConsequenceRow[];
   shopping: ShoppingItem[];
   checklists: Checklist[];
+  /** Extra purpose when surface is null (e.g. brain-dump processing). */
+  purpose?: "chat" | "brain-dump" | null;
 }): CompactContext {
   const modules = ["core", "compact-context"];
   const openTasks = input.allTasks.filter((task) => task.status === "open");
@@ -69,7 +71,14 @@ export function buildCompactContext(input: {
   let checklists: Checklist[] = [];
   let historyLimit = 10;
 
-  if (input.surface == null) {
+  if (input.purpose === "brain-dump") {
+    modules.push("brain-dump");
+    // Need tasks + shopping for classify/dedupe; keep compact but useful.
+    tasks = openTasks.slice(0, 40);
+    shopping = input.shopping.slice(0, 40);
+    checklists = input.checklists.slice(0, 8);
+    historyLimit = 0;
+  } else if (input.surface == null) {
     modules.push("normal");
     // Compact: recent/open slice — not the full dump, not empty.
     tasks = openTasks.slice(0, 20);
@@ -116,7 +125,7 @@ export function buildCompactContext(input: {
   const memories = selectPersonalMemories({
     memories: input.allMemory,
     queryHint: input.queryHint,
-    limit: input.surface === "deep-check" ? 10 : 6,
+    limit: input.surface === "deep-check" || input.purpose === "brain-dump" ? 10 : 6,
   });
 
   const consequences = input.consequences.filter((row) =>
