@@ -2,6 +2,7 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { decideIdentityLink, notificationLogicalKey } from "../lib/auth/identity.ts";
+import { kindEnabled } from "../lib/notifications/record.ts";
 import { verifyJwtWithJwks, hashNonce } from "../lib/auth/verify-jwt.ts";
 import { parseDeepLink, resumePathAfterAuth, loginPathWithResume } from "../lib/native/deep-links.ts";
 import {
@@ -114,6 +115,12 @@ test("web native adapter provides fallbacks", async () => {
   assert.equal(await web.getPlatform(), "web");
   const apple = await web.authenticateWithApple();
   assert.equal(apple.status, "unavailable");
+});
+
+test("notification kind preferences honor explicit false", () => {
+  assert.equal(kindEnabled({ REMINDER: false }, "REMINDER"), false);
+  assert.equal(kindEnabled({ REMINDER: false }, "TASK_DUE"), true);
+  assert.equal(kindEnabled(null, "REMINDER"), true);
 });
 
 test("notification logical key is stable", () => {
