@@ -3,6 +3,7 @@
 import {
   FormEvent,
   KeyboardEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -10,6 +11,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch, supabase } from "@/lib/supabase-browser";
+import { useMobileBootstrap } from "@/hooks/use-mobile-bootstrap";
 import { seasonForDate, type Season } from "@/lib/season";
 import {
   greetingForDate,
@@ -142,7 +144,10 @@ export function ChatApp() {
 
   async function leaveForLogin() {
     await supabase?.auth.signOut();
-    router.replace("/login");
+    const next = encodeURIComponent(
+      `${window.location.pathname}${window.location.search}`,
+    );
+    router.replace(`/login?next=${next}`);
   }
 
   const agentSurfaces = useAgentSurfaces({
@@ -163,6 +168,17 @@ export function ChatApp() {
     onFailure: setFailure,
   });
   const { surfaceTurns } = agentSurfaces;
+
+  const onNativeNavigate = useCallback(
+    (href: string) => {
+      router.replace(href);
+    },
+    [router],
+  );
+  useMobileBootstrap({
+    userId,
+    onNavigate: onNativeNavigate,
+  });
 
   function navigate(next: Partial<AppRouteState>, replace = false) {
     const href = encodeAppRoute({

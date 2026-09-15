@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">מה שכחתי?</string>
+    <string name="title_activity_main">מה שכחתי?</string>
+    <string name="package_name">il.co.mashachachti.app</string>
+    <string name="custom_url_scheme">il.co.mashachachti.app</string>
+</resources>

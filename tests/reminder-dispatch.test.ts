@@ -98,6 +98,9 @@ function createDb(state: {
         limit() {
           return api;
         },
+        upsert() {
+          return api;
+        },
         update(next: Record<string, unknown>) {
           pending = next;
           return api;

@@ -56,29 +56,61 @@ export function jerusalemParts(instant: Date | string) {
   };
 }
 
-export function todayContext(now = new Date()) {
-  const parts = jerusalemParts(now);
+export function isValidTimeZone(value: string) {
+  try {
+    Intl.DateTimeFormat("en-GB", { timeZone: value }).format(new Date());
+    return value.length > 0 && value.length < 80;
+  } catch {
+    return false;
+  }
+}
+
+export function resolveTimeZone(value?: string | null) {
+  return value && isValidTimeZone(value) ? value : TIME_ZONE;
+}
+
+export function zonedDateParts(instant: Date | string, timeZone = TIME_ZONE) {
+  const date = typeof instant === "string" ? new Date(instant) : instant;
+  const parts = zonedParts(date, resolveTimeZone(timeZone));
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+  };
+}
+
+export function todayContext(now = new Date(), timeZone = TIME_ZONE) {
+  const zone = resolveTimeZone(timeZone);
+  const parts = zonedDateParts(now, zone);
   const weekday = new Intl.DateTimeFormat("he-IL", {
-    timeZone: TIME_ZONE,
+    timeZone: zone,
     weekday: "long",
   }).format(now);
   return {
     date: parts.date,
     weekday,
-    timeZone: TIME_ZONE,
+    timeZone: zone,
     currentTime: parts.time,
     localDateTime: `${parts.date}T${parts.time}`,
   };
 }
 
-export function jerusalemDateTimeToUtc(date: string, time: string) {
+export function dateTimeToUtc(
+  date: string,
+  time: string,
+  timeZone = TIME_ZONE,
+) {
+  const zone = resolveTimeZone(timeZone);
   const [year, month, day] = date.split("-").map(Number);
   const [hour, minute] = time.split(":").map(Number);
   const utcGuess = Date.UTC(year, month - 1, day, hour, minute, 0);
-  let instant = utcGuess - offsetMs(new Date(utcGuess));
-  const adjusted = utcGuess - offsetMs(new Date(instant));
+  let instant = utcGuess - offsetMs(new Date(utcGuess), zone);
+  const adjusted = utcGuess - offsetMs(new Date(instant), zone);
   if (adjusted !== instant) instant = adjusted;
   return new Date(instant);
+}
+
+export function jerusalemDateTimeToUtc(date: string, time: string) {
+  return dateTimeToUtc(date, time, TIME_ZONE);
 }
 
 export function dueOnFromDueAt(dueAt: string) {

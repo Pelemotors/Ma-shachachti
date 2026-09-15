@@ -9,6 +9,11 @@ import {
 } from "./reminder-plan.ts";
 
 import { vapidPublicKey } from "./push.ts";
+import { recordAppNotification } from "./notifications/record.ts";
+import {
+  deliverNativePush,
+  loadNativePushTargets,
+} from "./notifications/native-delivery.ts";
 
 export type PushRow = {
   endpoint: string;
@@ -208,9 +213,25 @@ export async function dispatchDueReminders(
       badge: "/badge-72.png",
       data: { taskId: task.id, url: "/app" },
     });
+    await recordAppNotification(db, {
+      userId: task.user_id,
+      kind: "REMINDER",
+      subject: `${task.id}:${task.reminder_at ?? task.due_at ?? "none"}`,
+      title: "מה שכחתי?",
+      body: task.title,
+      route: "/app",
+      payload: { taskId: task.id },
+    });
     let result: PushDeliveryResult;
     try {
       result = await deliverUserPush(db, task.user_id, payload, send);
+      const nativeTargets = await loadNativePushTargets(db, task.user_id);
+      await deliverNativePush({
+        targets: nativeTargets,
+        title: "מה שכחתי?",
+        body: task.title,
+        route: "/app",
+      });
     } catch (error) {
       failed += 1;
       console.error("Lean reminder delivery failed", {

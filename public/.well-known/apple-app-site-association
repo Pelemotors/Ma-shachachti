@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "<OWNER_REQUIRED>.il.co.mashachachti.app",
+        "paths": ["/app", "/app/*", "/login", "/login/*"]
+      }
+    ]
+  }
+}

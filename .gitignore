@@ -11,3 +11,13 @@ test-results/
 playwright-report/
 .env.qa
 .next-qa
+out/
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/app/google-services.json
+ios/App/Pods/
+ios/App/build/
+*.xcuserstate
+.DS_Store

@@ -1,0 +1,21 @@
+{
+  "appId": "il.co.mashachachti.app",
+  "appName": "מה שכחתי?",
+  "webDir": "out",
+  "server": {
+    "url": "https://mashachachti.co.il",
+    "cleartext": false
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  },
+  "ios": {
+    "scheme": "MaShachachti",
+    "contentInset": "automatic"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

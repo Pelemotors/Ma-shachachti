@@ -56,7 +56,7 @@ test("admin cannot self-lock", () => {
 });
 
 test("login page has signup and forgot password but no confirm-password field", () => {
-  const page = readFileSync(new URL("../app/login/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../components/login-form.tsx", import.meta.url), "utf8");
   assert.match(page, /signUp/);
   assert.match(page, /resetPasswordForEmail/);
   assert.match(page, /אין לי חשבון — הרשמה/);

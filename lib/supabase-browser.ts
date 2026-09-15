@@ -1,12 +1,37 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { nativeCapability } from "@/lib/native";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-export const supabase =
+class NativeSecureStorage {
+  async getItem(keyName: string) {
+    return nativeCapability().secureGet(keyName);
+  }
+  async setItem(keyName: string, value: string) {
+    await nativeCapability().secureSet(keyName, value);
+  }
+  async removeItem(keyName: string) {
+    await nativeCapability().secureRemove(keyName);
+  }
+}
+
+function isNativeShell() {
+  if (typeof window === "undefined") return false;
+  return Boolean(
+    (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } })
+      .Capacitor?.isNativePlatform?.(),
+  );
+}
+
+export const supabase: SupabaseClient | null =
   url && key
     ? createClient(url, key, {
-        auth: { persistSession: true, autoRefreshToken: true },
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          storage: isNativeShell() ? new NativeSecureStorage() : undefined,
+        },
       })
     : null;
 
