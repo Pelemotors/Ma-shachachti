@@ -548,6 +548,29 @@ export async function loadTasks(db: Db, userId: string): Promise<TaskRow[]> {
   return (data ?? []) as TaskRow[];
 }
 
+/**
+ * Wider open-task pool for agent candidate selection.
+ * Fetches more rows then leaves ranking/truncation to compact context.
+ */
+export async function loadOpenTasksForAgent(
+  db: Db,
+  userId: string,
+  limit = 200,
+): Promise<TaskRow[]> {
+  const capped = Math.min(Math.max(limit, 80), 300);
+  const { data, error } = await db
+    .from("tasks")
+    .select(
+      "id,title,notes,status,due_on,due_at,reminder_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at,created_at,updated_at,completed_at",
+    )
+    .eq("user_id", userId)
+    .eq("status", "open")
+    .order("updated_at", { ascending: false })
+    .limit(capped);
+  if (error) throw error;
+  return (data ?? []) as TaskRow[];
+}
+
 export async function loadMemory(db: Db, userId: string): Promise<MemoryRow[]> {
   const { data, error } = await db
     .from("agent_memory")

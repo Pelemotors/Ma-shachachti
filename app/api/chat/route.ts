@@ -1,6 +1,6 @@
 import { authorize, HttpError } from "@/lib/server-auth";
 import { composeReply, inspectActions } from "@/lib/action-schema";
-import { loadMemory, loadTasks } from "@/lib/actions";
+import { loadMemory, loadOpenTasksForAgent, loadTasks } from "@/lib/actions";
 import { loadConsequences, persistConsequenceUpdates } from "@/lib/consequences";
 import {
   applySurfaceTurnPolicy,
@@ -222,7 +222,14 @@ export async function POST(req: Request) {
       resumable: Boolean(turnClaim.decision),
     };
 
-    const tasks = await loadTasks(db, userId);
+    const tasks =
+      surface === "forgotten" ||
+      surface === "focus" ||
+      surface === "schedule" ||
+      surface === "free-time" ||
+      surface === "deep-check"
+        ? await loadOpenTasksForAgent(db, userId, 200)
+        : await loadTasks(db, userId);
     let agent = parseStoredDecision(turnClaim.decision);
     if (turnClaim.decision && !agent) {
       throw new Error("invalid_stored_turn_decision");
@@ -232,6 +239,8 @@ export async function POST(req: Request) {
     let promptModules: string[] = [];
     let promptChars = 0;
     let memoryCount = 0;
+    let turnConsequences: Awaited<ReturnType<typeof loadConsequences>> =
+      new Map();
 
     if (!agent) {
       const [memory, consequences, profile, shopping, checklists] =
@@ -248,6 +257,7 @@ export async function POST(req: Request) {
         ]).catch(() => {
           throw new HttpError(503, "לא הצלחנו לטעון את הקשר המשתמש לשיחה.");
         });
+      turnConsequences = consequences;
 
       const compact = buildCompactContext({
         surface,
@@ -454,11 +464,19 @@ export async function POST(req: Request) {
       );
     }
     const nextTasks = await loadTasks(db, userId);
+    if (turnConsequences.size === 0 && (surface === "forgotten" || surface === "focus")) {
+      turnConsequences = await loadConsequences(
+        db,
+        userId,
+        nextTasks.filter((task) => task.status === "open").map((task) => task.id),
+      ).catch(() => new Map());
+    }
     let presentation = resolveAgentPresentation(
       scoped.presentation,
       nextTasks,
       new Date(),
       surface,
+      [...turnConsequences.values()],
     );
     // Prefer partial valid insights over total failure for deep-check.
     if (surface === "deep-check" && !presentation && scoped.presentation) {

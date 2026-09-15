@@ -7,7 +7,12 @@ import type {
   PresentedSuggestion,
   PresentedTask,
   TaskRow,
+  ConsequenceRow,
 } from "./types.ts";
+import {
+  rankTaskCandidates,
+  stabilizeForgottenSelection,
+} from "./agent/candidate-rank.ts";
 
 function toPresentedTask(task: TaskRow): PresentedTask {
   return {
@@ -233,6 +238,7 @@ export function resolveAgentPresentation(
   tasks: TaskRow[],
   now = new Date(),
   surface: string | null = null,
+  consequences: ConsequenceRow[] = [],
 ): ClientPresentation | null {
   const type =
     presentation &&
@@ -250,9 +256,31 @@ export function resolveAgentPresentation(
     return resolveInsightsPresentation(presentation);
   }
   const forgotten = surface === "forgotten" || surface === "focus";
+  if (forgotten) {
+    const raw = presentation as { task_ids?: unknown };
+    const selectedIds = Array.isArray(raw?.task_ids)
+      ? raw.task_ids.filter((id): id is string => typeof id === "string")
+      : [];
+    const ranked = rankTaskCandidates({
+      tasks: tasks.filter((task) => task.status === "open"),
+      consequences,
+      now,
+    });
+    const stabilized = stabilizeForgottenSelection({
+      selectedIds,
+      ranked,
+      targetMin: Math.min(5, ranked.length),
+      targetMax: 6,
+    });
+    return resolveTaskListPresentation(
+      { type: "task_list", task_ids: stabilized },
+      tasks,
+      { max: 6, openOnly: true },
+    );
+  }
   return resolveTaskListPresentation(presentation, tasks, {
-    max: forgotten ? 6 : 20,
-    openOnly: forgotten,
+    max: 20,
+    openOnly: false,
   });
 }
 

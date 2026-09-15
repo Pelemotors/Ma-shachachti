@@ -14,6 +14,11 @@ import {
   selectLearnedActionRelations,
   renderLearnedRelationsBlock,
 } from "../learned-relations.ts";
+import {
+  formatCandidateMeta,
+  rankTaskCandidates,
+  type RankedCandidate,
+} from "../candidate-rank.ts";
 
 export type CompactContext = {
   profile: AgentProfileContext | null;
@@ -26,9 +31,14 @@ export type CompactContext = {
   historyLimit: number;
   modules: string[];
   memoryCount: number;
+  ranked?: RankedCandidate[];
 };
 
-function formatTask(task: TaskRow, consequence?: ConsequenceRow) {
+function formatTask(
+  task: TaskRow,
+  consequence?: ConsequenceRow,
+  ranked?: RankedCandidate,
+) {
   const clock = dueTimeFromDueAt(task.due_at);
   const due = task.due_on ? ` | due ${task.due_on}` : " | due none";
   const time = clock ? ` | at ${clock}` : task.due_on ? " | at none" : "";
@@ -49,7 +59,8 @@ function formatTask(task: TaskRow, consequence?: ConsequenceRow) {
   const consequenceText = consequence
     ? ` | consequence severity=${consequence.severity}`
     : "";
-  return `- ${task.id} [${task.status}] ${task.title}${due}${time}${planned}${reminder}${reschedules}${lastRescheduled}${created}${consequenceText}`;
+  const rankText = ranked ? ` | ${formatCandidateMeta(ranked)}` : "";
+  return `- ${task.id} [${task.status}] ${task.title}${due}${time}${planned}${reminder}${reschedules}${lastRescheduled}${created}${consequenceText}${rankText}`;
 }
 
 export function buildCompactContext(input: {
@@ -68,7 +79,7 @@ export function buildCompactContext(input: {
 }): CompactContext {
   const modules = ["core", "compact-context"];
   const openTasks = input.allTasks.filter((task) => task.status === "open");
-  const byId = new Map(input.consequences.map((row) => [row.task_id, row]));
+  let ranked: RankedCandidate[] | undefined;
 
   let tasks: TaskRow[] = [];
   let shopping: ShoppingItem[] = [];
@@ -90,13 +101,22 @@ export function buildCompactContext(input: {
     checklists = [];
     historyLimit = 10;
   } else if (input.surface === "forgotten" || input.surface === "focus") {
-    // High-recall candidates — do not arbitrarily hide open tasks.
     modules.push("forgotten-high-recall");
-    tasks = openTasks;
+    ranked = rankTaskCandidates({
+      tasks: openTasks,
+      consequences: input.consequences,
+      limit: Math.min(openTasks.length, 80),
+    });
+    tasks = ranked.map((row) => row.task);
     historyLimit = 6;
   } else if (input.surface === "deep-check") {
     modules.push("deep-check-wide");
-    tasks = openTasks;
+    ranked = rankTaskCandidates({
+      tasks: openTasks,
+      consequences: input.consequences,
+      limit: Math.min(openTasks.length, 80),
+    });
+    tasks = ranked.map((row) => row.task);
     shopping = input.shopping.slice(0, 40);
     checklists = input.checklists.slice(0, 12);
     historyLimit = 8;
@@ -106,7 +126,7 @@ export function buildCompactContext(input: {
       input.surfaceContext?.type === "schedule"
         ? input.surfaceContext.date
         : null;
-    tasks = openTasks.filter((task) => {
+    const pool = openTasks.filter((task) => {
       if (!date) return Boolean(task.due_at || task.planned_start_at || task.due_on);
       const dueAtDate = task.due_at ? jerusalemParts(task.due_at).date : null;
       const plannedDate = task.planned_start_at
@@ -119,10 +139,27 @@ export function buildCompactContext(input: {
         (!task.due_on && !task.due_at && !task.planned_start_at)
       );
     });
+    // Rank before truncating so important undated work is not lost to recency.
+    ranked = rankTaskCandidates({
+      tasks: pool,
+      consequences: input.consequences,
+      limit: Math.min(pool.length, 60),
+    });
+    tasks = ranked.map((row) => row.task);
     historyLimit = 4;
   } else if (input.surface === "free-time") {
     modules.push("free-time-window");
-    tasks = openTasks.slice(0, 40);
+    const minutes =
+      input.surfaceContext?.type === "free-time"
+        ? input.surfaceContext.minutes
+        : null;
+    ranked = rankTaskCandidates({
+      tasks: openTasks,
+      consequences: input.consequences,
+      freeMinutes: minutes,
+      limit: Math.min(openTasks.length, 50),
+    });
+    tasks = ranked.map((row) => row.task);
     historyLimit = 4;
   }
 
@@ -147,6 +184,7 @@ export function buildCompactContext(input: {
     historyLimit,
     modules,
     memoryCount: memories.length,
+    ranked,
   };
 }
 
@@ -167,12 +205,23 @@ export function renderContextBlock(ctx: CompactContext, surface: ChatSurface | n
   if (relationBlock) lines.push(relationBlock);
   if (ctx.tasks.length) {
     const byId = new Map(ctx.consequences.map((row) => [row.task_id, row]));
+    const rankedById = new Map(
+      (ctx.ranked ?? []).map((row) => [row.task.id, row]),
+    );
     const label =
       surface === "forgotten" || surface === "focus"
-        ? "## מועמדים למשימות פתוחות (high recall — אתה בוחר)"
-        : "## משימות רלוונטיות";
+        ? "## מועמדים למשימות פתוחות (ranked high-recall — אתה בוחר; העדף consequence/דחייה/מועד על פני recency)"
+        : surface === "free-time"
+          ? "## מועמדים לזמן פנוי (ranked — לא לפי recency בלבד; planned_today אינו יתרון יחיד)"
+          : surface === "schedule"
+            ? "## מועמדים ללו״ז (ranked לפני truncation; undated חשובים נשארים בתחרות)"
+            : "## משימות רלוונטיות";
     lines.push(
-      `${label}\n${ctx.tasks.map((task) => formatTask(task, byId.get(task.id))).join("\n")}`,
+      `${label}\n${ctx.tasks
+        .map((task) =>
+          formatTask(task, byId.get(task.id), rankedById.get(task.id)),
+        )
+        .join("\n")}`,
     );
   }
   if (ctx.shopping.length) {
