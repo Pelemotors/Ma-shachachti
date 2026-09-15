@@ -60,7 +60,7 @@ export const ActionSchema = z.object({
   if (["shopping.update", "shopping.toggle", "shopping.remove", "checklist.rename", "checklist.delete",
     "checklist.item.update", "checklist.item.toggle", "checklist.item.remove"].includes(action.type)) requireField("id");
   if (["shopping.add", "checklist.create", "checklist.rename"].includes(action.type)) requireField("title");
-  if (action.type === "shopping.add") requireField("quantity");
+  // shopping.add: quantity defaults to 1 in normalizeAction — do not reject null
   if (action.type === "shopping.update" && action.title == null && action.quantity == null) {
     context.addIssue({ code: "custom", path: ["title"], message: "title_or_quantity_required" });
   }
@@ -661,7 +661,10 @@ export function toAgentAction(data: z.infer<typeof ActionSchema>): AgentAction {
     silent: data.silent ?? null,
     checklist_id: data.checklist_id ?? null,
     text: data.text ?? null,
-    quantity: data.quantity ?? null,
+    quantity:
+      data.type === "shopping.add"
+        ? (data.quantity ?? 1)
+        : (data.quantity ?? null),
     purchased: data.purchased ?? null,
     checked: data.checked ?? null,
   };

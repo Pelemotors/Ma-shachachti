@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   poweredByHeader: false,
   agentRules: false,
+  // Allow isolated QA builds without overwriting production `.next`.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   outputFileTracingIncludes: {
     "/api/chat": ["./lib/agent/instructions.ts"],
   },
@@ -15,6 +17,9 @@ const config: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "DENY" },
+          ...(process.env.APP_ENV === "qa"
+            ? [{ key: "X-App-Env", value: "qa" }]
+            : []),
         ],
       },
       {

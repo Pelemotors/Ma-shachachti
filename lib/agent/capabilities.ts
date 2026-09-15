@@ -16,7 +16,7 @@ export const RUNTIME_CAPABILITIES = {
     kind: "action",
     operations: ["memory.upsert", "memory.remove"],
     instructions:
-      'Memory מיועדת למידע אישי מתמשך. learning יזומה silent=true; בקשת זכירה מפורשת silent=false; תיקון משתמש מעדכן לפי id. כאשר המשתמש מלמד קשר פעולות מפורש (כש־A אז גם B), שמור content כ־JSON בלבד: {"v":1,"kind":"action_followup","trigger":"A","followup":"B","ordering":"after","scope":"always","active":true}. חריגה חד־פעמית: turn_flags.suppress_learned_followups=true ו־standing_rule_change=false — אל תמחק/תשנה את ה־relation הכללי.',
+      'Memory מיועדת למידע אישי מתמשך. learning יזומה silent=true; בקשת זכירה מפורשת silent=false; תיקון משתמש מעדכן לפי id. כאשר המשתמש מלמד קשר פעולות מפורש (כש־A אז גם B), חובה באותו turn memory.upsert עם content כ־JSON בלבד: {"v":1,"kind":"action_followup","trigger":"A","followup":"B","ordering":"after","scope":"always","active":true}. אל תבטיח במילים בלי action. חריגה חד־פעמית: turn_flags.suppress_learned_followups=true ו־standing_rule_change=false — אל תמחק/תשנה את ה־relation הכללי.',
   },
   shopping: {
     kind: "action",
@@ -27,7 +27,7 @@ export const RUNTIME_CAPABILITIES = {
       "shopping.remove",
     ],
     instructions:
-      "רשימת קניות אישית. add דורש title ו-quantity; update/toggle/remove דורשות id מההקשר. toggle דורש purchased.",
+      "רשימת קניות אישית. add דורש title; quantity אופציונלי ומוגדר כברירת מחדל ל־1 — אל תשאל על כמות אם המשתמש לא ציין. update/toggle/remove דורשות id מההקשר. toggle דורש purchased. בקשת קנייה ברורה → shopping.add מיד בלי שאלת אישור.",
   },
   checklists: {
     kind: "action",

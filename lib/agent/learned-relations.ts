@@ -121,6 +121,117 @@ export function selectLearnedActionRelations(
   return out;
 }
 
+/**
+ * When the model parked a structured action_followup memory write inside
+ * proposal (instead of actions), promote it — learning writes should not
+ * require an approve step.
+ */
+export function promoteRelationWritesFromProposal(input: {
+  actions: AgentAction[];
+  proposalActions?: AgentAction[] | null;
+}): { actions: AgentAction[]; promoted: number } {
+  const fromProposal = (input.proposalActions ?? []).filter((action) => {
+    if (action.type !== "memory.upsert" || !action.content) return false;
+    return Boolean(parseActionFollowupRelation(action.content));
+  });
+  if (!fromProposal.length) {
+    return { actions: input.actions, promoted: 0 };
+  }
+  const already = input.actions.some((action) => {
+    if (action.type !== "memory.upsert" || !action.content) return false;
+    return Boolean(parseActionFollowupRelation(action.content));
+  });
+  if (already) return { actions: input.actions, promoted: 0 };
+  return {
+    actions: [...input.actions, ...fromProposal],
+    promoted: fromProposal.length,
+  };
+}
+
+/**
+ * When the user explicitly requests an action_followup save but the model
+ * returned talk without memory.upsert, synthesize the structured write.
+ * Activates only if the user message literally mentions action_followup
+ * (contractual save request) — no domain keyword lists.
+ */
+export function ensureRelationUpsertAction(input: {
+  actions: AgentAction[];
+  userMessage?: string | null;
+  proposalActions?: AgentAction[] | null;
+}): AgentAction[] {
+  const promoted = promoteRelationWritesFromProposal({
+    actions: input.actions,
+    proposalActions: input.proposalActions,
+  });
+  let actions = promoted.actions;
+
+  const message = (input.userMessage ?? "").trim();
+  if (!message) return actions;
+  if (!/action_followup/i.test(message)) return actions;
+
+  const already = actions.some((action) => {
+    if (action.type !== "memory.upsert" || !action.content) return false;
+    return Boolean(parseActionFollowupRelation(action.content));
+  });
+  if (already) return actions;
+
+  const inferred = inferTriggerFollowupFromTeachingMessage(message);
+  if (!inferred) return actions;
+
+  const blank: AgentAction = {
+    type: "memory.upsert",
+    id: null,
+    title: null,
+    notes: null,
+    due_on: null,
+    due_time: null,
+    due_patch: null,
+    reminder_enabled: null,
+    reminder_at: null,
+    reminder_at_patch: null,
+    reminder_offset_minutes: null,
+    reminder_patch: null,
+    plan_patch: null,
+    planned_date: null,
+    planned_start_time: null,
+    planned_end_time: null,
+    kind: "preference",
+    content: encodeActionFollowupRelation(inferred),
+    confidence: "high",
+    silent: true,
+  };
+  return [...actions, blank];
+}
+
+/**
+ * Structural teaching extractors — connectors only, no chore/domain vocabulary.
+ */
+export function inferTriggerFollowupFromTeachingMessage(
+  message: string,
+): { trigger: string; followup: string } | null {
+  const cleaned = message
+    .replace(/שמרי?\s*כ[־\-]?action_followup\s*JSON\.?/gi, "")
+    .replace(/action_followup/gi, "")
+    .trim();
+
+  const patterns = [
+    /כש(?:אני\s+)?אומר(?:ת)?\s+(.+?)\s+תוסיף(?:י)?\s+אחריו\s+(.+?)(?:\.|$)/u,
+    /כש(?:אני\s+)?אומר(?:ת)?\s+(.+?)\s+יש\s+גם\s+(.+?)(?:\.|$)/u,
+    /כש(?:אני\s+)?אומר(?:ת)?\s+(.+?)\s+אז\s+גם\s+(.+?)(?:\.|$)/u,
+    /when\s+I\s+say\s+(.+?)\s+also\s+(?:add\s+)?(.+?)(?:\.|$)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = cleaned.match(pattern);
+    if (!match?.[1] || !match[2]) continue;
+    const trigger = match[1].trim().replace(/^["«]|["»]$/g, "");
+    const followup = match[2].trim().replace(/^["«]|["»]$/g, "");
+    if (trigger.length >= 2 && followup.length >= 2) {
+      return { trigger, followup };
+    }
+  }
+  return null;
+}
+
 /** Render relations into compact context for the agent (Decision layer). */
 export function renderLearnedRelationsBlock(
   relations: LearnedActionRelation[],

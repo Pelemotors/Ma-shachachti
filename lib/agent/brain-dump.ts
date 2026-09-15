@@ -26,21 +26,15 @@ import {
   claimAgentTurn,
   completeAgentTurn,
   failAgentTurn,
+  saveAgentTurnDecision,
 } from "./turn-receipts.ts";
 import {
   classifyAgentError,
   logAgentFailure,
   type AgentFailureCategory,
 } from "./failure.ts";
-import {
-  expandLearnedFollowUps,
-  filterMemoryWritesForException,
-  reconcileActions,
-} from "./reconcile.ts";
-import {
-  normalizeMemoryRelationActions,
-  selectLearnedActionRelations,
-} from "./learned-relations.ts";
+import { prepareExecutableActions } from "./prepare-actions.ts";
+import { storeValidatedDecision } from "./stored-decision.ts";
 import { DEFAULT_TURN_FLAGS } from "./turn-flags.ts";
 
 function brainDumpModeText() {
@@ -269,29 +263,26 @@ ${brainDumpModeText()}
     stage = "executing";
     const inspected = inspectActions(decision.actions);
     const openTasks = tasks.filter((task) => task.status === "open");
-    const relations = selectLearnedActionRelations(memory);
     const turnFlags = decision.turn_flags ?? DEFAULT_TURN_FLAGS;
-    let prepared = normalizeMemoryRelationActions(inspected.accepted);
-    prepared = filterMemoryWritesForException({
-      actions: prepared,
-      turnFlags,
-    });
-    prepared = expandLearnedFollowUps({
-      actions: prepared,
-      relations: relations.map((row) => ({
-        trigger: row.trigger,
-        followupTitle: row.followupTitle,
-        ordering: row.ordering,
-      })),
-      openTasks,
-      turnFlags,
-    });
-    prepared = reconcileActions({
-      actions: prepared,
+    const prepared = prepareExecutableActions({
+      actions: inspected.accepted,
       openTasks,
       shopping,
+      memories: memory,
+      turnFlags,
+      allTasks: tasks,
       userMessage: transcript,
     });
+    await saveAgentTurnDecision(
+      input.db,
+      input.userId,
+      turnClaim.id,
+      storeValidatedDecision({
+        decision: { ...decision, actions: prepared },
+        recoveredReply: null,
+        attempts: llmCalls,
+      }),
+    );
     // Clear items still execute even if some actions were rejected.
     const results = await executeIdempotentActions(input.db, {
       scope: "turn",

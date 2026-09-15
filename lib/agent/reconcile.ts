@@ -8,6 +8,18 @@ function titleKey(value: string | null | undefined) {
   return normalizeExactText(value ?? "").toLowerCase();
 }
 
+/** Soft match: drop Hebrew function particle את and definite ה- prefix on tokens. */
+function softTitleKey(value: string | null | undefined) {
+  return titleKey(value)
+    .replace(/(^|\s)את(\s|$)/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) =>
+      token.length > 2 && token.startsWith("ה") ? token.slice(1) : token,
+    )
+    .join(" ");
+}
+
 function titlesRelated(a: string, b: string) {
   const left = titleKey(a);
   const right = titleKey(b);
@@ -15,6 +27,23 @@ function titlesRelated(a: string, b: string) {
   if (left === right) return true;
   if (left.length >= 4 && right.includes(left)) return true;
   if (right.length >= 4 && left.includes(right)) return true;
+  const leftSoft = softTitleKey(a);
+  const rightSoft = softTitleKey(b);
+  if (leftSoft && rightSoft && leftSoft === rightSoft) return true;
+  const leftTokens = leftSoft.split(" ").filter((token) => token.length >= 2);
+  const rightTokens = rightSoft.split(" ").filter((token) => token.length >= 2);
+  if (
+    leftTokens.length >= 2 &&
+    leftTokens.every((token) => rightTokens.includes(token))
+  ) {
+    return true;
+  }
+  if (
+    rightTokens.length >= 2 &&
+    rightTokens.every((token) => leftTokens.includes(token))
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -106,7 +135,10 @@ export function reconcileActions(input: {
       }
       if (createdTitles.has(`shop:${key}`)) continue;
       createdTitles.add(`shop:${key}`);
-      out.push(action);
+      out.push({
+        ...action,
+        quantity: action.quantity ?? 1,
+      });
       continue;
     }
 
@@ -135,7 +167,15 @@ export function expandLearnedFollowUps(input: {
   if (!input.relations.length) return input.actions;
 
   const creates = input.actions.filter((action) => action.type === "task.create");
-  if (!creates.length) return input.actions;
+  const updates = input.actions.filter(
+    (action) =>
+      action.type === "task.update" &&
+      (action.title != null ||
+        action.due_on != null ||
+        action.due_patch === "set"),
+  );
+  const primaries = [...creates, ...updates];
+  if (!primaries.length) return input.actions;
 
   const existingTitles = new Set(
     [
@@ -147,8 +187,12 @@ export function expandLearnedFollowUps(input: {
   );
 
   const extras: AgentAction[] = [];
-  for (const create of creates) {
-    const title = create.title ?? "";
+  for (const primary of primaries) {
+    const title =
+      primary.title ??
+      (primary.id
+        ? (input.openTasks.find((task) => task.id === primary.id)?.title ?? "")
+        : "");
     for (const relation of input.relations) {
       if (!titlesRelated(title, relation.trigger)) continue;
       const followKey = titleKey(relation.followupTitle);
@@ -166,9 +210,9 @@ export function expandLearnedFollowUps(input: {
         id: null,
         title: relation.followupTitle,
         notes: null,
-        due_on: create.due_on,
-        due_time: create.due_time,
-        due_patch: create.due_patch,
+        due_on: primary.due_on,
+        due_time: primary.due_time,
+        due_patch: primary.due_patch,
         reminder_enabled: null,
         reminder_at: null,
         reminder_at_patch: null,
@@ -190,15 +234,41 @@ export function expandLearnedFollowUps(input: {
 }
 
 /**
- * Block standing memory writes for one-shot overrides unless the agent
- * explicitly marks standing_rule_change.
+ * During a grounded one-shot exception, drop create/update actions whose title
+ * matches a learned follow-up — covers both expander output and model mistakes.
  */
-export function filterMemoryWritesForException(input: {
+export function filterFollowupCreatesForException(input: {
   actions: AgentAction[];
+  relations: Array<{ followupTitle: string }>;
   turnFlags?: AgentTurnFlags;
 }): AgentAction[] {
   const flags = input.turnFlags ?? DEFAULT_TURN_FLAGS;
   if (!flags.suppress_learned_followups) return input.actions;
+  return input.actions.filter((action) => {
+    if (action.type !== "task.create" && action.type !== "task.update") {
+      return true;
+    }
+    const title = action.title ?? "";
+    if (!title) return true;
+    return !input.relations.some((relation) =>
+      titlesRelated(title, relation.followupTitle),
+    );
+  });
+}
+
+/**
+ * Block standing memory writes for one-shot overrides unless the agent
+ * explicitly marks standing_rule_change.
+ * Never block an explicit action_followup teach request (model may misfire flags).
+ */
+export function filterMemoryWritesForException(input: {
+  actions: AgentAction[];
+  turnFlags?: AgentTurnFlags;
+  userMessage?: string | null;
+}): AgentAction[] {
+  const flags = input.turnFlags ?? DEFAULT_TURN_FLAGS;
+  if (!flags.suppress_learned_followups) return input.actions;
   if (flags.standing_rule_change) return input.actions;
+  if (/action_followup/i.test(input.userMessage ?? "")) return input.actions;
   return input.actions.filter((action) => action.type !== "memory.upsert");
 }

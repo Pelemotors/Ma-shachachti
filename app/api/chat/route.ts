@@ -56,17 +56,10 @@ import {
 import { ensureUserReply, DEEP_CHECK_FALLBACK_REPLY } from "@/lib/agent/surface-fallback";
 import type { ChatSurface } from "@/lib/home-surfaces";
 import {
-  expandLearnedFollowUps,
-  filterMemoryWritesForException,
-  reconcileActions,
-} from "@/lib/agent/reconcile";
-import {
-  normalizeMemoryRelationActions,
-  selectLearnedActionRelations,
-} from "@/lib/agent/learned-relations";
+  prepareExecutableActions,
+} from "@/lib/agent/prepare-actions";
 import {
   findPendingSchedulePresentation,
-  isolatePendingScheduleActions,
 } from "@/lib/agent/schedule-isolation";
 import type { AgentAction, ClientPresentation } from "@/lib/types";
 import { DEFAULT_TURN_FLAGS } from "@/lib/agent/turn-flags";
@@ -238,6 +231,8 @@ export async function POST(req: Request) {
     if (turnClaim.decision && !agent) {
       throw new Error("invalid_stored_turn_decision");
     }
+    /** Exact actions persisted into the turn decision (for RPC authz match). */
+    let executableActions: AgentAction[] | null = null;
     let llmCalls = 0;
     let deepAccessUsed = false;
     let promptModules: string[] = [];
@@ -360,11 +355,83 @@ export async function POST(req: Request) {
         }
       }
 
+      // Prepare executable actions BEFORE the single decision write.
+      // RPC execute_lean_action_idempotent authorizes by exact match on
+      // stored decision.actions[index] — a second save would conflict.
+      let pendingSchedule: Extract<
+        ClientPresentation,
+        { type: "schedule_plan" }
+      > | null = null;
+      if (surface !== "schedule") {
+        const { data: recentPresentations } = await db
+          .from("chat_messages")
+          .select("presentation")
+          .eq("user_id", userId)
+          .eq("session_id", sessionId)
+          .eq("role", "assistant")
+          .order("created_at", { ascending: false })
+          .limit(6);
+        pendingSchedule = findPendingSchedulePresentation(
+          (recentPresentations ?? []).map((row) =>
+            validateStoredPresentation(row.presentation),
+          ),
+        );
+      }
+
+      const rawDecision = requested.decision;
+      let decisionToStore: unknown = rawDecision;
+      if (rawDecision?.ok) {
+        const preScoped = applySurfaceTurnPolicy({
+          surface,
+          actions: rawDecision.actions,
+          presentation: rawDecision.presentation,
+          consequence_updates: rawDecision.consequence_updates,
+        });
+        const preInspected = inspectActions(preScoped.actions);
+        if (preInspected.results.length > 0) {
+          throw new Error("invalid_scoped_actions");
+        }
+        const turnFlags = rawDecision.turn_flags ?? DEFAULT_TURN_FLAGS;
+        executableActions = prepareExecutableActions({
+          actions: preInspected.accepted as AgentAction[],
+          openTasks: tasks.filter((task) => task.status === "open"),
+          shopping,
+          memories: memory,
+          turnFlags,
+          pendingSchedule,
+          allTasks: tasks,
+          userMessage: message,
+          proposalActions: Array.isArray(rawDecision.proposal?.actions)
+            ? (rawDecision.proposal.actions as AgentAction[])
+            : null,
+        });
+        decisionToStore = {
+          ...rawDecision,
+          actions: executableActions,
+          // Learning writes promoted out of proposal — clear if only those remained.
+          proposal:
+            rawDecision.proposal &&
+            Array.isArray(rawDecision.proposal.actions) &&
+            executableActions.some(
+              (action) =>
+                action.type === "memory.upsert" &&
+                typeof action.content === "string" &&
+                action.content.includes("action_followup"),
+            )
+              ? null
+              : rawDecision.proposal,
+        };
+      }
+
       const stored = await saveAgentTurnDecision(
         db,
         userId,
         turnClaim.id,
-        storeValidatedDecision(requested),
+        storeValidatedDecision({
+          decision: decisionToStore,
+          recoveredReply: requested.recoveredReply,
+          attempts: requested.attempts,
+        }),
       );
       activeTurn.resumable = true;
       agent = parseStoredDecision(stored);
@@ -395,74 +462,15 @@ export async function POST(req: Request) {
       throw new Error("invalid_scoped_actions");
     }
 
-    // Pending unsaved schedule_plan in this session → do not commit plan mutations.
-    let pendingSchedule: Extract<
-      ClientPresentation,
-      { type: "schedule_plan" }
-    > | null = null;
-    if (surface !== "schedule") {
-      const { data: recentPresentations } = await db
-        .from("chat_messages")
-        .select("presentation")
-        .eq("user_id", userId)
-        .eq("session_id", sessionId)
-        .eq("role", "assistant")
-        .order("created_at", { ascending: false })
-        .limit(6);
-      pendingSchedule = findPendingSchedulePresentation(
-        (recentPresentations ?? []).map((row) =>
-          validateStoredPresentation(row.presentation),
-        ),
-      );
-    }
-
-    const openTasks = tasks.filter((task) => task.status === "open");
-    const shoppingForReconcile =
-      surface === null
-        ? await loadShopping(db, userId).catch(() => [])
-        : [];
-    // Memory for relations: reload lightweight if agent path skipped load.
-    const memoryForRelations = await loadMemory(db, userId).catch(() => []);
-    const relations = selectLearnedActionRelations(memoryForRelations);
-
-    let preparedActions: AgentAction[] = inspected.accepted as AgentAction[];
-    const turnFlags =
-      decision && "turn_flags" in decision && decision.turn_flags
-        ? decision.turn_flags
-        : DEFAULT_TURN_FLAGS;
-    preparedActions = normalizeMemoryRelationActions(preparedActions);
-    preparedActions = filterMemoryWritesForException({
-      actions: preparedActions,
-      turnFlags,
-    });
-    preparedActions = expandLearnedFollowUps({
-      actions: preparedActions,
-      relations: relations.map((row) => ({
-        trigger: row.trigger,
-        followupTitle: row.followupTitle,
-        ordering: row.ordering,
-      })),
-      openTasks,
-      turnFlags,
-    });
-    preparedActions = reconcileActions({
-      actions: preparedActions,
-      openTasks,
-      shopping: shoppingForReconcile,
-      userMessage: message,
-    });
-    const isolated = isolatePendingScheduleActions({
-      actions: preparedActions,
-      pendingSchedule,
-      tasks,
-    });
-    preparedActions = isolated.actions;
-
+    // Prefer the exact prepared action objects that were persisted (avoids
+    // re-parse drift vs RPC exact-match authz). Resume path uses stored actions.
+    const actionsToExecute =
+      executableActions ?? (inspected.accepted as AgentAction[]);
     const results = decision
       ? await executeIdempotentActions(db, {
           scope: "turn",
           scopeId: turnClaim.id,
-          actions: preparedActions,
+          actions: actionsToExecute,
         })
       : [];
     if (decision) {
@@ -563,6 +571,7 @@ export async function POST(req: Request) {
     });
     return Response.json(responseBody);
   } catch (error) {
+    console.error("Lean chat error detail", error);
     // Deep-check: never fail the UI with 502 for empty/invalid model output.
     // Return a honest fallback so the user can retry.
     if (
