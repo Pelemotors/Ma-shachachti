@@ -20,7 +20,7 @@ export function isCommittedScheduleMutation(action: AgentAction): boolean {
   }
   if (
     action.type === "task.create" &&
-    (action.planned_start_time != null || action.plan_patch === "set")
+    action.planned_start_time != null
   ) {
     return true;
   }
