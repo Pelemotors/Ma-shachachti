@@ -55,6 +55,17 @@ import {
 } from "@/lib/agent/failure";
 import { ensureUserReply, DEEP_CHECK_FALLBACK_REPLY } from "@/lib/agent/surface-fallback";
 import type { ChatSurface } from "@/lib/home-surfaces";
+import {
+  expandLearnedFollowUps,
+  filterMemoryWritesForException,
+  reconcileActions,
+} from "@/lib/agent/reconcile";
+import { selectLearnedActionRelations } from "@/lib/agent/learned-relations";
+import {
+  findPendingSchedulePresentation,
+  isolatePendingScheduleActions,
+} from "@/lib/agent/schedule-isolation";
+import type { AgentAction, ClientPresentation } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -369,11 +380,70 @@ export async function POST(req: Request) {
     if (inspected.results.length > 0) {
       throw new Error("invalid_scoped_actions");
     }
+
+    // Pending unsaved schedule_plan in this session → do not commit plan mutations.
+    let pendingSchedule: Extract<
+      ClientPresentation,
+      { type: "schedule_plan" }
+    > | null = null;
+    if (surface !== "schedule") {
+      const { data: recentPresentations } = await db
+        .from("chat_messages")
+        .select("presentation")
+        .eq("user_id", userId)
+        .eq("session_id", sessionId)
+        .eq("role", "assistant")
+        .order("created_at", { ascending: false })
+        .limit(6);
+      pendingSchedule = findPendingSchedulePresentation(
+        (recentPresentations ?? []).map((row) =>
+          validateStoredPresentation(row.presentation),
+        ),
+      );
+    }
+
+    const openTasks = tasks.filter((task) => task.status === "open");
+    const shoppingForReconcile =
+      surface === null
+        ? await loadShopping(db, userId).catch(() => [])
+        : [];
+    // Memory for relations: reload lightweight if agent path skipped load.
+    const memoryForRelations = await loadMemory(db, userId).catch(() => []);
+    const relations = selectLearnedActionRelations(memoryForRelations);
+
+    let preparedActions: AgentAction[] = inspected.accepted as AgentAction[];
+    preparedActions = filterMemoryWritesForException({
+      actions: preparedActions,
+      userMessage: message,
+    });
+    preparedActions = expandLearnedFollowUps({
+      actions: preparedActions,
+      relations: relations.map((row) => ({
+        trigger: row.trigger,
+        followupTitle: row.followupTitle,
+        ordering: row.ordering,
+      })),
+      openTasks,
+      userMessage: message,
+    });
+    preparedActions = reconcileActions({
+      actions: preparedActions,
+      openTasks,
+      shopping: shoppingForReconcile,
+      userMessage: message,
+    });
+    const isolated = isolatePendingScheduleActions({
+      actions: preparedActions,
+      pendingSchedule,
+      tasks,
+    });
+    preparedActions = isolated.actions;
+
     const results = decision
       ? await executeIdempotentActions(db, {
           scope: "turn",
           scopeId: turnClaim.id,
-          actions: inspected.accepted,
+          actions: preparedActions,
         })
       : [];
     if (decision) {

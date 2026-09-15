@@ -32,6 +32,12 @@ import {
   logAgentFailure,
   type AgentFailureCategory,
 } from "./failure.ts";
+import {
+  expandLearnedFollowUps,
+  filterMemoryWritesForException,
+  reconcileActions,
+} from "./reconcile.ts";
+import { selectLearnedActionRelations } from "./learned-relations.ts";
 
 function brainDumpModeText() {
   try {
@@ -258,11 +264,33 @@ ${brainDumpModeText()}
 
     stage = "executing";
     const inspected = inspectActions(decision.actions);
+    const openTasks = tasks.filter((task) => task.status === "open");
+    const relations = selectLearnedActionRelations(memory);
+    let prepared = filterMemoryWritesForException({
+      actions: inspected.accepted,
+      userMessage: transcript,
+    });
+    prepared = expandLearnedFollowUps({
+      actions: prepared,
+      relations: relations.map((row) => ({
+        trigger: row.trigger,
+        followupTitle: row.followupTitle,
+        ordering: row.ordering,
+      })),
+      openTasks,
+      userMessage: transcript,
+    });
+    prepared = reconcileActions({
+      actions: prepared,
+      openTasks,
+      shopping,
+      userMessage: transcript,
+    });
     // Clear items still execute even if some actions were rejected.
     const results = await executeIdempotentActions(input.db, {
       scope: "turn",
       scopeId: turnClaim.id,
-      actions: inspected.accepted,
+      actions: prepared,
     });
 
     let proposalId: string | null = null;

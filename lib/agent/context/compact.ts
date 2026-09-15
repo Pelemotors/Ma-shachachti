@@ -10,6 +10,10 @@ import type { AgentProfileContext } from "../../user-profile.ts";
 import { dueTimeFromDueAt, jerusalemParts } from "../../time.ts";
 import { reminderBase } from "../../reminders.ts";
 import { selectPersonalMemories } from "./memory-select.ts";
+import {
+  selectLearnedActionRelations,
+  renderLearnedRelationsBlock,
+} from "../learned-relations.ts";
 
 export type CompactContext = {
   profile: AgentProfileContext | null;
@@ -158,6 +162,9 @@ export function renderContextBlock(ctx: CompactContext, surface: ChatSurface | n
       `## Memory רלוונטי\n${ctx.memories.map((m) => `- ${m.id} [${m.source}] ${m.content}`).join("\n")}`,
     );
   }
+  const relations = selectLearnedActionRelations(ctx.memories);
+  const relationBlock = renderLearnedRelationsBlock(relations);
+  if (relationBlock) lines.push(relationBlock);
   if (ctx.tasks.length) {
     const byId = new Map(ctx.consequences.map((row) => [row.task_id, row]));
     const label =
