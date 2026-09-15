@@ -116,12 +116,12 @@ test("Scenario B — one-shot exception skips follow-up and keeps general prefer
       ordering: row.ordering,
     })),
     openTasks: [],
-    userMessage: "מחר כביסה אבל הפעם בלי קיפול ופיזור",
+    turnFlags: { suppress_learned_followups: true, standing_rule_change: false },
   });
   assert.equal(exceptionTurn.length, 1);
   assert.equal(
     filterMemoryWritesForException({
-      userMessage: "מחר כביסה אבל הפעם בלי קיפול ופיזור",
+      turnFlags: { suppress_learned_followups: true, standing_rule_change: false },
       actions: [
         {
           ...createAction("x"),
@@ -145,7 +145,7 @@ test("Scenario B — one-shot exception skips follow-up and keeps general prefer
       ordering: row.ordering,
     })),
     openTasks: [],
-    userMessage: "ביום ראשון כביסה",
+    turnFlags: { suppress_learned_followups: false, standing_rule_change: false },
   });
   assert.equal(later.length, 2);
 });
@@ -162,7 +162,7 @@ test("Scenario C — learned fridge→trash follow-up with exception then restor
     actions: [createAction("לנקות מקרר", { due_on: "2026-09-16" })],
     relations,
     openTasks: [],
-    userMessage: "אני צריכה לנקות מקרר מחר",
+    turnFlags: { suppress_learned_followups: false, standing_rule_change: false },
   });
   assert.equal(first.length, 2);
 
@@ -170,7 +170,7 @@ test("Scenario C — learned fridge→trash follow-up with exception then restor
     actions: [createAction("לנקות מקרר", { due_on: "2026-09-18" })],
     relations,
     openTasks: [],
-    userMessage: "ביום שישי לנקות מקרר אבל בלי לזרוק זבל הפעם",
+    turnFlags: { suppress_learned_followups: true, standing_rule_change: false },
   });
   assert.equal(exception.length, 1);
 
@@ -178,7 +178,7 @@ test("Scenario C — learned fridge→trash follow-up with exception then restor
     actions: [createAction("לנקות מקרר", { due_on: "2026-09-20" })],
     relations,
     openTasks: [],
-    userMessage: "ביום ראשון לנקות מקרר",
+    turnFlags: { suppress_learned_followups: false, standing_rule_change: false },
   });
   assert.equal(restored.length, 2);
   assert.equal(restored[1]?.title, "לזרוק זבל");

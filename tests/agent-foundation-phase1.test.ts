@@ -32,6 +32,7 @@ const validDecision = JSON.stringify({
   presentation: null,
   consequence_updates: [],
   context_requests: [],
+  turn_flags: { suppress_learned_followups: false, standing_rule_change: false },
 });
 
 test("generated instruction bundle has no drift", () => {

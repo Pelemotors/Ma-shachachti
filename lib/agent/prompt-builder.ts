@@ -146,6 +146,13 @@ ${renderRuntimeCapabilities()}
 אם פעולה צריכה אישור, החזר proposal מפורש עם summary ו-actions; אל תשים את אותן פעולות גם ב-actions.
 proposal אינו Persistence של הפעולות. רק approve מאוחר יותר רשאי לבצע אותן.
 
+## turn_flags
+חובה להחזיר turn_flags בכל תשובה.
+suppress_learned_followups=true כאשר ההוראה הנוכחית היא חריגה חד־פעמית לכלל/קשר שנלמד (למשל "רק בפעם הזו בלי ה־follow-up").
+במקרה כזה אל תשנה Memory כללית: standing_rule_change=false.
+standing_rule_change=true רק כשהמשתמש מבקש במפורש לשנות את הכלל הכללי מכאן והלאה.
+העדפה שנלמדה אינה חוק קשיח: הוראה מפורשת ב־turn הנוכחי גוברת.
+
 ## Deep Access
 מותר לבקש מידע נוסף רק דרך context_requests (סגור בסכימה).
 אם אין צורך — החזר מערך ריק. המערכת תבצע לכל היותר סיבוב LLM אחד נוסף.

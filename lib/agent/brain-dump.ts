@@ -37,7 +37,11 @@ import {
   filterMemoryWritesForException,
   reconcileActions,
 } from "./reconcile.ts";
-import { selectLearnedActionRelations } from "./learned-relations.ts";
+import {
+  normalizeMemoryRelationActions,
+  selectLearnedActionRelations,
+} from "./learned-relations.ts";
+import { DEFAULT_TURN_FLAGS } from "./turn-flags.ts";
 
 function brainDumpModeText() {
   try {
@@ -266,9 +270,11 @@ ${brainDumpModeText()}
     const inspected = inspectActions(decision.actions);
     const openTasks = tasks.filter((task) => task.status === "open");
     const relations = selectLearnedActionRelations(memory);
-    let prepared = filterMemoryWritesForException({
-      actions: inspected.accepted,
-      userMessage: transcript,
+    const turnFlags = decision.turn_flags ?? DEFAULT_TURN_FLAGS;
+    let prepared = normalizeMemoryRelationActions(inspected.accepted);
+    prepared = filterMemoryWritesForException({
+      actions: prepared,
+      turnFlags,
     });
     prepared = expandLearnedFollowUps({
       actions: prepared,
@@ -278,7 +284,7 @@ ${brainDumpModeText()}
         ordering: row.ordering,
       })),
       openTasks,
-      userMessage: transcript,
+      turnFlags,
     });
     prepared = reconcileActions({
       actions: prepared,

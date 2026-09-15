@@ -1,4 +1,4 @@
-import type { MemoryRow } from "../types.ts";
+import type { AgentAction, MemoryRow } from "../types.ts";
 
 /**
  * Structured learned action relations stored in Memory content (no new DB kind).
@@ -49,26 +49,59 @@ export function parseActionFollowupRelation(
   content: string,
 ): Omit<LearnedActionRelation, "memoryId" | "confidence" | "source"> | null {
   const trimmed = content.trim();
-  if (!trimmed.startsWith("{")) return null;
-  try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    if (parsed.kind !== RELATION_KIND) return null;
-    if (parsed.active === false) return null;
-    const trigger = typeof parsed.trigger === "string" ? parsed.trigger.trim() : "";
-    const followup =
-      typeof parsed.followup === "string" ? parsed.followup.trim() : "";
-    if (!trigger || !followup) return null;
-    const ordering = parsed.ordering === "with" ? "with" : "after";
-    return {
-      trigger,
-      followupTitle: followup,
-      ordering,
-      scope: "always",
-      active: true,
-    };
-  } catch {
-    return null;
+  const candidates = [trimmed];
+  // Repair: extract embedded JSON object if the model wrapped it in prose.
+  const embedded = trimmed.match(/\{[\s\S]*"kind"\s*:\s*"action_followup"[\s\S]*\}/);
+  if (embedded?.[0] && embedded[0] !== trimmed) {
+    candidates.push(embedded[0]);
   }
+  for (const candidate of candidates) {
+    if (!candidate.startsWith("{")) continue;
+    try {
+      const parsed = JSON.parse(candidate) as Record<string, unknown>;
+      if (parsed.kind !== RELATION_KIND) continue;
+      if (parsed.active === false) continue;
+      const trigger =
+        typeof parsed.trigger === "string" ? parsed.trigger.trim() : "";
+      const followup =
+        typeof parsed.followup === "string" ? parsed.followup.trim() : "";
+      if (!trigger || !followup) continue;
+      const ordering = parsed.ordering === "with" ? "with" : "after";
+      return {
+        trigger,
+        followupTitle: followup,
+        ordering,
+        scope: "always",
+        active: true,
+      };
+    } catch {
+      /* try next candidate */
+    }
+  }
+  return null;
+}
+
+/**
+ * Normalize memory.upsert actions so learned relations are stored as compact JSON.
+ * Free-text that does not embed action_followup JSON is left unchanged.
+ */
+export function normalizeMemoryRelationActions(
+  actions: AgentAction[],
+): AgentAction[] {
+  return actions.map((action) => {
+    if (action.type !== "memory.upsert" || !action.content) return action;
+    const parsed = parseActionFollowupRelation(action.content);
+    if (!parsed) return action;
+    return {
+      ...action,
+      kind: action.kind ?? "fact",
+      content: encodeActionFollowupRelation({
+        trigger: parsed.trigger,
+        followup: parsed.followupTitle,
+        ordering: parsed.ordering,
+      }),
+    };
+  });
 }
 
 export function selectLearnedActionRelations(

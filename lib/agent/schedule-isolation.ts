@@ -18,11 +18,62 @@ export function isCommittedScheduleMutation(action: AgentAction): boolean {
   ) {
     return true;
   }
+  if (action.type === "task.create" && action.planned_start_time != null) {
+    return true;
+  }
+  return false;
+}
+
+function titleKey(value: string | null | undefined) {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function titlesRelated(a: string, b: string) {
+  const left = titleKey(a);
+  const right = titleKey(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.length >= 4 && right.includes(left)) return true;
+  if (right.length >= 4 && left.includes(right)) return true;
+  return false;
+}
+
+/** Timing edits that target entities already present on the pending plan. */
+export function touchesPendingScheduleEntity(
+  action: AgentAction,
+  pending: Extract<ClientPresentation, { type: "schedule_plan" }>,
+): boolean {
+  if (action.id && pending.items.some((item) => item.task_id === action.id)) {
+    return true;
+  }
   if (
-    action.type === "task.create" &&
-    action.planned_start_time != null
+    action.title &&
+    pending.items.some((item) => titlesRelated(item.title, action.title!))
   ) {
     return true;
+  }
+  return false;
+}
+
+export function isPendingScheduleRevisionMutation(
+  action: AgentAction,
+  pending: Extract<ClientPresentation, { type: "schedule_plan" }>,
+): boolean {
+  if (isCommittedScheduleMutation(action)) return true;
+  if (!touchesPendingScheduleEntity(action, pending)) return false;
+  // Preference corrections often arrive as due/time patches on plan entities.
+  if (
+    action.type === "task.update" ||
+    action.type === "task.create" ||
+    action.type === "task.reschedule"
+  ) {
+    return (
+      action.due_on != null ||
+      action.due_time != null ||
+      action.due_patch === "set" ||
+      action.due_patch === "clear" ||
+      action.planned_end_time != null
+    );
   }
   return false;
 }
@@ -95,7 +146,7 @@ export function isolatePendingScheduleActions(input: {
   const kept: AgentAction[] = [];
   let stripped = 0;
   for (const action of input.actions) {
-    if (isCommittedScheduleMutation(action)) {
+    if (isPendingScheduleRevisionMutation(action, input.pendingSchedule)) {
       stripped += 1;
       continue;
     }

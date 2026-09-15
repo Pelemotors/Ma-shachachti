@@ -10,6 +10,7 @@ import {
 
 import { DATE_RE, TIME_RE } from "./time.ts";
 import { applyPresentationContract } from "./agent/presentation-contract.ts";
+import { parseTurnFlags, type AgentTurnFlags } from "./agent/turn-flags.ts";
 
 export { DATE_RE, TIME_RE };
 
@@ -83,9 +84,19 @@ export const AGENT_TURN_JSON_SCHEMA = {
     "presentation",
     "consequence_updates",
     "context_requests",
+    "turn_flags",
   ],
   properties: {
     reply: { type: "string" },
+    turn_flags: {
+      type: "object",
+      additionalProperties: false,
+      required: ["suppress_learned_followups", "standing_rule_change"],
+      properties: {
+        suppress_learned_followups: { type: "boolean" },
+        standing_rule_change: { type: "boolean" },
+      },
+    },
     actions: {
       type: "array",
       maxItems: 10,
@@ -889,6 +900,9 @@ export function parseDecision(text: string) {
         parsed.context_requests === undefined ? [] : parsed.context_requests,
       );
     if (!contextRequests.success) return { ok: false as const };
+    const turn_flags = parseTurnFlags(
+      "turn_flags" in parsed ? (parsed as { turn_flags?: unknown }).turn_flags : null,
+    );
     return {
       ok: true as const,
       reply: parsed.reply.trim(),
@@ -901,6 +915,7 @@ export function parseDecision(text: string) {
         query: row.query ?? null,
         limit: row.limit ?? null,
       })),
+      turn_flags,
     };
   } catch {
     return { ok: false as const };

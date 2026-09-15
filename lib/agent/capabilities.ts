@@ -16,7 +16,7 @@ export const RUNTIME_CAPABILITIES = {
     kind: "action",
     operations: ["memory.upsert", "memory.remove"],
     instructions:
-      'Memory מיועדת למידע אישי מתמשך. learning יזומה silent=true; בקשת זכירה מפורשת silent=false; תיקון משתמש מעדכן לפי id. כאשר המשתמש מלמד קשר פעולות מפורש (כש־A אז גם B), שמור content כ־JSON: {"v":1,"kind":"action_followup","trigger":"A","followup":"B","ordering":"after","scope":"always","active":true}. חריגה חד־פעמית אינה מעדכנת Memory כללית.',
+      'Memory מיועדת למידע אישי מתמשך. learning יזומה silent=true; בקשת זכירה מפורשת silent=false; תיקון משתמש מעדכן לפי id. כאשר המשתמש מלמד קשר פעולות מפורש (כש־A אז גם B), שמור content כ־JSON בלבד: {"v":1,"kind":"action_followup","trigger":"A","followup":"B","ordering":"after","scope":"always","active":true}. חריגה חד־פעמית: turn_flags.suppress_learned_followups=true ו־standing_rule_change=false — אל תמחק/תשנה את ה־relation הכללי.',
   },
   shopping: {
     kind: "action",

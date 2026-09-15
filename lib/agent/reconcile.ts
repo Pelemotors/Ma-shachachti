@@ -1,17 +1,8 @@
-import type { AgentAction, MemoryRow, TaskRow } from "../types.ts";
+import type { AgentAction, TaskRow } from "../types.ts";
 import type { ShoppingItem } from "../lists.ts";
 import { normalizeExactText } from "../task-identity.ts";
-
-/**
- * Linguistic markers for one-time exception scope (not domain keywords).
- * Used only to suppress learned follow-ups for the current turn.
- */
-const ONE_SHOT_EXCEPTION_RE =
-  /הפעם\s+בלי|בלי[^.!?\n]{0,40}הפעם|לא\s+הפעם|רק\s+הפעם|without\s+.{0,40}\sthis\s+time|this\s+time\s+without/i;
-
-export function isOneShotException(userMessage: string): boolean {
-  return ONE_SHOT_EXCEPTION_RE.test(userMessage);
-}
+import type { AgentTurnFlags } from "./turn-flags.ts";
+import { DEFAULT_TURN_FLAGS } from "./turn-flags.ts";
 
 function titleKey(value: string | null | undefined) {
   return normalizeExactText(value ?? "").toLowerCase();
@@ -31,7 +22,6 @@ function titlesRelated(a: string, b: string) {
  * Reconcile proposed actions toward desired final state:
  * - prefer update over duplicate create when a strong id or matching open entity exists
  * - collapse duplicate creates in the same batch
- * - keep idempotent updates that already match target as no-ops (dropped)
  */
 export function reconcileActions(input: {
   actions: AgentAction[];
@@ -51,7 +41,6 @@ export function reconcileActions(input: {
       if (!title) continue;
       const key = titleKey(title);
 
-      // Strong id already supplied → treat as update of that entity.
       if (action.id && byId.has(action.id)) {
         out.push({
           ...action,
@@ -61,7 +50,6 @@ export function reconcileActions(input: {
         continue;
       }
 
-      // Match existing open task by exact/related title → update instead of create.
       const match = openTasks.find((task) => titlesRelated(task.title, title));
       if (match) {
         out.push({
@@ -81,7 +69,6 @@ export function reconcileActions(input: {
 
     if (action.type === "task.update" || action.type === "task.reschedule") {
       if (action.id && !byId.has(action.id)) {
-        // Stale id — if title matches an open task, retarget.
         const match = action.title
           ? openTasks.find((task) => titlesRelated(task.title, action.title!))
           : null;
@@ -89,7 +76,6 @@ export function reconcileActions(input: {
           out.push({ ...action, id: match.id });
           continue;
         }
-        // Ambiguous / missing — skip rather than create duplicate.
         continue;
       }
       out.push(action);
@@ -132,7 +118,7 @@ export function reconcileActions(input: {
 
 /**
  * After primary creates, expand learned follow-up relations into extra creates
- * unless the current message is a one-shot exception.
+ * unless the agent marked this turn as a one-shot override via turn_flags.
  */
 export function expandLearnedFollowUps(input: {
   actions: AgentAction[];
@@ -142,10 +128,11 @@ export function expandLearnedFollowUps(input: {
     ordering: "after" | "with";
   }>;
   openTasks: TaskRow[];
-  userMessage: string;
+  turnFlags?: AgentTurnFlags;
 }): AgentAction[] {
+  const flags = input.turnFlags ?? DEFAULT_TURN_FLAGS;
+  if (flags.suppress_learned_followups) return input.actions;
   if (!input.relations.length) return input.actions;
-  if (isOneShotException(input.userMessage)) return input.actions;
 
   const creates = input.actions.filter((action) => action.type === "task.create");
   if (!creates.length) return input.actions;
@@ -166,7 +153,6 @@ export function expandLearnedFollowUps(input: {
       if (!titlesRelated(title, relation.trigger)) continue;
       const followKey = titleKey(relation.followupTitle);
       if (!followKey || existingTitles.has(followKey)) continue;
-      // Also skip if any action already targets this follow-up.
       const already = input.actions.some(
         (action) =>
           (action.type === "task.create" || action.type === "task.update") &&
@@ -203,19 +189,16 @@ export function expandLearnedFollowUps(input: {
   return extras.length ? [...input.actions, ...extras] : input.actions;
 }
 
-/** Prefer not to persist one-shot exceptions as standing preferences. */
+/**
+ * Block standing memory writes for one-shot overrides unless the agent
+ * explicitly marks standing_rule_change.
+ */
 export function filterMemoryWritesForException(input: {
   actions: AgentAction[];
-  userMessage: string;
+  turnFlags?: AgentTurnFlags;
 }): AgentAction[] {
-  if (!isOneShotException(input.userMessage)) return input.actions;
-  return input.actions.filter((action) => {
-    if (action.type !== "memory.upsert") return true;
-    // Allow explicit general-rule changes only when message also signals a standing change.
-    const standing =
-      /מעכשיו|תמיד|בדרך כלל|מהיום|from now|always|generally/i.test(
-        input.userMessage,
-      );
-    return standing;
-  });
+  const flags = input.turnFlags ?? DEFAULT_TURN_FLAGS;
+  if (!flags.suppress_learned_followups) return input.actions;
+  if (flags.standing_rule_change) return input.actions;
+  return input.actions.filter((action) => action.type !== "memory.upsert");
 }

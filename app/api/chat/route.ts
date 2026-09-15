@@ -60,12 +60,16 @@ import {
   filterMemoryWritesForException,
   reconcileActions,
 } from "@/lib/agent/reconcile";
-import { selectLearnedActionRelations } from "@/lib/agent/learned-relations";
+import {
+  normalizeMemoryRelationActions,
+  selectLearnedActionRelations,
+} from "@/lib/agent/learned-relations";
 import {
   findPendingSchedulePresentation,
   isolatePendingScheduleActions,
 } from "@/lib/agent/schedule-isolation";
 import type { AgentAction, ClientPresentation } from "@/lib/types";
+import { DEFAULT_TURN_FLAGS } from "@/lib/agent/turn-flags";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -422,9 +426,14 @@ export async function POST(req: Request) {
     const relations = selectLearnedActionRelations(memoryForRelations);
 
     let preparedActions: AgentAction[] = inspected.accepted as AgentAction[];
+    const turnFlags =
+      decision && "turn_flags" in decision && decision.turn_flags
+        ? decision.turn_flags
+        : DEFAULT_TURN_FLAGS;
+    preparedActions = normalizeMemoryRelationActions(preparedActions);
     preparedActions = filterMemoryWritesForException({
       actions: preparedActions,
-      userMessage: message,
+      turnFlags,
     });
     preparedActions = expandLearnedFollowUps({
       actions: preparedActions,
@@ -434,7 +443,7 @@ export async function POST(req: Request) {
         ordering: row.ordering,
       })),
       openTasks,
-      userMessage: message,
+      turnFlags,
     });
     preparedActions = reconcileActions({
       actions: preparedActions,
