@@ -147,8 +147,117 @@ export function resolveSchedulePlanPresentation(
   }
 
   items.sort((a, b) => a.planned_start.localeCompare(b.planned_start));
-  if (!items.length) return null;
+  // Keep a typed schedule_plan even when every slot was filtered (e.g. all past).
+  // Returning null made the client show an empty/undefined plan at night.
+  if (!items.length) {
+    if (Array.isArray(raw.items) && raw.items.length > 0) {
+      return { type: "schedule_plan", date: raw.date, saved: false, items: [] };
+    }
+    return null;
+  }
   return { type: "schedule_plan", date: raw.date, saved: false, items };
+}
+
+function addMinutesClock(clock: string, minutes: number): string | null {
+  if (!TIME_RE.test(clock)) return null;
+  const [h, m] = clock.split(":").map(Number);
+  const total = h * 60 + m + minutes;
+  if (total < 0 || total >= 24 * 60) return null;
+  const nh = Math.floor(total / 60);
+  const nm = total % 60;
+  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
+/**
+ * When the model omitted/invalidated schedule_plan, or all slots fell in the past,
+ * build a clear fallback plan from open tasks so the user never gets an empty UI.
+ */
+export function buildScheduleFallbackPresentation(input: {
+  tasks: TaskRow[];
+  date: string;
+  dayStart?: string;
+  dayEnd?: string;
+  now?: Date;
+}): Extract<ClientPresentation, { type: "schedule_plan" }> {
+  const now = input.now ?? new Date();
+  const { date: today, currentTime } = todayContext(now);
+  const dayStart = input.dayStart && TIME_RE.test(input.dayStart)
+    ? input.dayStart
+    : "08:00";
+  const dayEnd = input.dayEnd && TIME_RE.test(input.dayEnd)
+    ? input.dayEnd
+    : "22:00";
+  const targetDate = DATE_RE.test(input.date) ? input.date : today;
+  let cursor =
+    targetDate === today && currentTime > dayStart ? currentTime : dayStart;
+  // Start a bit after "now" so the first slot is never in the past.
+  if (targetDate === today) {
+    const bumped = addMinutesClock(cursor, 15);
+    if (bumped && bumped < dayEnd) cursor = bumped;
+  }
+
+  const open = input.tasks.filter((task) => task.status === "open").slice(0, 8);
+  const items: PresentedScheduleItem[] = [];
+  for (const task of open) {
+    if (cursor >= dayEnd) break;
+    const end = addMinutesClock(cursor, 30);
+    if (!end || end > dayEnd) break;
+    items.push({
+      task_id: task.id,
+      title: task.title,
+      status: task.status,
+      planned_start: cursor,
+      planned_end: end,
+      fixed: Boolean(task.due_at),
+    });
+    const next = addMinutesClock(end, 15);
+    if (!next) break;
+    cursor = next;
+  }
+
+  return {
+    type: "schedule_plan",
+    date: targetDate,
+    saved: false,
+    items,
+  };
+}
+
+export function ensureSchedulePresentation(input: {
+  presentation: ClientPresentation | null;
+  scopedPresentation: unknown;
+  tasks: TaskRow[];
+  targetDate: string;
+  dayStart?: string;
+  dayEnd?: string;
+  now?: Date;
+}): Extract<ClientPresentation, { type: "schedule_plan" }> {
+  if (input.presentation?.type === "schedule_plan") {
+    if (input.presentation.items.length > 0) return input.presentation;
+    // Empty plan after past-filtering — try deterministic refill.
+    const filled = buildScheduleFallbackPresentation({
+      tasks: input.tasks,
+      date: input.presentation.date,
+      dayStart: input.dayStart,
+      dayEnd: input.dayEnd,
+      now: input.now,
+    });
+    if (filled.items.length > 0) return filled;
+    return input.presentation;
+  }
+  const resolved = resolveSchedulePlanPresentation(
+    input.scopedPresentation,
+    input.tasks,
+    input.now,
+  );
+  if (resolved && resolved.items.length > 0) return resolved;
+  return buildScheduleFallbackPresentation({
+    tasks: input.tasks,
+    date: input.targetDate,
+    dayStart: input.dayStart,
+    dayEnd: input.dayEnd,
+    now: input.now,
+  });
 }
 
 export function resolveSuggestionPresentation(

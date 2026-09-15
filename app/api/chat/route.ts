@@ -41,6 +41,7 @@ import {
   replyForPresentation,
   resolveAgentPresentation,
   resolveInsightsPresentation,
+  ensureSchedulePresentation,
 } from "@/lib/presentation";
 import { createAgentProposal } from "@/lib/proposals";
 import { createServiceClient } from "@/lib/supabase-admin";
@@ -63,6 +64,10 @@ import {
 } from "@/lib/agent/schedule-isolation";
 import type { AgentAction, ClientPresentation } from "@/lib/types";
 import { DEFAULT_TURN_FLAGS } from "@/lib/agent/turn-flags";
+import {
+  DEFAULT_DAY_END,
+  DEFAULT_DAY_START,
+} from "@/lib/chat-request";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -507,6 +512,36 @@ export async function POST(req: Request) {
           retryCount: agent.attempts,
         });
       }
+    }
+    if (surface === "schedule") {
+      const scheduleCtx =
+        surfaceContext &&
+        typeof surfaceContext === "object" &&
+        "type" in surfaceContext &&
+        surfaceContext.type === "schedule"
+          ? surfaceContext
+          : null;
+      presentation = ensureSchedulePresentation({
+        presentation,
+        scopedPresentation: scoped.presentation,
+        tasks: nextTasks,
+        targetDate:
+          scheduleCtx && "date" in scheduleCtx && typeof scheduleCtx.date === "string"
+            ? scheduleCtx.date
+            : todayContext().date,
+        dayStart:
+          scheduleCtx &&
+          "day_start" in scheduleCtx &&
+          typeof scheduleCtx.day_start === "string"
+            ? scheduleCtx.day_start
+            : DEFAULT_DAY_START,
+        dayEnd:
+          scheduleCtx &&
+          "day_end" in scheduleCtx &&
+          typeof scheduleCtx.day_end === "string"
+            ? scheduleCtx.day_end
+            : DEFAULT_DAY_END,
+      });
     }
     const storedPresentation = validateStoredPresentation(presentation);
     const proposalRecord =

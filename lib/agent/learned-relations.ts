@@ -1,4 +1,5 @@
 import type { AgentAction, MemoryRow } from "../types.ts";
+import { normalizeExactText } from "../task-identity.ts";
 
 /**
  * Structured learned action relations stored in Memory content (no new DB kind).
@@ -107,18 +108,26 @@ export function normalizeMemoryRelationActions(
 export function selectLearnedActionRelations(
   memories: MemoryRow[],
 ): LearnedActionRelation[] {
-  const out: LearnedActionRelation[] = [];
-  for (const memory of memories) {
+  // Newest memory wins per trigger — avoids duplicate expand after re-learns.
+  const byTrigger = new Map<string, LearnedActionRelation>();
+  const ordered = [...memories].sort((a, b) =>
+    String(a.updated_at ?? a.created_at).localeCompare(
+      String(b.updated_at ?? b.created_at),
+    ),
+  );
+  for (const memory of ordered) {
     const parsed = parseActionFollowupRelation(memory.content);
     if (!parsed || !parsed.active) continue;
-    out.push({
+    const key = normalizeExactText(parsed.trigger).toLowerCase();
+    if (!key) continue;
+    byTrigger.set(key, {
       memoryId: memory.id,
       ...parsed,
       confidence: memory.confidence,
       source: memory.source,
     });
   }
-  return out;
+  return [...byTrigger.values()];
 }
 
 /**
@@ -169,13 +178,30 @@ export function ensureRelationUpsertAction(input: {
   if (!message) return actions;
   if (!/action_followup/i.test(message)) return actions;
 
+  const inferred = inferTriggerFollowupFromTeachingMessage(message);
+  if (inferred) {
+    // Prefer the user's teaching phrasing over model-translated English JSON.
+    let replaced = false;
+    actions = actions.map((action) => {
+      if (action.type !== "memory.upsert" || !action.content) return action;
+      if (!parseActionFollowupRelation(action.content)) return action;
+      replaced = true;
+      return {
+        ...action,
+        kind: action.kind ?? "preference",
+        content: encodeActionFollowupRelation(inferred),
+        confidence: action.confidence ?? "high",
+        silent: action.silent ?? true,
+      };
+    });
+    if (replaced) return actions;
+  }
+
   const already = actions.some((action) => {
     if (action.type !== "memory.upsert" || !action.content) return false;
     return Boolean(parseActionFollowupRelation(action.content));
   });
   if (already) return actions;
-
-  const inferred = inferTriggerFollowupFromTeachingMessage(message);
   if (!inferred) return actions;
 
   const blank: AgentAction = {

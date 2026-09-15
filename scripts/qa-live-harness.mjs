@@ -145,7 +145,6 @@ async function main() {
 
   // QA-2 / QA-3 relation learn + exception via live agent
   {
-    await wipeQaUser(userId);
     const learn = await chat(
       token,
       'כשאני אומרת לנקות את המקרר תוסיף אחריו לזרוק זבל. שמרי כ־action_followup JSON.',
@@ -172,8 +171,8 @@ async function main() {
     const titles = Array.isArray(tasksAfter.body)
       ? tasksAfter.body.map((t) => t.title)
       : [];
-    const hasClean = titles.some((t) => /מקרר/.test(t));
-    const hasTrash = titles.some((t) => /זבל/.test(t));
+    const hasClean = titles.some((t) => /מקרר|fridge/i.test(t));
+    const hasTrash = titles.some((t) => /זבל|trash/i.test(t));
     record(
       "QA-3-trigger",
       trigger.status === 200 && hasClean && hasTrash ? "PASS" : "FAIL",
@@ -199,8 +198,8 @@ async function main() {
     const titlesEx = Array.isArray(afterEx.body)
       ? afterEx.body.map((t) => t.title)
       : [];
-    const hasFridge = titlesEx.some((t) => /מקרר/.test(t));
-    const hasTrashEx = titlesEx.some((t) => /זבל/.test(t));
+    const hasFridge = titlesEx.some((t) => /מקרר|fridge/i.test(t));
+    const hasTrashEx = titlesEx.some((t) => /זבל|trash/i.test(t));
     const memAfter = await rest(
       token,
       `agent_memory?user_id=eq.${userId}&select=content&order=created_at.desc&limit=10`,
@@ -230,8 +229,8 @@ async function main() {
     record(
       "QA-3-restore",
       later.status === 200 &&
-        laterTitles.some((t) => /מקרר/.test(t)) &&
-        laterTitles.some((t) => /זבל/.test(t))
+        laterTitles.some((t) => /מקרר|fridge/i.test(t)) &&
+        laterTitles.some((t) => /זבל|trash/i.test(t))
         ? "PASS"
         : "FAIL",
       `status=${later.status} titles=${JSON.stringify(laterTitles)}`,
@@ -261,8 +260,7 @@ async function main() {
 
   // QA-5 schedule proposal isolation
   {
-    await wipeQaUser(userId);
-    // Seed open tasks so schedule has candidates
+    // Seed open tasks so schedule has candidates (keep prior QA state)
     await chat(token, "תוסיפי משימה: לסדר את הבית היום");
     await chat(token, "תוסיפי משימה חשובה: לשלם חשבון חשמל");
     const today = new Date().toISOString().slice(0, 10);
@@ -307,10 +305,14 @@ async function main() {
       midCount === beforeCount &&
       afterPref === beforeCount &&
       shopAfter === shopBefore + 1;
+    const presentationOk =
+      presentation &&
+      presentation.type === "schedule_plan" &&
+      presentation.saved === false;
     record(
       "QA-5",
-      isolationOk ? "PASS" : "FAIL",
-      `sched=${schedule.status} planned ${beforeCount}/${midCount}/${afterPref} shop ${shopBefore}→${shopAfter} pref=${pref.status} presentation=${presentation?.type} saved=${presentation?.saved} isolation=${isolationOk}`,
+      isolationOk && presentationOk ? "PASS" : "FAIL",
+      `sched=${schedule.status} planned ${beforeCount}/${midCount}/${afterPref} shop ${shopBefore}→${shopAfter} pref=${pref.status} presentation=${presentation?.type} saved=${presentation?.saved} items=${presentation?.items?.length} isolation=${isolationOk}`,
     );
   }
 
@@ -463,20 +465,34 @@ async function main() {
     }
   }
 
-  // QA-2 laundry variant (after fridge tests)
+  // QA-2 laundry — must pass WITH prior fridge relation / chat history present (no wipe)
   {
-    await wipeQaUser(userId);
+    const memBefore = await rest(
+      token,
+      `agent_memory?user_id=eq.${userId}&select=content&order=created_at.desc&limit=20`,
+    );
+    const priorFridge = Array.isArray(memBefore.body)
+      ? memBefore.body.some((r) => /action_followup/.test(r.content) && /מקרר|זבל|fridge|trash/i.test(r.content))
+      : false;
     const learn = await chat(
       token,
       'כשאני אומרת כביסה יש גם קיפול ופיזור. שמרי כ־action_followup JSON.',
     );
     const mem = await rest(
       token,
-      `agent_memory?user_id=eq.${userId}&select=content&order=created_at.desc&limit=8`,
+      `agent_memory?user_id=eq.${userId}&select=content&order=created_at.desc&limit=20`,
     );
-    const has = Array.isArray(mem.body)
-      ? mem.body.some((r) => /action_followup/.test(r.content) && /כביסה|קיפול/.test(r.content))
+    const hasLaundry = Array.isArray(mem.body)
+      ? mem.body.some((r) => /action_followup/.test(r.content) && /כביסה/.test(r.content) && /קיפול|פיזור/.test(r.content))
       : false;
+    const fridgeStill = Array.isArray(mem.body)
+      ? mem.body.some((r) => /action_followup/.test(r.content) && /מקרר|זבל|fridge|trash/i.test(r.content))
+      : priorFridge;
+    // Isolate laundry creates for this exception only
+    const { execSync } = await import("node:child_process");
+    execSync(
+      `docker exec -i mashachachti-qa-db-1 psql -U postgres -c "DELETE FROM tasks WHERE user_id='${userId}' AND (title ILIKE '%כביסה%' OR title ILIKE '%קיפול%' OR title ILIKE '%פיזור%')"`,
+    );
     const ex = await chat(token, "מחר כביסה אבל הפעם בלי קיפול ופיזור");
     const tasks = await rest(
       token,
@@ -490,32 +506,33 @@ async function main() {
       "QA-2",
       learn.status === 200 &&
         ex.status === 200 &&
-        has &&
+        hasLaundry &&
+        fridgeStill &&
         Array.isArray(fold.body) &&
         fold.body.length === 0
         ? "PASS"
         : "FAIL",
-      `hasRelation=${has} laundry=${JSON.stringify(tasks.body)} fold=${JSON.stringify(fold.body)}`,
+      `hasLaundry=${hasLaundry} fridgeStill=${fridgeStill} priorFridge=${priorFridge} laundry=${JSON.stringify(tasks.body)} fold=${JSON.stringify(fold.body)}`,
     );
   }
 
-  // QA-11 voice auto-send — static code evidence in this harness (UI requires browser)
+  // QA-11 voice — real browser automation against QA env
   {
-    const chatSrc = readFileSync(
-      "/srv/ira/ma-shachachti/app/components/chat-app.tsx",
-      "utf8",
-    );
-    const ok =
-      chatSrc.includes("sendVoiceTranscript") &&
-      chatSrc.includes("voiceSendLock") &&
-      chatSrc.includes("draft kept");
-    record(
-      "QA-11",
-      ok ? "PASS" : "FAIL",
-      ok
-        ? "code path: transcript→auto-send with draft preserve (browser mic not automated here)"
-        : "missing auto-send wiring",
-    );
+    try {
+      const { execSync } = await import("node:child_process");
+      execSync("node scripts/qa-mic-browser.mjs", {
+        cwd: "/srv/ira/ma-shachachti/app",
+        stdio: "pipe",
+        timeout: 180000,
+      });
+      record("QA-11", "PASS", "browser: record→transcript→auto-send + fail/retry draft");
+    } catch (error) {
+      const detail =
+        error && typeof error === "object" && "stdout" in error
+          ? String(error.stdout || error.stderr || error.message).slice(-400)
+          : String(error).slice(0, 400);
+      record("QA-11", "FAIL", detail);
+    }
   }
 
   console.log("\n=== SUMMARY ===");

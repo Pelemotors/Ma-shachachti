@@ -324,3 +324,15 @@ test("filterFollowupCreatesForException strips model-emitted followup creates", 
   assert.equal(prepared.length, 1);
   assert.equal(prepared[0]?.title, "כביסה");
 });
+
+test("ensureClearShoppingAdd synthesizes add when model asked for quantity", async () => {
+  const { ensureClearShoppingAdd } = await import("../lib/agent/prepare-actions.ts");
+  const actions = ensureClearShoppingAdd({
+    actions: [],
+    userMessage: "אני צריכה לקנות חלב",
+  });
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0]?.type, "shopping.add");
+  assert.equal(actions[0]?.title, "חלב");
+  assert.equal(actions[0]?.quantity, 1);
+});

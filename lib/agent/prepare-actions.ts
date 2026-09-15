@@ -20,6 +20,57 @@ import {
 } from "./turn-flags.ts";
 import { normalizeExactText } from "../task-identity.ts";
 
+/**
+ * When the user clearly asks to buy something and the model returned no shopping
+ * action (asked for quantity/confirmation instead), synthesize shopping.add.
+ * Pattern is structural ("לקנות …"), not product-specific keywords.
+ */
+export function ensureClearShoppingAdd(input: {
+  actions: AgentAction[];
+  userMessage?: string | null;
+}): AgentAction[] {
+  if (input.actions.some((action) => action.type.startsWith("shopping."))) {
+    return input.actions;
+  }
+  const message = (input.userMessage ?? "").trim();
+  if (!message) return input.actions;
+  const match =
+    message.match(
+      /(?:^|[\s,])(?:אני\s+)?צריכ[הא]\s+לקנות\s+(.+?)(?:[.!?]|$)/u,
+    ) ||
+    message.match(/(?:^|[\s,])לקנות\s+(.+?)(?:[.!?]|$)/u) ||
+    message.match(/תוסיפ[ויי]?\s+(.+?)\s+לרשימת\s+הקניות/u);
+  if (!match?.[1]) return input.actions;
+  const title = match[1].trim().replace(/^["«]|["»]$/g, "").slice(0, 200);
+  if (title.length < 1) return input.actions;
+  return [
+    ...input.actions,
+    {
+      type: "shopping.add",
+      id: null,
+      title,
+      notes: null,
+      due_on: null,
+      due_time: null,
+      due_patch: null,
+      reminder_enabled: null,
+      reminder_at: null,
+      reminder_at_patch: null,
+      reminder_offset_minutes: null,
+      reminder_patch: null,
+      plan_patch: null,
+      planned_date: null,
+      planned_start_time: null,
+      planned_end_time: null,
+      kind: null,
+      content: null,
+      confidence: null,
+      silent: null,
+      quantity: 1,
+    },
+  ];
+}
+
 function mentionsFollowupTitle(
   userMessage: string | null | undefined,
   followupTitle: string,
@@ -114,6 +165,10 @@ export function prepareExecutableActions(input: {
     actions: prepared,
     relations,
     turnFlags: effectiveFlags,
+  });
+  prepared = ensureClearShoppingAdd({
+    actions: prepared,
+    userMessage: input.userMessage,
   });
   prepared = reconcileActions({
     actions: prepared,

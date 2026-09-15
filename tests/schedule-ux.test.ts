@@ -118,7 +118,9 @@ test("schedule_plan does not accept another user's task id", () => {
     [dog],
     new Date("2026-09-10T10:00:00.000Z"),
   );
-  assert.equal(resolved, null);
+  // Keep typed plan with zero items (no foreign task leakage) instead of null.
+  assert.equal(resolved?.type, "schedule_plan");
+  assert.equal(resolved?.items.length, 0);
 });
 
 test("schedule surface keeps schedule_plan and drops mutations", () => {

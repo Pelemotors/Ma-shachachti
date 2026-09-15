@@ -21,9 +21,12 @@ export function surfaceFallbackReply(
     return forgottenFallback(count);
   }
   if (surface === "schedule") {
-    return presentation?.type === "schedule_plan"
-      ? "תוכנית מוצעת."
-      : "לא הצלחתי לבנות לו״ז כרגע. אפשר לנסות שוב.";
+    if (presentation?.type === "schedule_plan") {
+      return presentation.items.length > 0
+        ? "תוכנית מוצעת."
+        : "אין משבצות פנויות שנותרו להיום. אפשר לנסות מחר או לשנות את שעות היום.";
+    }
+    return "לא הצלחתי לבנות לו״ז כרגע. אפשר לנסות שוב.";
   }
   if (surface === "free-time") {
     return presentation?.type === "task_list" ||
