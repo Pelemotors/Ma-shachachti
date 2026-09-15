@@ -9,6 +9,7 @@ import type { SurfaceContext } from "../chat-request.ts";
 import type { CompactContext } from "./context/compact.ts";
 import { renderContextBlock } from "./context/compact.ts";
 import { todayContext } from "../time.ts";
+import { resolveDayBoundsFromMemory } from "./schedule-isolation.ts";
 
 export type PromptBuildResult = {
   instructions: string;
@@ -28,24 +29,24 @@ function surfaceRuntimeHint(
   surface: ChatSurface | null,
   context: SurfaceContext | null,
   currentTime: string,
+  memories: CompactContext["memories"] = [],
 ) {
   const mode = normalizeMode(surface);
   if (!mode) return "";
   if (mode === "schedule") {
     const date =
       context?.type === "schedule" ? context.date : "לא צוין";
-    const dayStart =
-      context?.type === "schedule" && context.day_start
-        ? context.day_start
-        : "08:00";
-    const dayEnd =
-      context?.type === "schedule" && context.day_end
-        ? context.day_end
-        : "22:00";
+    const fallback =
+      context?.type === "schedule"
+        ? { day_start: context.day_start, day_end: context.day_end }
+        : { day_start: "08:00", day_end: "22:00" };
+    const bounds = resolveDayBoundsFromMemory(memories, fallback);
     return `## הקשר Surface
-surface=schedule; תאריך היעד הוא ${date}; day_start=${dayStart}; day_end=${dayEnd}; now=${currentTime}.
+surface=schedule; תאריך היעד הוא ${date}; day_start=${bounds.day_start}; day_end=${bounds.day_end}; day_bounds_source=${bounds.source}; now=${currentTime}.
 הלו״ז שנוצר הוא הצעה בלבד עד שהמשתמש מאשר לשמור אותו.
-החזר presentation.schedule_plan בלבד. אין mutations.`;
+אל תשנה planned_* / due במסד כחלק מההצעה — רק presentation.schedule_plan.
+החזר presentation.schedule_plan בלבד. אין mutations.
+אל תשבץ planned_start מוקדם מ־now כאשר התאריך הוא היום.`;
   }
   if (mode === "forgotten") {
     return `## הקשר Surface
@@ -167,7 +168,7 @@ proposal אינו Persistence של הפעולות. רק approve מאוחר יו�
 גרסת חוזה: ${AGENT_CONTRACT_VERSION}
 
 ${renderContextBlock(input.compact, surface)}
-${surfaceRuntimeHint(surface, input.surfaceContext ?? null, currentTime)}`,
+${surfaceRuntimeHint(surface, input.surfaceContext ?? null, currentTime, input.compact.memories)}`,
   ];
 
   if (input.deepAccessAppendix) {
