@@ -110,6 +110,11 @@ test("unified capture routes bank mic to brain dump", () => {
   assert.equal(intent.type, "brain_dump");
 });
 
+test("web adapter does not invent deep links from the current URL", async () => {
+  const web = createWebNativeCapability();
+  assert.equal(await web.getInitialDeepLink(), null);
+});
+
 test("web native adapter provides fallbacks", async () => {
   const web = createWebNativeCapability();
   assert.equal(await web.getPlatform(), "web");

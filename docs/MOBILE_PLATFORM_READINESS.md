@@ -51,15 +51,18 @@ Capacitor bridge: `lib/native/capacitor-adapter.ts`
 ## Commands that exist
 
 ```bash
-npm run typecheck   # also used by npm run lint
+npm run build:prod   # loads .env.production, refuses QA URL / APP_ENV=qa
+npm run build:qa     # loads .env.qa into .next-qa only
+npm run typecheck    # also used by npm run lint
 npm test
-npm run build
+npm run build        # alias of build:prod
 npm run cap:sync
 npm run android:sync
 npm run android:build
-npm run ios:sync    # CocoaPods/Xcode required on macOS
+npm run ios:sync     # CocoaPods/Xcode required on macOS
 ```
 
+`npm run build` / `build:prod` always source `.env.production` and abort if a QA Supabase URL (`:8011`) or `APP_ENV=qa` is detected — including leftovers exported in the shell.
 ## Physical device checklist
 
 - [ ] iOS device: Apple login, APNs permission/token, Share Extension, mic

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { authFetch } from "@/lib/supabase-browser";
+import { authFetch, supabase } from "@/lib/supabase-browser";
 import { nativeCapability } from "@/lib/native";
 import { loginPathWithResume, resumePathAfterAuth } from "@/lib/native/deep-links";
 import { interpretCapture } from "@/lib/capture/ingest";
@@ -62,7 +62,14 @@ export function useMobileBootstrap(options: {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ event: "DEEP_LINK_OPENED" }),
         }).catch(() => null);
-        if (!options.userId) {
+        // userId prop may still be null while chat-app finishes getSession.
+        // Prefer an explicit session check before sending anyone to /login.
+        let signedIn = Boolean(options.userId);
+        if (!signedIn && supabase) {
+          const { data } = await supabase.auth.getSession();
+          signedIn = Boolean(data.session?.user?.id);
+        }
+        if (!signedIn) {
           options.onNavigate(loginPathWithResume(initial.href));
         } else {
           options.onNavigate(resumePathAfterAuth(initial.href));
@@ -93,7 +100,14 @@ export function useMobileBootstrap(options: {
         }).catch(() => null);
         await native.clearSharedPayload();
       } else if (share && !options.userId) {
-        options.onNavigate(loginPathWithResume("/app?view=home"));
+        let signedIn = false;
+        if (supabase) {
+          const { data } = await supabase.auth.getSession();
+          signedIn = Boolean(data.session?.user?.id);
+        }
+        if (!signedIn) {
+          options.onNavigate(loginPathWithResume("/app?view=home"));
+        }
       }
     }
     void boot();

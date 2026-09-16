@@ -107,11 +107,9 @@ export function createWebNativeCapability(): NativeCapability {
       return { status: "error", message: "use_web_media_recorder" };
     },
     async getInitialDeepLink() {
-      if (typeof window === "undefined") return null;
-      return {
-        href: `${window.location.pathname}${window.location.search}`,
-        receivedAt: new Date().toISOString(),
-      };
+      // Web has no OS deep-link handoff. Never treat the current URL as an
+      // incoming link — that races auth bootstrap and kicks users back to /login.
+      return null;
     },
     subscribeToDeepLinks(listener) {
       deepLinkListeners.add(listener);
