@@ -11,16 +11,26 @@ import {
   readyTimes,
   recordingPath,
 } from "./audio/recording-bank-helpers.ts";
+import {
+  parseRecordingOrigin,
+  type RecordingOrigin,
+} from "./audio/recording-origin.ts";
 
 export {
   isAudioRetentionDue,
   readyTimes,
   recordingPath,
 } from "./audio/recording-bank-helpers.ts";
+export {
+  parseRecordingOrigin,
+  RECORDING_ORIGINS,
+  type RecordingOrigin,
+} from "./audio/recording-origin.ts";
 
 export const RECORDINGS_BUCKET = "recordings";
+
 export const RECORDING_SELECT =
-  "id,status,storage_path,mime,size,duration_seconds,transcript,error_code,error_message,created_at,updated_at,processed_at,delete_after,audio_deleted_at,processing_token";
+  "id,status,storage_path,mime,size,duration_seconds,transcript,error_code,error_message,created_at,updated_at,processed_at,delete_after,audio_deleted_at,processing_token,origin";
 
 export type RecordingRow = {
   id: string;
@@ -39,6 +49,7 @@ export type RecordingRow = {
   delete_after: string | null;
   audio_deleted_at: string | null;
   processing_token: string | null;
+  origin: RecordingOrigin;
 };
 
 export function recordingId(value: string | null) {

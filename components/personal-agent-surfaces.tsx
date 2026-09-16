@@ -65,35 +65,60 @@ export function ForgottenSurface({
   deepCheckState,
   onRun,
   onDeepCheck,
+  mode = "forgotten",
 }: {
   state: SurfaceTurnState;
   deepCheckState: SurfaceTurnState;
   onRun: RunSurfaceTurn;
   onDeepCheck: RunSurfaceTurn;
+  mode?: "forgotten" | "deep-check";
 }) {
   const run = () => onRun({ type: "forgotten" });
   const deep = () => onDeepCheck({ type: "deep-check" });
+  const deepPrimary = mode === "deep-check";
+
   return (
     <section className="tasks-panel agent-surface" aria-labelledby="forgotten-title">
-      <h1 id="forgotten-title">מה שכחתי?</h1>
-      <p className="muted">מה חשוב להחזיר עכשיו לתודעה מתוך מה שכבר ידוע.</p>
-      {state.status === "idle" ? (
+      <h1 id="forgotten-title">
+        {deepPrimary ? "בדוק לעומק" : "מה שכחתי?"}
+      </h1>
+      <p className="muted">
+        {deepPrimary
+          ? "מתוך כל מה שידוע — מה אפשר להסיק שאולי בכלל לא נכתב."
+          : "מה חשוב להחזיר עכשיו לתודעה מתוך מה שכבר ידוע."}
+      </p>
+      {deepPrimary ? (
+        deepCheckState.status === "idle" || deepCheckState.status === "error" ? (
+          <button
+            className="settings-action"
+            type="button"
+            onClick={deep}
+          >
+            {deepCheckState.status === "error" ? "נסה שוב לעומק" : "התחל בדיקה לעומק"}
+          </button>
+        ) : null
+      ) : state.status === "idle" ? (
         <button className="settings-action" type="button" onClick={run}>
           בדוק מה שכחתי
         </button>
       ) : null}
-      <SurfaceStatus state={state} onRetry={() => onRun(state.context, true)} />
-      {state.status === "success" && state.reply ? <p>{state.reply}</p> : null}
-      {state.status === "success" &&
+      {!deepPrimary ? (
+        <SurfaceStatus state={state} onRetry={() => onRun(state.context, true)} />
+      ) : null}
+      {!deepPrimary && state.status === "success" && state.reply ? (
+        <p>{state.reply}</p>
+      ) : null}
+      {!deepPrimary &&
+      state.status === "success" &&
       state.presentation?.type === "task_list" ? (
         <PresentedTaskList tasks={state.presentation.tasks} />
-      ) : state.status === "success" ? (
+      ) : !deepPrimary && state.status === "success" ? (
         <EmptyState
           title="אין כרגע פריטים להצגה"
           description="אפשר לרענן ולבקש מהסוכן לבדוק שוב."
         />
       ) : null}
-      {state.status === "success" ? (
+      {!deepPrimary && state.status === "success" ? (
         <div className="surface-options">
           <button className="text-button" type="button" onClick={run}>
             רענן
@@ -105,6 +130,13 @@ export function ForgottenSurface({
             onClick={deep}
           >
             בדוק לעומק
+          </button>
+        </div>
+      ) : null}
+      {deepPrimary && deepCheckState.status === "success" ? (
+        <div className="surface-options">
+          <button className="text-button" type="button" onClick={deep}>
+            רענן
           </button>
         </div>
       ) : null}
@@ -121,13 +153,25 @@ export function ForgottenSurface({
           {deepCheckState.presentation.items.map((item) => (
             <li key={`${item.kind}-${item.title}`}>
               <div className="task-copy">
-                <small>{item.kind === "inference" ? "הסקה" : item.kind === "gap" ? "פער" : "הצעה"}</small>
+                <small>
+                  {item.kind === "inference"
+                    ? "הסקה"
+                    : item.kind === "gap"
+                      ? "פער"
+                      : "הצעה"}
+                </small>
                 <span>{item.title}</span>
                 {item.detail ? <small>{item.detail}</small> : null}
               </div>
             </li>
           ))}
         </ul>
+      ) : deepCheckState.status === "success" &&
+        !deepCheckState.presentation ? (
+        <EmptyState
+          title="אין כרגע משהו נוסף משמעותי"
+          description="אפשר לרענן מאוחר יותר או לחזור ל«מה שכחתי?»."
+        />
       ) : null}
     </section>
   );

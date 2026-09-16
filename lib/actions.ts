@@ -10,6 +10,12 @@ import type {
   TaskRow,
 } from "./types.ts";
 import { mutateChecklist, mutateShopping } from "./lists.ts";
+import { mutateSubtask } from "./task-subtasks.ts";
+import {
+  preferenceTopicKey,
+  reconcileMemoryWrite,
+} from "./memory-display.ts";
+import { encodeActionFollowupRelation, parseActionFollowupRelation } from "./agent/learned-relations.ts";
 
 type Db = SupabaseClient;
 
@@ -390,38 +396,175 @@ export async function executeAction(
       if (error) return fail(action.type, "לא הצלחנו למחוק את המשימה.");
       return ok(action.type, { id: action.id, title: action.title });
     }
+    case "task.subtask.add": {
+      if (!action.task_id || !action.title) {
+        return fail(action.type, "חסרים פרטי תת־משימה.");
+      }
+      try {
+        await mutateSubtask(db, userId, {
+          action: "add",
+          task_id: action.task_id,
+          title: action.title,
+        });
+      } catch {
+        return fail(action.type, "לא הצלחנו להוסיף תת־משימה.");
+      }
+      return ok(action.type, { title: action.title });
+    }
+    case "task.subtask.update": {
+      if (!action.id || !action.title) {
+        return fail(action.type, "חסרים פרטי תת־משימה.");
+      }
+      try {
+        await mutateSubtask(db, userId, {
+          action: "update",
+          id: action.id,
+          title: action.title,
+        });
+      } catch {
+        return fail(action.type, "לא הצלחנו לעדכן תת־משימה.");
+      }
+      return ok(action.type, { id: action.id, title: action.title });
+    }
+    case "task.subtask.toggle": {
+      if (!action.id || action.done == null) {
+        return fail(action.type, "חסר מצב סימון לתת־משימה.");
+      }
+      try {
+        await mutateSubtask(db, userId, {
+          action: "toggle",
+          id: action.id,
+          done: action.done === true,
+        });
+      } catch {
+        return fail(action.type, "לא הצלחנו לעדכן תת־משימה.");
+      }
+      return ok(action.type, { id: action.id, title: action.title });
+    }
+    case "task.subtask.remove": {
+      if (!action.id) return fail(action.type, "חסר מזהה תת־משימה.");
+      try {
+        await mutateSubtask(db, userId, { action: "remove", id: action.id });
+      } catch {
+        return fail(action.type, "לא הצלחנו למחוק תת־משימה.");
+      }
+      return ok(action.type, { id: action.id, title: action.title });
+    }
     case "memory.upsert": {
       if (!action.content) return fail(action.type, "חסר תוכן לזיכרון.");
       const kind = action.kind ?? "preference";
       const confidence = action.confidence ?? "medium";
+      const source = action.silent === true ? "agent" : "user";
+      const seen_at = action.silent === true ? null : now;
+
+      // Explicit id update — edit one row only; never wipe siblings.
       if (action.id) {
         if (!(await ownMemory(db, userId, action.id)))
           return fail(action.type, "הזיכרון לא נמצא.");
+        const relation = parseActionFollowupRelation(action.content);
+        const content = relation
+          ? encodeActionFollowupRelation({
+              trigger: relation.trigger,
+              followup: relation.followupTitle,
+              ordering: relation.ordering,
+            })
+          : action.content;
+        const decision = reconcileMemoryWrite({
+          content,
+          kind,
+          existing: [],
+        });
         const { error } = await db
           .from("agent_memory")
           .update({
-            content: action.content,
+            content,
             kind,
             confidence,
-            source: action.silent === true ? "agent" : "user",
-            seen_at: action.silent === true ? null : now,
+            source,
+            seen_at,
             updated_at: now,
+            active: true,
+            scope: decision.mode === "exception" ? "temporary" : "always",
+            category:
+              decision.mode === "exception"
+                ? "exception"
+                : decision.category,
           })
           .eq("user_id", userId)
           .eq("id", action.id);
-        if (error)         return fail(action.type, "לא הצלחנו לעדכן את הזיכרון.");
+        if (error) return fail(action.type, "לא הצלחנו לעדכן את הזיכרון.");
         return ok(action.type, { id: action.id, silent: action.silent === true });
       }
+
+      const existing = await loadMemory(db, userId, { includeInactive: true });
+      const decision = reconcileMemoryWrite({
+        content: action.content,
+        kind,
+        existing,
+      });
+      const relation = parseActionFollowupRelation(action.content);
+      const content = relation
+        ? encodeActionFollowupRelation({
+            trigger: relation.trigger,
+            followup: relation.followupTitle,
+            ordering: relation.ordering,
+          })
+        : action.content;
+
+      if (decision.mode === "update") {
+        const { error } = await db
+          .from("agent_memory")
+          .update({
+            content,
+            kind,
+            confidence,
+            source,
+            seen_at,
+            updated_at: now,
+            active: true,
+            scope: decision.scope,
+            category: decision.category,
+          })
+          .eq("user_id", userId)
+          .eq("id", decision.id);
+        if (error) return fail(action.type, "לא הצלחנו לעדכן את הזיכרון.");
+        return ok(action.type, {
+          id: decision.id,
+          silent: action.silent === true,
+        });
+      }
+
+      if (
+        decision.mode === "insert" &&
+        /מעכשיו|מעתה|מהיום/.test(action.content)
+      ) {
+        const topic = preferenceTopicKey(action.content);
+        if (topic) {
+          for (const row of existing.filter((item) => item.active !== false)) {
+            if (preferenceTopicKey(row.content) === topic) {
+              await db
+                .from("agent_memory")
+                .update({ active: false, updated_at: now })
+                .eq("user_id", userId)
+                .eq("id", row.id);
+            }
+          }
+        }
+      }
+
       const { data, error } = await db
         .from("agent_memory")
         .insert({
           user_id: userId,
           kind,
-          content: action.content,
+          content,
           confidence,
-          source: action.silent === true ? "agent" : "user",
-          seen_at: action.silent === true ? null : now,
+          source,
+          seen_at,
           updated_at: now,
+          active: true,
+          scope: decision.scope,
+          category: decision.category,
         })
         .select("id")
         .single();
@@ -438,7 +581,7 @@ export async function executeAction(
         return fail(action.type, "הזיכרון לא נמצא.");
       const { error } = await db
         .from("agent_memory")
-        .delete()
+        .update({ active: false, updated_at: now })
         .eq("user_id", userId)
         .eq("id", action.id);
       if (error) return fail(action.type, "לא הצלחנו למחוק את הזיכרון.");
@@ -571,13 +714,23 @@ export async function loadOpenTasksForAgent(
   return (data ?? []) as TaskRow[];
 }
 
-export async function loadMemory(db: Db, userId: string): Promise<MemoryRow[]> {
-  const { data, error } = await db
+export async function loadMemory(
+  db: Db,
+  userId: string,
+  options: { includeInactive?: boolean } = {},
+): Promise<MemoryRow[]> {
+  let query = db
     .from("agent_memory")
-    .select("id,kind,content,confidence,source,seen_at,created_at,updated_at")
+    .select(
+      "id,kind,content,confidence,source,seen_at,created_at,updated_at,active,scope,category,supersedes",
+    )
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
-    .limit(40);
+    .limit(60);
+  if (!options.includeInactive) {
+    query = query.eq("active", true);
+  }
+  const { data, error } = await query;
   if (error) throw error;
   return (data ?? []) as MemoryRow[];
 }

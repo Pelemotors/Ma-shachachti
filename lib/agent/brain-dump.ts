@@ -288,6 +288,7 @@ ${brainDumpModeText()}
       scope: "turn",
       scopeId: turnClaim.id,
       actions: prepared,
+      userId: input.userId,
     });
 
     let proposalId: string | null = null;

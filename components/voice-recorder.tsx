@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   formatRecordingClock,
   useAudioRecorder,
@@ -29,7 +29,7 @@ function Icon({ path, size = 20 }: { path: string; size?: number }) {
 
 export function VoiceRecorder(props: {
   enabled: boolean;
-  onText: (text: string) => void | Promise<void>;
+  onText: (text: string, recordingId: string) => void | Promise<void>;
   onError?: (message: string) => void;
 }) {
   const rec = useAudioRecorder();
@@ -37,6 +37,14 @@ export function VoiceRecorder(props: {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const autoProcessedIds = useRef(new Set<string>());
+  const onTextRef = useRef(props.onText);
+  onTextRef.current = props.onText;
+
+  const transcribeChat = useCallback(
+    (blob: Blob, recordingId: string, durationSeconds: number) =>
+      processRecordingBlob(blob, recordingId, durationSeconds, "chat"),
+    [],
+  );
 
   useEffect(() => {
     if (!rec.blob) {
@@ -65,10 +73,10 @@ export function VoiceRecorder(props: {
     if (rec.phase !== "preview" || !rec.blob || !id) return;
     if (autoProcessedIds.current.has(id)) return;
     autoProcessedIds.current.add(id);
-    void rec.send(processRecordingBlob).then(async (text) => {
-      if (text) await props.onText(text);
+    void rec.send(transcribeChat).then(async (text) => {
+      if (text) await onTextRef.current(text, id);
     });
-  }, [rec.phase, rec.blob, rec.recordingId, rec.send, props.onText]);
+  }, [rec.phase, rec.blob, rec.recordingId, rec.send, transcribeChat]);
 
   async function handleStart() {
     if (!props.enabled) {
@@ -79,8 +87,9 @@ export function VoiceRecorder(props: {
   }
 
   async function handleSend() {
-    const text = await rec.send(processRecordingBlob);
-    if (text) await props.onText(text);
+    const id = rec.recordingId;
+    const text = await rec.send(transcribeChat);
+    if (text && id) await onTextRef.current(text, id);
   }
 
   function togglePlay() {

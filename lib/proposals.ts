@@ -160,6 +160,7 @@ export async function approveProposal(db: Db, userId: string, id: string) {
     scope: "proposal",
     scopeId: id,
     actions: inspected.accepted,
+    userId,
   });
   const { data: saved, error: saveError } = await db
     .from("agent_proposals")

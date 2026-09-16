@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { authFetch } from "@/lib/supabase-browser";
 import type { MemoryRow, MemorySource } from "@/lib/types";
+import { formatMemoryForDisplay } from "@/lib/memory-display";
 import { EmptyState, LoadingState } from "@/components/ui-states";
 
 const SOURCE_LABELS: Record<MemorySource, string> = {
@@ -21,7 +22,8 @@ export function MemoryLearning() {
   const [error, setError] = useState("");
   const [retry, setRetry] = useState<Retry | null>(null);
   const [reload, setReload] = useState(0);
-  const newIds = useRef(new Set<string>());
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  const markedSeen = useRef(false);
 
   async function request(body: Record<string, unknown>) {
     const response = await authFetch("/api/memories", {
@@ -39,16 +41,20 @@ export function MemoryLearning() {
     setLoading(true);
     setError("");
     setRetry(null);
+    markedSeen.current = false;
     void authFetch("/api/memories")
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
         if (!response.ok || !Array.isArray(body.memories)) throw new Error("load");
         if (!alive) return;
-        const rows = body.memories as MemoryRow[];
+        const rows = (body.memories as MemoryRow[]).filter(
+          (item) => item.active !== false,
+        );
         const unseen = rows.filter((item) => item.seen_at === null).map((item) => item.id);
-        newIds.current = new Set(unseen);
+        setNewIds(new Set(unseen));
         setMemories(rows);
-        if (unseen.length) {
+        if (unseen.length && !markedSeen.current) {
+          markedSeen.current = true;
           void request({ action: "mark_seen", ids: unseen }).catch(() => undefined);
         }
       })
@@ -76,7 +82,8 @@ export function MemoryLearning() {
     setError("");
     setRetry(null);
     try {
-      setMemories(await request(body));
+      const next = await request(body);
+      setMemories(next.filter((item) => item.active !== false));
       setEditing(null);
       setDraft("");
     } catch {
@@ -104,7 +111,26 @@ export function MemoryLearning() {
         onSubmit={(event) => {
           event.preventDefault();
           if (!draft.trim()) return;
-          void mutate({ action: "create", content: draft.trim() }, memories, "נסה שוב");
+          void mutate(
+            { action: "create", content: draft.trim() },
+            [
+              {
+                id: `local-${Date.now()}`,
+                kind: "preference",
+                content: draft.trim(),
+                confidence: "medium",
+                source: "user",
+                seen_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                active: true,
+                scope: "always",
+                category: "preference",
+              },
+              ...memories,
+            ],
+            "נסה שוב",
+          );
         }}
       >
         <input
@@ -126,77 +152,115 @@ export function MemoryLearning() {
       {groups.map((group) => (
         <div className="memory-group" key={group.source}>
           <h3>{SOURCE_LABELS[group.source]}</h3>
-          {group.items.map((memory) => (
-            <div className="memory-item" key={memory.id}>
-              {editing === memory.id ? (
-                <input
-                  aria-label="עריכת זיכרון"
-                  maxLength={500}
-                  value={draft}
-                  autoFocus
-                  onChange={(event) => setDraft(event.target.value)}
-                />
-              ) : (
-                <p>
-                  {memory.content}
-                  {newIds.current.has(memory.id) ? <small className="new-badge">חדש</small> : null}
-                </p>
-              )}
-              <div className="memory-actions">
+          {group.items.map((memory) => {
+            const display = formatMemoryForDisplay(memory);
+            return (
+              <div className="memory-item memory-card" key={memory.id}>
                 {editing === memory.id ? (
-                  <>
-                    <button
-                      className="text-button"
-                      type="button"
-                      disabled={!draft.trim()}
-                      onClick={() =>
-                        void mutate(
-                          { action: "edit", id: memory.id, content: draft.trim() },
-                          memories.map((item) =>
-                            item.id === memory.id
-                              ? { ...item, content: draft.trim(), source: "user" }
-                              : item,
-                          ),
-                          "נסה שוב",
-                        )
-                      }
-                    >
-                      שמירה
-                    </button>
-                    <button className="text-button" type="button" onClick={() => { setEditing(null); setDraft(""); }}>
-                      ביטול
-                    </button>
-                  </>
+                  <input
+                    aria-label="עריכת זיכרון"
+                    maxLength={500}
+                    value={draft}
+                    autoFocus
+                    onChange={(event) => setDraft(event.target.value)}
+                  />
                 ) : (
-                  <>
-                    <button className="text-button" type="button" onClick={() => { setEditing(memory.id); setDraft(memory.content); }}>
-                      עריכה
-                    </button>
-                    <button
-                      className="text-button danger-text"
-                      type="button"
-                      onClick={() => {
-                        if (!window.confirm("למחוק את הפרט הזה מהזיכרון?")) return;
-                        void mutate(
-                          { action: "delete", id: memory.id },
-                          memories.filter((item) => item.id !== memory.id),
-                          "נסה שוב",
-                        );
-                      }}
-                    >
-                      מחיקה
-                    </button>
-                  </>
+                  <div className="memory-card__body">
+                    <p>{display.text}</p>
+                    <div className="memory-card__meta">
+                      <small>סוג: {display.categoryLabel}</small>
+                      {display.scopeLabel ? (
+                        <small>{display.scopeLabel}</small>
+                      ) : null}
+                      {newIds.has(memory.id) ? (
+                        <small className="new-badge">חדש</small>
+                      ) : null}
+                    </div>
+                  </div>
                 )}
+                <div className="memory-actions">
+                  {editing === memory.id ? (
+                    <>
+                      <button
+                        className="text-button"
+                        type="button"
+                        disabled={!draft.trim()}
+                        onClick={() =>
+                          void mutate(
+                            { action: "edit", id: memory.id, content: draft.trim() },
+                            memories.map((item) =>
+                              item.id === memory.id
+                                ? { ...item, content: draft.trim(), source: "user" }
+                                : item,
+                            ),
+                            "נסה שוב",
+                          )
+                        }
+                      >
+                        שמירה
+                      </button>
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() => {
+                          setEditing(null);
+                          setDraft("");
+                        }}
+                      >
+                        ביטול
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() => {
+                          setEditing(memory.id);
+                          setDraft(display.text.startsWith("{") ? "" : display.text);
+                          if (memory.content.trim().startsWith("{")) {
+                            setDraft(
+                              display.text.includes("«")
+                                ? display.text
+                                : memory.content,
+                            );
+                          } else {
+                            setDraft(memory.content);
+                          }
+                        }}
+                      >
+                        עריכה
+                      </button>
+                      <button
+                        className="text-button danger-text"
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm("למחוק את הפרט הזה מהזיכרון?")) return;
+                          void mutate(
+                            { action: "delete", id: memory.id },
+                            memories.filter((item) => item.id !== memory.id),
+                            "נסה שוב",
+                          );
+                        }}
+                      >
+                        מחיקה
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ))}
       {error ? (
         <div className="error-box" role="alert">
           {error}
-          {retry ? <button className="retry-button" type="button" onClick={retry.run}>{retry.label}</button> : null}
+          {retry ? (
+            <button className="retry-button" type="button" onClick={retry.run}>
+              {retry.label}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </section>

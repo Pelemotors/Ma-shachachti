@@ -17,6 +17,13 @@ export function BrainDumpRecorder(props: {
   const rec = useAudioRecorder();
   const autoProcessedIds = useRef(new Set<string>());
   const [status, setStatus] = useState("");
+  const onStatusRef = useRef(props.onStatus);
+  const onErrorRef = useRef(props.onError);
+  onStatusRef.current = props.onStatus;
+  onErrorRef.current = props.onError;
+
+  const transcribeBank = (blob: Blob, recordingId: string, durationSeconds: number) =>
+    processRecordingBlob(blob, recordingId, durationSeconds, "bank");
 
   useEffect(() => {
     const id = rec.recordingId;
@@ -26,14 +33,14 @@ export function BrainDumpRecorder(props: {
     void (async () => {
       try {
         setStatus("מתמלל…");
-        props.onStatus?.("מתמלל…");
-        const transcript = await rec.send(processRecordingBlob);
+        onStatusRef.current?.("מתמלל…");
+        const transcript = await rec.send(transcribeBank);
         if (!transcript) {
           setStatus("");
           return;
         }
         setStatus("מעבד את ההקלטה…");
-        props.onStatus?.("מעבד את ההקלטה…");
+        onStatusRef.current?.("מעבד את ההקלטה…");
         const response = await authFetch("/api/brain-dump", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -55,17 +62,17 @@ export function BrainDumpRecorder(props: {
             ? body.summary
             : "ההקלטה עובדה";
         setStatus(summary);
-        props.onStatus?.(summary);
+        onStatusRef.current?.(summary);
       } catch (error) {
         const message =
           error instanceof Error
             ? error.message
             : "לא הצלחנו לעבד את ההקלטה.";
         setStatus("");
-        props.onError?.(message);
+        onErrorRef.current?.(message);
       }
     })();
-  }, [rec.phase, rec.blob, rec.recordingId, rec.send, props]);
+  }, [rec.phase, rec.blob, rec.recordingId, rec.send]);
 
   async function handleStart() {
     if (!props.enabled) {

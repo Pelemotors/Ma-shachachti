@@ -8,15 +8,19 @@ export const RUNTIME_CAPABILITIES = {
       "task.complete",
       "task.reopen",
       "task.delete",
+      "task.subtask.add",
+      "task.subtask.update",
+      "task.subtask.toggle",
+      "task.subtask.remove",
     ],
     instructions:
-      "Task יכולה להיות ללא מועד, עם תאריך בלבד, עם due time קשיח, או עם planned time. Reminder כבויה כברירת מחדל; הפעלה מפורשת בלבד דורשת reminder_patch=set וגם reminder_enabled=true. reminder_at הוא זמן בסיס מפורש ונפרד מ-due_at. אין ליצור כפילות מדויקת.",
+      "Task יכולה להיות ללא מועד, עם תאריך בלבד, עם due time קשיח, או עם planned time. Reminder כבויה כברירת מחדל; הפעלה מפורשת בלבד דורשת reminder_patch=set וגם reminder_enabled=true. reminder_at הוא זמן בסיס מפורש ונפרד מ-due_at. אין ליצור כפילות מדויקת. תתי־משימות (checklist של משימה): task.subtask.add דורש task_id+title; update/toggle/remove דורשים id של תת־המשימה; toggle דורש done.",
   },
   memory: {
     kind: "action",
     operations: ["memory.upsert", "memory.remove"],
     instructions:
-      'Memory מיועדת למידע אישי מתמשך. learning יזומה silent=true; בקשת זכירה מפורשת silent=false; תיקון משתמש מעדכן לפי id. כאשר המשתמש מלמד קשר פעולות מפורש (כש־A אז גם B), חובה באותו turn memory.upsert עם content כ־JSON בלבד: {"v":1,"kind":"action_followup","trigger":"A","followup":"B","ordering":"after","scope":"always","active":true}. אל תבטיח במילים בלי action. חריגה חד־פעמית: turn_flags.suppress_learned_followups=true ו־standing_rule_change=false — אל תמחק/תשנה את ה־relation הכללי.',
+      'Memory מיועדת למידע אישי מתמשך. למידה חדשה אינה מוחקת הכול: חריגה זמנית (מחר/הפעם) נשמרת בנפרד בלי לדרוס העדפה כללית; עדכון מעכשיו מסמן ישן כלא־פעיל. learning יזומה silent=true; בקשת זכירה מפורשת silent=false; תיקון משתמש מעדכן לפי id. כאשר המשתמש מלמד קשר פעולות מפורש (כש־A אז גם B), חובה באותו turn memory.upsert עם content כ־JSON בלבד: {"v":1,"kind":"action_followup","trigger":"A","followup":"B","ordering":"after","scope":"always","active":true}. אל תבטיח במילים בלי action. חריגה חד־פעמית: turn_flags.suppress_learned_followups=true ו־standing_rule_change=false — אל תמחק/תשנה את ה־relation הכללי.',
   },
   shopping: {
     kind: "action",

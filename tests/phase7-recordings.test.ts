@@ -89,7 +89,7 @@ test("stop automatically triggers one stable recording process without send", ()
   assert.match(recorder, /rec\.phase !== "preview"/);
   assert.match(recorder, /autoProcessedIds\.current\.has\(id\)/);
   assert.match(recorder, /autoProcessedIds\.current\.add\(id\)/);
-  assert.match(recorder, /rec\.send\(processRecordingBlob\)/);
+  assert.match(recorder, /rec\.send\(transcribeChat\)/);
   assert.match(hook, /setRecordingId\(crypto\.randomUUID\(\)\)/);
   assert.match(hook, /sendLocked\.current = true/);
   assert.match(hook, /setPhase\("error"\)/);

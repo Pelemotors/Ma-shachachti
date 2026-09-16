@@ -1,6 +1,7 @@
 import { authorize, HttpError } from "@/lib/server-auth";
 import {
   RECORDING_SELECT,
+  parseRecordingOrigin,
   recordingDuration,
   recordingId,
   resumeRecordingWithBlob,
@@ -29,12 +30,20 @@ function fail(error: unknown, id?: string) {
 export async function GET(req: Request) {
   try {
     const { db, userId } = await authorize(req);
-    const { data, error } = await db
+    const url = new URL(req.url);
+    const originFilter = url.searchParams.get("origin");
+    let query = db
       .from("recordings")
       .select(RECORDING_SELECT)
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(200);
+    // Bank screen asks for origin=bank. Default to bank-only so chat mic never leaks.
+    const origin = parseRecordingOrigin(originFilter ?? "bank");
+    if (originFilter !== "all") {
+      query = query.eq("origin", originFilter ? origin : "bank");
+    }
+    const { data, error } = await query;
     if (error) throw new HttpError(503, "לא הצלחנו לטעון את ההקלטות.");
     return Response.json({
       recordings: (data ?? []).map(({ processing_token: _token, ...row }) => row),
@@ -50,6 +59,7 @@ export async function POST(req: Request) {
     const { db, userId } = await authorize(req);
     id = recordingId(req.headers.get("x-recording-id"));
     const duration = recordingDuration(req.headers.get("x-recording-duration"));
+    const origin = parseRecordingOrigin(req.headers.get("x-recording-origin"));
     const blob = await req.blob();
     const inspected = inspectAudioBlob(
       blob,
@@ -64,6 +74,7 @@ export async function POST(req: Request) {
       .maybeSingle();
     if (lookupError) throw new HttpError(503, "לא הצלחנו לבדוק את ההקלטה.");
     if (existing) {
+      // Retry/resume must not change origin — provenance is fixed at create.
       return Response.json({
         recording: await resumeRecordingWithBlob(
           db,
@@ -94,6 +105,7 @@ export async function POST(req: Request) {
       delete_after: null,
       audio_deleted_at: null,
       processing_token: token,
+      origin,
     });
     if (insertError) {
       // A concurrent identical POST may have won the primary-key claim.

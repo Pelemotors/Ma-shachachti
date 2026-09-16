@@ -32,10 +32,13 @@ export async function transcribeAudioBlob(blob: Blob): Promise<string> {
   return text;
 }
 
+export type RecordingUploadOrigin = "chat" | "bank" | "share" | "other";
+
 export async function processRecordingBlob(
   blob: Blob,
   recordingId: string,
   durationSeconds: number,
+  origin: RecordingUploadOrigin = "chat",
 ): Promise<string> {
   const response = await authFetch("/api/recordings", {
     method: "POST",
@@ -43,6 +46,7 @@ export async function processRecordingBlob(
       "Content-Type": blob.type,
       "X-Recording-Id": recordingId,
       "X-Recording-Duration": String(durationSeconds),
+      "X-Recording-Origin": origin,
     },
     body: blob,
   });

@@ -47,27 +47,32 @@ export const ActionSchema = z.object({
   confidence: z.enum(["low", "medium", "high"]).nullable().optional(),
   silent: z.boolean().nullable().optional(),
   checklist_id: z.string().uuid().nullable().optional(),
+  task_id: z.string().uuid().nullable().optional(),
   text: z.string().trim().min(1).max(500).nullable().optional(),
   quantity: z.number().int().min(1).max(999).nullable().optional(),
   purchased: z.boolean().nullable().optional(),
   checked: z.boolean().nullable().optional(),
+  done: z.boolean().nullable().optional(),
 }).strict().superRefine((action, context) => {
-  const requireField = (field: "id" | "title" | "checklist_id" | "text" | "quantity" | "purchased" | "checked") => {
+  const requireField = (field: "id" | "title" | "checklist_id" | "task_id" | "text" | "quantity" | "purchased" | "checked" | "done") => {
     if (action[field] == null || action[field] === "") {
       context.addIssue({ code: "custom", path: [field], message: "required" });
     }
   };
   if (["shopping.update", "shopping.toggle", "shopping.remove", "checklist.rename", "checklist.delete",
-    "checklist.item.update", "checklist.item.toggle", "checklist.item.remove"].includes(action.type)) requireField("id");
-  if (["shopping.add", "checklist.create", "checklist.rename"].includes(action.type)) requireField("title");
+    "checklist.item.update", "checklist.item.toggle", "checklist.item.remove",
+    "task.subtask.update", "task.subtask.toggle", "task.subtask.remove"].includes(action.type)) requireField("id");
+  if (["shopping.add", "checklist.create", "checklist.rename", "task.subtask.add"].includes(action.type)) requireField("title");
   // shopping.add: quantity defaults to 1 in normalizeAction — do not reject null
   if (action.type === "shopping.update" && action.title == null && action.quantity == null) {
     context.addIssue({ code: "custom", path: ["title"], message: "title_or_quantity_required" });
   }
   if (["checklist.item.add", "checklist.item.update", "checklist.item.toggle", "checklist.item.remove"].includes(action.type)) requireField("checklist_id");
+  if (["task.subtask.add"].includes(action.type)) requireField("task_id");
   if (["checklist.item.add", "checklist.item.update"].includes(action.type)) requireField("text");
   if (action.type === "shopping.toggle") requireField("purchased");
   if (action.type === "checklist.item.toggle") requireField("checked");
+  if (action.type === "task.subtask.toggle") requireField("done");
 });
 
 function nullable(schema: Record<string, unknown>) {
@@ -125,10 +130,12 @@ export const AGENT_TURN_JSON_SCHEMA = {
           "confidence",
           "silent",
           "checklist_id",
+          "task_id",
           "text",
           "quantity",
           "purchased",
           "checked",
+          "done",
         ],
         properties: {
           type: {
@@ -183,10 +190,12 @@ export const AGENT_TURN_JSON_SCHEMA = {
           }),
           silent: nullable({ type: "boolean" }),
           checklist_id: nullable({ type: "string", pattern: UUID_RE.source }),
+          task_id: nullable({ type: "string", pattern: UUID_RE.source }),
           text: nullable({ type: "string", minLength: 1, maxLength: 500 }),
           quantity: nullable({ type: "integer", minimum: 1, maximum: 999 }),
           purchased: nullable({ type: "boolean" }),
           checked: nullable({ type: "boolean" }),
+          done: nullable({ type: "boolean" }),
         },
       },
     },
@@ -227,10 +236,12 @@ export const AGENT_TURN_JSON_SCHEMA = {
                   "confidence",
                   "silent",
                   "checklist_id",
+                  "task_id",
                   "text",
                   "quantity",
                   "purchased",
                   "checked",
+                  "done",
                 ],
                 properties: {
                   type: { type: "string", enum: [...ACTION_TYPES] },
@@ -301,6 +312,10 @@ export const AGENT_TURN_JSON_SCHEMA = {
                     enum: ["low", "medium", "high"],
                   }),
                   silent: nullable({ type: "boolean" }),
+                  task_id: nullable({
+                    type: "string",
+                    pattern: UUID_RE.source,
+                  }),
                   checklist_id: nullable({
                     type: "string",
                     pattern: UUID_RE.source,
@@ -317,6 +332,7 @@ export const AGENT_TURN_JSON_SCHEMA = {
                   }),
                   purchased: nullable({ type: "boolean" }),
                   checked: nullable({ type: "boolean" }),
+                  done: nullable({ type: "boolean" }),
                 },
               },
             },
@@ -660,6 +676,7 @@ export function toAgentAction(data: z.infer<typeof ActionSchema>): AgentAction {
     confidence: data.confidence ?? null,
     silent: data.silent ?? null,
     checklist_id: data.checklist_id ?? null,
+    task_id: data.task_id ?? null,
     text: data.text ?? null,
     quantity:
       data.type === "shopping.add"
@@ -667,6 +684,7 @@ export function toAgentAction(data: z.infer<typeof ActionSchema>): AgentAction {
         : (data.quantity ?? null),
     purchased: data.purchased ?? null,
     checked: data.checked ?? null,
+    done: data.done ?? null,
   };
 }
 
@@ -777,6 +795,14 @@ function successLine(result: Extract<ActionResult, { ok: true }>) {
       return `עדכנתי את הסימון של${title}.`;
     case "checklist.item.remove":
       return `הסרתי את הפריט${title}.`;
+    case "task.subtask.add":
+      return `הוספתי תת־משימה${title}.`;
+    case "task.subtask.update":
+      return `עדכנתי תת־משימה${title}.`;
+    case "task.subtask.toggle":
+      return `עדכנתי סימון תת־משימה${title}.`;
+    case "task.subtask.remove":
+      return `הסרתי תת־משימה${title}.`;
   }
 }
 

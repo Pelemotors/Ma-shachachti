@@ -5,13 +5,19 @@ import { forgottenFallback } from "../presentation.ts";
 export const DEEP_CHECK_FALLBACK_REPLY =
   "לא הצלחתי להשלים את הבדיקה העמוקה כרגע. אפשר לנסות שוב.";
 
+export const DEEP_CHECK_EMPTY_REPLY =
+  "אין כרגע משהו נוסף משמעותי להסיק מעבר למה שכבר ידוע.";
+
 export function surfaceFallbackReply(
   surface: ChatSurface | null,
   presentation: ClientPresentation | null,
 ): string {
   if (surface === "deep-check") {
     if (presentation?.type === "insights" && presentation.items.length > 0) {
-      return "הנה כמה נקודות חלקיות מהבדיקה.";
+      return "הנה כמה נקודות מהבדיקה לעומק.";
+    }
+    if (presentation?.type === "insights") {
+      return DEEP_CHECK_EMPTY_REPLY;
     }
     return DEEP_CHECK_FALLBACK_REPLY;
   }

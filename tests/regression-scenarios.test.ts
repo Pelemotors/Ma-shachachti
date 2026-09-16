@@ -390,5 +390,5 @@ test("Scenario K — chat voice auto-send with draft preserve on failure", () =>
   const chat = readFileSync(join(root, "components/chat-app.tsx"), "utf8");
   assert.match(chat, /sendVoiceTranscript/);
   assert.match(chat, /voiceSendLock/);
-  assert.match(chat, /draft kept/);
+  assert.match(chat, /voiceSentRecordingIds/);
 });

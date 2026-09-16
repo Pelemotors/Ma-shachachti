@@ -22,6 +22,7 @@ import {
 import { buildHomeDisplay } from "@/lib/home-display";
 import { appendTranscript } from "@/lib/audio/recorder-helpers";
 import { VoiceRecorder } from "@/components/voice-recorder";
+import { TaskEditor } from "@/components/task-editor";
 import { SettingsPanel } from "@/components/settings-panel";
 import { ChatHistoryDrawer } from "@/components/previous-chats";
 import { Onboarding } from "@/components/onboarding";
@@ -123,7 +124,9 @@ export function ChatApp() {
   const [newTitle, setNewTitle] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const [savingTask, setSavingTask] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [savingPlanId, setSavingPlanId] = useState<string | null>(null);
   const [proposalBusyId, setProposalBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -380,7 +383,7 @@ export function ChatApp() {
     retryTurnId?: string,
     surfaceContext: SurfaceContext | null = null,
   ) {
-    if (!message || sending) return false;
+    if (!message || sendingRef.current) return false;
 
     const turn = createPendingChatTurn(
       message,
@@ -390,6 +393,7 @@ export function ChatApp() {
     );
     const turnId = turn.turnId;
     setError("");
+    sendingRef.current = true;
     setSending(true);
     if (retryTurnId) {
       setMessages((current) =>
@@ -429,6 +433,7 @@ export function ChatApp() {
           item.turnId === turnId ? { ...item, delivery: "failed" } : item,
         ),
       );
+      sendingRef.current = false;
       setSending(false);
       return false;
     }
@@ -437,6 +442,8 @@ export function ChatApp() {
       response.status === 401 ||
       isAccountAccessDenied(response.status, body.error)
     ) {
+      sendingRef.current = false;
+      setSending(false);
       await leaveForLogin();
       return false;
     }
@@ -447,6 +454,7 @@ export function ChatApp() {
           item.turnId === turnId ? { ...item, delivery: "failed" } : item,
         ),
       );
+      sendingRef.current = false;
       setSending(false);
       return false;
     }
@@ -473,6 +481,7 @@ export function ChatApp() {
       }
       navigate({ view: "chat", sessionId: body.session_id }, true);
     }
+    sendingRef.current = false;
     setSending(false);
     return true;
   }
@@ -488,32 +497,59 @@ export function ChatApp() {
   }
 
   const voiceSendLock = useRef(false);
+  const voiceSentRecordingIds = useRef(new Set<string>());
+  const pendingVoiceSend = useRef<{
+    transcript: string;
+    recordingId: string;
+  } | null>(null);
 
-  async function sendVoiceTranscript(transcript: string) {
+  async function sendVoiceTranscript(
+    transcript: string,
+    recordingId: string,
+  ) {
     const piece = transcript.trim();
-    if (!piece || voiceSendLock.current) return;
+    if (!piece || !recordingId) return;
+    if (voiceSentRecordingIds.current.has(recordingId)) return;
+
+    let merged = piece;
+    setText((current) => {
+      merged = appendTranscript(current, piece);
+      return merged;
+    });
+    setError("");
+
+    if (sendingRef.current || voiceSendLock.current) {
+      pendingVoiceSend.current = { transcript: merged, recordingId };
+      return;
+    }
+
     voiceSendLock.current = true;
     try {
-      let merged = piece;
-      setText((current) => {
-        merged = appendTranscript(current, piece);
-        return merged;
-      });
-      setError("");
       if (!merged.trim()) return;
       const ok = await sendMessage(merged.trim());
       if (ok) {
+        voiceSentRecordingIds.current.add(recordingId);
         setText("");
         if (userId) writeChatDraft(userId, sessionId, "");
       }
-      // On failure: draft kept for retry without re-recording.
     } finally {
       voiceSendLock.current = false;
+      const pending = pendingVoiceSend.current;
+      if (pending && !voiceSentRecordingIds.current.has(pending.recordingId)) {
+        pendingVoiceSend.current = null;
+        void sendVoiceTranscript(pending.transcript, pending.recordingId);
+      }
     }
   }
 
   function openSurface(surface: (typeof HOME_SURFACES)[number]) {
-    openView(surface.id === "forgotten" ? "forgotten" : surface.id);
+    const target = surface.id === "forgotten" ? "forgotten" : surface.id;
+    openView(target);
+    if (surface.id === "deep-check") {
+      void agentSurfaces.run({ type: "deep-check" });
+    } else if (surface.id === "forgotten") {
+      void agentSurfaces.run({ type: "forgotten" });
+    }
   }
 
   async function respondToProposal(
@@ -1244,6 +1280,7 @@ export function ChatApp() {
           />
         ) : view === "forgotten" || view === "focus" || view === "deep-check" ? (
           <ForgottenSurface
+            mode={view === "deep-check" ? "deep-check" : "forgotten"}
             state={surfaceTurns.forgotten}
             deepCheckState={surfaceTurns["deep-check"]}
             onRun={(context, retry) =>
@@ -1300,6 +1337,39 @@ export function ChatApp() {
           </div>
         ) : (
           <div className="tasks-panel">
+            {editingTaskId ? (
+              (() => {
+                const editingTask =
+                  tasks.find((task) => task.id === editingTaskId) ?? null;
+                if (!editingTask) return null;
+                return (
+                  <TaskEditor
+                    task={editingTask}
+                    busy={savingTask}
+                    onClose={() => setEditingTaskId(null)}
+                    onSave={(patch) => runTaskAction(patch)}
+                    onComplete={() =>
+                      runTaskAction({
+                        type: "task.complete",
+                        id: editingTask.id,
+                      })
+                    }
+                    onReopen={() =>
+                      runTaskAction({
+                        type: "task.reopen",
+                        id: editingTask.id,
+                      })
+                    }
+                    onDelete={() =>
+                      runTaskAction({
+                        type: "task.delete",
+                        id: editingTask.id,
+                      })
+                    }
+                  />
+                );
+              })()
+            ) : null}
             <form className="task-create" onSubmit={addTask}>
               <input
                 aria-label="משימה חדשה"
@@ -1347,7 +1417,19 @@ export function ChatApp() {
                       }
                     />
                     <div className="task-copy">
-                      <span>{task.title}</span>
+                      <button
+                        type="button"
+                        className="task-title-button"
+                        onClick={() => setEditingTaskId(task.id)}
+                      >
+                        <span>{task.title}</span>
+                      </button>
+                      {task.notes ? (
+                        <small className="task-notes-preview">
+                          {task.notes.slice(0, 80)}
+                          {task.notes.length > 80 ? "…" : ""}
+                        </small>
+                      ) : null}
                       {formatDue(task) ? (
                         <small>{formatDue(task)}</small>
                       ) : null}
@@ -1397,6 +1479,13 @@ export function ChatApp() {
                           </select>
                         </label>
                       ) : null}
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => setEditingTaskId(task.id)}
+                      >
+                        עריכה
+                      </button>
                     </div>
                   </li>
                 ))}
@@ -1416,7 +1505,13 @@ export function ChatApp() {
                       }
                     />
                     <div className="task-copy">
-                      <span>{task.title}</span>
+                      <button
+                        type="button"
+                        className="task-title-button"
+                        onClick={() => setEditingTaskId(task.id)}
+                      >
+                        <span>{task.title}</span>
+                      </button>
                     </div>
                   </li>
                 ))}
@@ -1446,8 +1541,8 @@ export function ChatApp() {
             <form className="composer" onSubmit={send}>
             <VoiceRecorder
               enabled={!sending}
-              onText={(transcript) => {
-                void sendVoiceTranscript(transcript);
+              onText={(transcript, recordingId) => {
+                void sendVoiceTranscript(transcript, recordingId);
               }}
               onError={setError}
             />

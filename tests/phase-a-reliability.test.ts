@@ -139,8 +139,9 @@ test("chat voice auto-sends transcript once with draft preserve on failure", () 
   const chat = read("components/chat-app.tsx");
   assert.match(chat, /sendVoiceTranscript/);
   assert.match(chat, /voiceSendLock/);
-  assert.match(chat, /On failure: draft kept/);
-  assert.match(chat, /void sendVoiceTranscript\(transcript\)/);
+  assert.match(chat, /voiceSentRecordingIds/);
+  assert.match(chat, /sendingRef/);
+  assert.match(chat, /void sendVoiceTranscript\(transcript, recordingId\)/);
 });
 
 test("recoverSafeReply still rejects execution claims", () => {

@@ -476,6 +476,7 @@ export async function POST(req: Request) {
           scope: "turn",
           scopeId: turnClaim.id,
           actions: actionsToExecute,
+          userId,
         })
       : [];
     if (decision) {
@@ -512,6 +513,10 @@ export async function POST(req: Request) {
           retryCount: agent.attempts,
         });
       }
+    }
+    if (surface === "deep-check" && !presentation) {
+      // Never leave deep-check with empty/null presentation → UI error.
+      presentation = { type: "insights", items: [] };
     }
     if (surface === "schedule") {
       const scheduleCtx =
@@ -613,9 +618,7 @@ export async function POST(req: Request) {
       trackedSurface === "deep-check" &&
       activeTurn &&
       trackedSessionId &&
-      trackedTurnKey &&
-      (error instanceof AgentUpstreamError ||
-        (error instanceof HttpError && error.status === 502))
+      trackedTurnKey
     ) {
       logAgentFailure({
         category:

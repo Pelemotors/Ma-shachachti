@@ -27,7 +27,7 @@ export function RecordingBank() {
   async function load() {
     setLoading(true);
     setError("");
-    const response = await authFetch("/api/recordings").catch(() => null);
+    const response = await authFetch("/api/recordings?origin=bank").catch(() => null);
     const body = await response?.json().catch(() => ({}));
     if (!response?.ok || !Array.isArray(body?.recordings)) {
       setError(body?.error ?? "לא הצלחנו לטעון את ההקלטות.");
@@ -127,8 +127,8 @@ export function RecordingBank() {
       ) : null}
       {recordings.length === 0 ? (
         <EmptyState
-          title="אין עדיין הקלטות"
-          description="הקלטות קוליות מהשיחה יופיעו כאן."
+          title="אין עדיין הקלטות בבנק"
+          description="הקלטות מ־Brain Dump / בנק ההקלטות יופיעו כאן. הקלטות מהשיחה לא נשמרות בבנק."
         />
       ) : (
         <ul className="recording-list">

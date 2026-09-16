@@ -14,7 +14,7 @@ const mutationSchema = z.discriminatedUnion("action", [
 ]);
 
 const MEMORY_COLUMNS =
-  "id,kind,content,confidence,source,seen_at,created_at,updated_at";
+  "id,kind,content,confidence,source,seen_at,created_at,updated_at,active,scope,category,supersedes";
 
 function jsonError(error: unknown) {
   if (error instanceof HttpError) {
@@ -32,6 +32,7 @@ async function listMemories(
     .from("agent_memory")
     .select(MEMORY_COLUMNS)
     .eq("user_id", userId)
+    .eq("active", true)
     .order("updated_at", { ascending: false })
     .limit(100);
   if (error) throw error;
@@ -65,12 +66,21 @@ export async function POST(req: Request) {
         source: "user",
         seen_at: now,
         updated_at: now,
+        active: true,
+        scope: "always",
+        category: "preference",
       });
       if (error) throw error;
     } else if (action.action === "edit") {
       const { data, error } = await db
         .from("agent_memory")
-        .update({ content: action.content, source: "user", seen_at: now, updated_at: now })
+        .update({
+          content: action.content,
+          source: "user",
+          seen_at: now,
+          updated_at: now,
+          active: true,
+        })
         .eq("user_id", userId)
         .eq("id", action.id)
         .select("id")
@@ -86,9 +96,10 @@ export async function POST(req: Request) {
         .is("seen_at", null);
       if (error) throw error;
     } else {
+      // Soft-delete: deactivate only this row — never wipe siblings.
       const { data, error } = await db
         .from("agent_memory")
-        .delete()
+        .update({ active: false, updated_at: now })
         .eq("user_id", userId)
         .eq("id", action.id)
         .select("id")

@@ -81,6 +81,16 @@ export type MemoryRow = {
   seen_at: string | null;
   created_at: string;
   updated_at: string;
+  active?: boolean;
+  scope?: "always" | "temporary";
+  category?:
+    | "preference"
+    | "habit"
+    | "relation"
+    | "exception"
+    | "fact"
+    | "note";
+  supersedes?: string | null;
 };
 
 export const ACTION_TYPES = [
@@ -90,6 +100,10 @@ export const ACTION_TYPES = [
   "task.reopen",
   "task.reschedule",
   "task.delete",
+  "task.subtask.add",
+  "task.subtask.update",
+  "task.subtask.toggle",
+  "task.subtask.remove",
   "memory.upsert",
   "memory.remove",
   "shopping.add",
@@ -129,10 +143,12 @@ export type AgentAction = {
   confidence: MemoryConfidence | null;
   silent: boolean | null;
   checklist_id?: string | null;
+  task_id?: string | null;
   text?: string | null;
   quantity?: number | null;
   purchased?: boolean | null;
   checked?: boolean | null;
+  done?: boolean | null;
 };
 
 export type ActionResult =
