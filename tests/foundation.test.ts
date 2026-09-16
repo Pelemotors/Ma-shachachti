@@ -55,14 +55,17 @@ test("admin cannot self-lock", () => {
   assert.equal(isSelfLockout("a", "b", { approved: false }), false);
 });
 
-test("login page has signup and forgot password but no confirm-password field", () => {
+test("login page has signup, forgot password, and confirm-password on signup", () => {
   const page = readFileSync(new URL("../components/login-form.tsx", import.meta.url), "utf8");
   assert.match(page, /signUp/);
   assert.match(page, /resetPasswordForEmail/);
   assert.match(page, /אין לי חשבון — הרשמה/);
   assert.match(page, /שכחתי סיסמה/);
-  assert.doesNotMatch(page, /אימות סיסמה/);
-  assert.doesNotMatch(page, /confirmPassword/);
+  assert.match(page, /אימות סיסמה/);
+  assert.match(page, /confirmPassword/);
+  assert.match(page, /auth\/reset-password/);
+  assert.match(page, /auth\/callback/);
+  assert.match(page, /resend\(/);
 });
 
 test("chat request can carry a session_id owned later by the server", () => {

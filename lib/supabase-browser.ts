@@ -30,6 +30,8 @@ export const supabase: SupabaseClient | null =
         auth: {
           persistSession: true,
           autoRefreshToken: true,
+          detectSessionInUrl: true,
+          flowType: "pkce",
           storage: isNativeShell() ? new NativeSecureStorage() : undefined,
         },
       })
