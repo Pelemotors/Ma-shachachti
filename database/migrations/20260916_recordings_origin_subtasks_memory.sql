@@ -126,3 +126,17 @@ where category = 'note'
     or content like '%"kind": "action_followup"%'
     or kind in ('preference', 'fact')
   );
+
+-- Allow insights presentation persistence (required for deep-check).
+alter table public.chat_messages drop constraint if exists chat_messages_presentation_check;
+alter table public.chat_messages
+  add constraint chat_messages_presentation_check
+  check (
+    presentation is null
+    or (
+      jsonb_typeof(presentation) = 'object'
+      and (presentation->>'type') = any (
+        array['task_list', 'schedule_plan', 'task_suggestions', 'insights']
+      )
+    )
+  );
