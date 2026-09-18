@@ -9,7 +9,7 @@ export class HttpError extends Error {
   }
 }
 
-export async function authorize(req: Request) {
+export async function authorizeIdentity(req: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) throw new HttpError(503, "החיבור לענן עדיין לא הוגדר.");
@@ -26,16 +26,21 @@ export async function authorize(req: Request) {
   if (error || !data.user)
     throw new HttpError(401, "ההתחברות הסתיימה. יש להתחבר שוב.");
 
-  const { data: access, error: accessError } = await db
+  return { db, userId: data.user.id };
+}
+
+export async function authorize(req: Request) {
+  const identity = await authorizeIdentity(req);
+  const { data: access, error: accessError } = await identity.db
     .from("user_roles")
     .select("approved")
-    .eq("user_id", data.user.id)
+    .eq("user_id", identity.userId)
     .maybeSingle();
 
   if (accessError) throw new HttpError(503, "לא הצלחנו לבדוק את הרשאת החשבון.");
   if (!access?.approved) throw new HttpError(403, "החשבון עדיין ממתין לאישור.");
 
-  return { db, userId: data.user.id };
+  return identity;
 }
 
 export async function authorizeAdmin(req: Request) {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { authorize, HttpError } from "@/lib/server-auth";
+import { authorizeIdentity, HttpError } from "@/lib/server-auth";
 import { createServiceClient } from "@/lib/supabase-admin";
 import { deleteUserAccountFully } from "@/lib/account/delete-account";
 
@@ -7,7 +7,8 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const { userId } = await authorize(req);
+    // Identity-only: unapproved users must still be able to erase their data.
+    const { userId } = await authorizeIdentity(req);
     const body = z
       .object({ confirm: z.literal("DELETE") })
       .parse(await req.json());

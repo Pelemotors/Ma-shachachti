@@ -50,6 +50,7 @@ test("account deletion route uses full purge helper", () => {
   const route = read("app/api/account/delete/route.ts");
   const helper = read("lib/account/delete-account.ts");
   assert.match(route, /deleteUserAccountFully/);
+  assert.match(route, /authorizeIdentity/);
   assert.match(helper, /purgeUserRecordingObjects/);
   assert.match(helper, /auth\.admin\.deleteUser/);
   assert.match(helper, /account_audit/);
