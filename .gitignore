@@ -21,3 +21,14 @@ ios/App/Pods/
 ios/App/build/
 *.xcuserstate
 .DS_Store
+
+# Mobile (apps/mobile)
+apps/mobile/.env
+apps/mobile/.env.local
+apps/mobile/.expo/
+apps/mobile/android/app/build/
+apps/mobile/android/.gradle/
+apps/mobile/android/build/
+apps/mobile/ios/Pods/
+apps/mobile/ios/build/
+apps/mobile/*.jks

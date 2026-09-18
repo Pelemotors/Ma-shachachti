@@ -180,6 +180,22 @@ export function SettingsPanel({
         <p className="muted settings-hint">
           שיחות וזיכרונות נשמרים בחשבון כדי לשמור על רצף. אפשר למחוק זיכרונות ידנית למעלה.
         </p>
+        <a
+          className="settings-action"
+          href="https://mashachachti.co.il/privacy"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          מדיניות פרטיות
+        </a>
+        <a
+          className="settings-action"
+          href="https://mashachachti.co.il/account-deletion"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          מחיקת החשבון שלי
+        </a>
         <button className="text-button danger-text" type="button" onClick={onSignOut}>
           יציאה מהחשבון
         </button>

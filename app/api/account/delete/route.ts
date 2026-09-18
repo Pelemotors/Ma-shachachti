@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authorize, HttpError } from "@/lib/server-auth";
 import { createServiceClient } from "@/lib/supabase-admin";
+import { deleteUserAccountFully } from "@/lib/account/delete-account";
 
 export const runtime = "nodejs";
 
@@ -12,16 +13,8 @@ export async function POST(req: Request) {
       .parse(await req.json());
     void body;
     const admin = createServiceClient();
-    await admin.from("account_audit").insert({
-      user_id: userId,
-      event: "account.delete_requested",
-      metadata: {},
-    });
-    const deleted = await admin.auth.admin.deleteUser(userId);
-    if (deleted.error) {
-      throw new HttpError(503, "מחיקת החשבון נכשלה.");
-    }
-    return Response.json({ ok: true });
+    const summary = await deleteUserAccountFully(admin, userId);
+    return Response.json(summary);
   } catch (error) {
     if (error instanceof HttpError) {
       return Response.json({ error: error.message }, { status: error.status });

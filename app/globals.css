@@ -1513,3 +1513,64 @@ h1 {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Public legal pages (privacy / account deletion) */
+.legal-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 18px 48px;
+}
+.legal-header h1 {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  margin: 0.35rem 0 0.5rem;
+  line-height: 1.25;
+}
+.legal-brand {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--primary, #8b5e3c);
+}
+.legal-updated {
+  margin: 0 0 1rem;
+}
+.legal-body {
+  line-height: 1.65;
+  font-size: 1rem;
+}
+.legal-body h2 {
+  margin-top: 1.75rem;
+  font-size: 1.15rem;
+}
+.legal-body ul {
+  padding-inline-start: 1.25rem;
+}
+.legal-body a {
+  color: inherit;
+  text-decoration: underline;
+}
+.legal-footer {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--muted, #667) 30%, transparent);
+  font-size: 0.9rem;
+}
+.legal-footer a {
+  color: inherit;
+}
+.legal-card {
+  margin-top: 1.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--muted, #667) 28%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, #fff 88%, transparent);
+}
+.legal-actions {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.legal-actions .settings-action {
+  text-align: center;
+  text-decoration: none;
+}

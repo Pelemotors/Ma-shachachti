@@ -131,6 +131,13 @@ export function useAudioRecorder() {
       ) {
         throw new Error(UNSUPPORTED_HE);
       }
+      const { ensureMicDisclosureAccepted } = await import(
+        "@/lib/privacy/mic-disclosure"
+      );
+      if (!ensureMicDisclosureAccepted()) {
+        setPhase("idle");
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (cancelled.current) {
         stream.getTracks().forEach((track) => track.stop());

@@ -69,6 +69,12 @@ export async function requestMicrophonePermission(): Promise<PermissionRequestRe
   if (!navigator.mediaDevices?.getUserMedia) {
     return { status: "unsupported", code: "microphone_unsupported" };
   }
+  const { ensureMicDisclosureAccepted } = await import(
+    "@/lib/privacy/mic-disclosure"
+  );
+  if (!ensureMicDisclosureAccepted()) {
+    return { status: "prompt", code: "microphone_disclosure_declined" };
+  }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     stream.getTracks().forEach((track) => track.stop());

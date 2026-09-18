@@ -11,6 +11,7 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "privacy:gate": "node scripts/privacy-ci-gate.mjs",
     "agent:bundle": "node scripts/bundle-instructions.mjs",
     "lint": "npm run typecheck",
     "cap:sync": "npx cap sync",

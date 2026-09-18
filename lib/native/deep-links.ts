@@ -27,7 +27,25 @@ export function parseDeepLink(href: string): AppRouteState | null {
   }
 }
 
+const PUBLIC_RESUME_PATHS = new Set([
+  "/account-deletion",
+  "/privacy",
+]);
+
 export function resumePathAfterAuth(href: string) {
+  try {
+    const hasScheme = href.includes("://");
+    const url = new URL(
+      hasScheme
+        ? href
+        : `https://mashachachti.co.il${href.startsWith("/") ? href : `/${href}`}`,
+    );
+    if (PUBLIC_RESUME_PATHS.has(url.pathname)) {
+      return `${url.pathname}${url.search}`;
+    }
+  } catch {
+    // fall through
+  }
   const parsed = parseDeepLink(href);
   return parsed ? encodeAppRoute(parsed) : "/app";
 }

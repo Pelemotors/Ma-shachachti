@@ -204,9 +204,11 @@ export async function dispatchDueReminders(
       continue;
     }
 
+    // Lock-screen body stays generic — no task title (privacy policy).
+    const lockBody = "יש לך תזכורת ממתינה";
     const payload = JSON.stringify({
       title: "מה שכחתי?",
-      body: task.title,
+      body: lockBody,
       url: "/app",
       tag: `task-${task.id}`,
       icon: "/icon-192.png",
@@ -218,7 +220,7 @@ export async function dispatchDueReminders(
       kind: "REMINDER",
       subject: `${task.id}:${task.reminder_at ?? task.due_at ?? "none"}`,
       title: "מה שכחתי?",
-      body: task.title,
+      body: lockBody,
       route: "/app",
       payload: { taskId: task.id },
     });
@@ -229,7 +231,7 @@ export async function dispatchDueReminders(
       await deliverNativePush({
         targets: nativeTargets,
         title: "מה שכחתי?",
-        body: task.title,
+        body: lockBody,
         route: "/app",
       });
     } catch (error) {
