@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-static";
 
 const UPDATED = "18 בספטמבר 2026";
-export const POLICY_VERSION = "2026-09-18";
+const POLICY_VERSION = "2026-09-18";
 
 export default function PrivacyPage() {
   return (
