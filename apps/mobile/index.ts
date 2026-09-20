@@ -3,8 +3,6 @@ import { registerRootComponent } from "expo";
 import { AppRoot } from "./src/app/AppRoot";
 
 I18nManager.allowRTL(true);
-if (!I18nManager.isRTL) {
-  I18nManager.forceRTL(true);
-}
+I18nManager.forceRTL(false);
 
 registerRootComponent(AppRoot);

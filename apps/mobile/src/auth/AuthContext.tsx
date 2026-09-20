@@ -24,6 +24,7 @@ type AuthState = {
   error: string | null;
   signIn: (provider: NativeAuthProvider) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
+  enterPreview: () => void;
   signOut: () => Promise<void>;
   clearError: () => void;
 };
@@ -61,9 +62,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .auth.getSession()
         .then(({ data }) => {
           if (data.session?.user) {
+            const meta = data.session.user.user_metadata ?? {};
+            const raw =
+              (typeof meta.full_name === "string" && meta.full_name) ||
+              (typeof meta.name === "string" && meta.name) ||
+              (typeof meta.given_name === "string" && meta.given_name) ||
+              null;
             setUser({
               id: data.session.user.id,
               email: data.session.user.email ?? null,
+              displayName: raw,
             });
           }
         })
@@ -103,8 +111,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw caught;
         }
       },
+      enterPreview: () => {
+        setError(null);
+        setUser({ id: "ui-preview", email: null, displayName: null });
+      },
       signOut: async () => {
-        await sessionSignOut();
+        try {
+          await sessionSignOut();
+        } catch {
+          /* preview / missing supabase */
+        }
         setUser(null);
       },
     }),

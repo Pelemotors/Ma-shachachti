@@ -13,6 +13,7 @@ import type { Session, User } from "@supabase/supabase-js";
 export type AuthUser = {
   id: string;
   email: string | null;
+  displayName: string | null;
 };
 
 export async function restoreSession(): Promise<{
@@ -107,6 +108,16 @@ export async function signOut(): Promise<void> {
 }
 
 function toAuthUser(user: User): AuthUser {
-  return { id: user.id, email: user.email ?? null };
+  const meta = user.user_metadata ?? {};
+  const raw =
+    (typeof meta.full_name === "string" && meta.full_name) ||
+    (typeof meta.name === "string" && meta.name) ||
+    (typeof meta.given_name === "string" && meta.given_name) ||
+    null;
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    displayName: raw,
+  };
 }
 

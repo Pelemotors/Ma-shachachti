@@ -1,19 +1,15 @@
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { nativeOAuthHint } from "../auth/nativeIdentity";
+import {
+  AppScreen,
+  PrimaryActionButton,
+  SecondaryPillButton,
+} from "../components/ui";
 import { Field } from "../ui/chrome";
+import { colors, rtlText, space, type } from "../theme";
 
-/**
- * Working path is email/password. Google/Apple stay visibly disabled until
- * credentials are planted (HUMAN RELEASE CHECK / Gate B).
- */
 export function FoundationGateScreen() {
   const auth = useAuth();
   const [email, setEmail] = useState("");
@@ -32,85 +28,43 @@ export function FoundationGateScreen() {
   }
 
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.brand}>מה שכחתי?</Text>
-      <Text style={styles.subtitle}>התחברות</Text>
-
-      {auth.error ? (
-        <Text style={styles.error} accessibilityRole="alert">
-          {auth.error}
-        </Text>
-      ) : null}
-
-      <Field value={email} onChangeText={setEmail} placeholder="אימייל" />
-      <Field
-        value={password}
-        onChangeText={setPassword}
-        placeholder="סיסמה"
-        secure
-      />
-      <Pressable
-        style={styles.button}
-        disabled={busy}
-        onPress={() => void emailSignIn()}
-      >
+    <AppScreen>
+      <View style={styles.wrap}>
+        <Text style={styles.brand}>מה שכחתי?</Text>
+        <Text style={styles.subtitle}>התחברות</Text>
+        {auth.error ? <Text style={styles.error}>{auth.error}</Text> : null}
+        <Field value={email} onChangeText={setEmail} placeholder="אימייל" />
+        <Field
+          value={password}
+          onChangeText={setPassword}
+          placeholder="סיסמה"
+          secure
+        />
         {busy ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={colors.accent} />
         ) : (
-          <Text style={styles.buttonText}>כניסה</Text>
+          <PrimaryActionButton label="כניסה" onPress={() => void emailSignIn()} />
         )}
-      </Pressable>
-
-      <Pressable style={[styles.button, styles.disabled]} disabled>
-        <Text style={styles.buttonText}>המשך עם Google</Text>
-      </Pressable>
-      <Text style={styles.hint}>{nativeOAuthHint("google")}</Text>
-
-      <Pressable style={[styles.button, styles.secondary, styles.disabled]} disabled>
-        <Text style={[styles.buttonText, styles.secondaryText]}>המשך עם Apple</Text>
-      </Pressable>
-      <Text style={styles.hint}>{nativeOAuthHint("apple")}</Text>
-    </View>
+        <PrimaryActionButton label="המשך עם Google" onPress={() => undefined} disabled />
+        <Text style={styles.hint}>{nativeOAuthHint("google")}</Text>
+        <SecondaryPillButton label="המשך עם Apple" onPress={() => undefined} />
+        <Text style={styles.hint}>{nativeOAuthHint("apple")}</Text>
+        <PrimaryActionButton label="המשך לצפייה" onPress={auth.enterPreview} />
+      </View>
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    padding: 24,
-    justifyContent: "center",
-    backgroundColor: "#F7F1EA",
-    gap: 12,
-  },
-  brand: {
-    fontSize: 32,
-    fontWeight: "700",
-    color: "#3D2B1F",
-    textAlign: "right",
-  },
-  subtitle: { fontSize: 16, color: "#6B5344", textAlign: "right" },
+  wrap: { flex: 1, justifyContent: "center", gap: space.md, paddingTop: 40 },
+  brand: { ...type.greeting, ...rtlText },
+  subtitle: { ...type.section, ...rtlText, color: colors.textMuted },
   error: {
-    color: "#9B2C2C",
-    backgroundColor: "#FDE8E8",
+    ...rtlText,
+    color: colors.accentDeep,
+    backgroundColor: colors.dangerSoft,
     padding: 12,
-    borderRadius: 10,
-    textAlign: "right",
+    borderRadius: 16,
   },
-  button: {
-    minHeight: 48,
-    borderRadius: 12,
-    backgroundColor: "#8B5E3C",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-  },
-  secondary: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#D4C4B5",
-  },
-  disabled: { opacity: 0.45 },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  secondaryText: { color: "#5C4033" },
-  hint: { fontSize: 12, color: "#8A7464", textAlign: "right" },
+  hint: { ...type.caption, ...rtlText },
 });
