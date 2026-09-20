@@ -7,13 +7,19 @@ import type {
 } from "../../types.ts";
 import type { Checklist, ShoppingItem } from "../../lists.ts";
 import type { AgentProfileContext } from "../../user-profile.ts";
-import { dueTimeFromDueAt, jerusalemParts } from "../../time.ts";
+import { dueTimeFromDueAt, jerusalemParts, todayContext } from "../../time.ts";
 import { reminderBase } from "../../reminders.ts";
 import { selectPersonalMemories } from "./memory-select.ts";
 import {
   selectLearnedActionRelations,
   renderLearnedRelationsBlock,
 } from "../learned-relations.ts";
+import {
+  filterDayPlanForQuery,
+  isMoreOfSameDayFollowup,
+  resolveMentionedJerusalemDate,
+  type DayPlanQueryItem,
+} from "../../schedule-query.ts";
 import {
   formatCandidateMeta,
   rankTaskCandidates,
@@ -32,6 +38,9 @@ export type CompactContext = {
   modules: string[];
   memoryCount: number;
   ranked?: RankedCandidate[];
+  dayPlanDate?: string | null;
+  dayPlanItems?: DayPlanQueryItem[];
+  calendarConstraints?: Array<{ title: string; start_at: string; end_at: string }>;
 };
 
 function formatTask(
@@ -76,6 +85,10 @@ export function buildCompactContext(input: {
   checklists: Checklist[];
   /** Extra purpose when surface is null (e.g. brain-dump processing). */
   purpose?: "chat" | "brain-dump" | null;
+  dayPlanItems?: DayPlanQueryItem[];
+  calendarConstraints?: Array<{ title: string; start_at: string; end_at: string }>;
+  alreadyShownTaskIds?: string[];
+  now?: Date;
 }): CompactContext {
   const modules = ["core", "compact-context"];
   const openTasks = input.allTasks.filter((task) => task.status === "open");
@@ -173,6 +186,21 @@ export function buildCompactContext(input: {
     tasks.some((task) => task.id === row.task_id),
   );
 
+  const now = input.now ?? new Date();
+  const todayDate = todayContext(now).date;
+  const dayPlanDate = resolveMentionedJerusalemDate(input.queryHint, now);
+  const dayPlanItems = dayPlanDate
+    ? filterDayPlanForQuery({
+        targetDate: dayPlanDate,
+        todayDate,
+        items: input.dayPlanItems ?? [],
+        tasks: input.allTasks,
+        alreadyShownTaskIds: input.alreadyShownTaskIds,
+        excludeAlreadyShown: isMoreOfSameDayFollowup(input.queryHint),
+      })
+    : [];
+  if (dayPlanDate) modules.push("day-plan-date");
+
   return {
     profile: input.profile,
     currentTime: input.currentTime,
@@ -185,6 +213,9 @@ export function buildCompactContext(input: {
     modules,
     memoryCount: memories.length,
     ranked,
+    dayPlanDate,
+    dayPlanItems,
+    calendarConstraints: dayPlanDate ? input.calendarConstraints ?? [] : [],
   };
 }
 
@@ -228,6 +259,24 @@ export function renderContextBlock(ctx: CompactContext, surface: ChatSurface | n
     lines.push(
       `## קניות\n${ctx.shopping.map((item) => `- ${item.id} ${item.title} x${item.quantity}${item.purchased_at ? " [bought]" : ""}`).join("\n")}`,
     );
+  }
+  if (ctx.dayPlanDate) {
+    const planLines = (ctx.dayPlanItems ?? []).map(
+      (item) =>
+        `- ${item.task_id} ${item.start_at}${item.end_at ? `–${item.end_at}` : ""} ${item.kind ?? ""}`,
+    );
+    lines.push(
+      `## לו״ז day_plan לתאריך ${ctx.dayPlanDate} (SoT — לא tasks.planned_* ולא היום אם נשאל מחר)\n${
+        planLines.length ? planLines.join("\n") : "אין פריטים פתוחים בלוז לתאריך הזה."
+      }`,
+    );
+    if (ctx.calendarConstraints?.length) {
+      lines.push(
+        `## אילוצי יומן לאותו תאריך\n${ctx.calendarConstraints
+          .map((event) => `- ${event.start_at}–${event.end_at} ${event.title}`)
+          .join("\n")}`,
+      );
+    }
   }
   if (ctx.checklists.length) {
     lines.push(

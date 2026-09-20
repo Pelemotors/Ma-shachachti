@@ -62,7 +62,7 @@ export const ActionSchema = z.object({
   if (["shopping.update", "shopping.toggle", "shopping.remove", "checklist.rename", "checklist.delete",
     "checklist.item.update", "checklist.item.toggle", "checklist.item.remove",
     "task.subtask.update", "task.subtask.toggle", "task.subtask.remove"].includes(action.type)) requireField("id");
-  if (["shopping.add", "checklist.create", "checklist.rename", "task.subtask.add"].includes(action.type)) requireField("title");
+  if (["task.create", "shopping.add", "checklist.create", "checklist.rename", "task.subtask.add"].includes(action.type)) requireField("title");
   // shopping.add: quantity defaults to 1 in normalizeAction — do not reject null
   if (action.type === "shopping.update" && action.title == null && action.quantity == null) {
     context.addIssue({ code: "custom", path: ["title"], message: "title_or_quantity_required" });

@@ -15,7 +15,13 @@ export function ScreenShell({
       <View style={styles.header}>
         <Text style={styles.title}>{title}</Text>
         {onBack ? (
-          <Pressable onPress={onBack} hitSlop={8}>
+          <Pressable
+            onPress={onBack}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה"
+            style={styles.backHit}
+          >
             <Text style={styles.back}>חזרה</Text>
           </Pressable>
         ) : null}
@@ -91,6 +97,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   title: { fontSize: 22, fontWeight: "700", color: "#3D2B1F", textAlign: "right" },
+  backHit: {
+    minWidth: 48,
+    minHeight: 48,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   back: { color: "#8B5E3C", fontWeight: "600" },
   body: { padding: 20, gap: 10, paddingBottom: 40 },
   input: {

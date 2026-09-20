@@ -50,6 +50,14 @@ import { loadAgentProfile } from "@/lib/user-profile";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadChecklists, loadShopping } from "@/lib/lists";
 import { todayContext } from "@/lib/time";
+import { jerusalemDayRange } from "@/lib/schedule";
+import { loadDayPlan } from "@/lib/day-plan";
+import { loadCalendarConstraints } from "@/lib/calendar";
+import {
+  isMoreOfSameDayFollowup,
+  resolveMentionedJerusalemDate,
+  taskIdsFromPresentation,
+} from "@/lib/schedule-query";
 import {
   classifyAgentError,
   logAgentFailure,
@@ -247,7 +255,8 @@ export async function POST(req: Request) {
       new Map();
 
     if (!agent) {
-      const [memory, consequences, profile, shopping, checklists] =
+      const mentionedDate = resolveMentionedJerusalemDate(message);
+      const [memory, consequences, profile, shopping, checklists, dayPlanPack, priorShown] =
         await Promise.all([
           loadMemory(db, userId),
           loadConsequences(
@@ -258,10 +267,34 @@ export async function POST(req: Request) {
           loadAgentProfile(db, userId),
           loadShopping(db, userId),
           loadChecklists(db, userId),
+          mentionedDate
+            ? Promise.all([
+                loadDayPlan(db, userId, mentionedDate),
+                loadCalendarConstraints(
+                  db,
+                  userId,
+                  jerusalemDayRange(mentionedDate).start,
+                  jerusalemDayRange(mentionedDate).end,
+                ),
+              ])
+            : Promise.resolve(null),
+          mentionedDate && isMoreOfSameDayFollowup(message)
+            ? db
+                .from("chat_messages")
+                .select("presentation")
+                .eq("user_id", userId)
+                .eq("session_id", sessionId)
+                .eq("role", "assistant")
+                .order("created_at", { ascending: false })
+                .limit(4)
+            : Promise.resolve({ data: [] as Array<{ presentation?: unknown }> }),
         ]).catch(() => {
           throw new HttpError(503, "לא הצלחנו לטעון את הקשר המשתמש לשיחה.");
         });
       turnConsequences = consequences;
+      const alreadyShownTaskIds = (priorShown.data ?? []).flatMap((row) =>
+        taskIdsFromPresentation(row.presentation),
+      );
 
       const compact = buildCompactContext({
         surface,
@@ -274,6 +307,17 @@ export async function POST(req: Request) {
         consequences: [...consequences.values()],
         shopping,
         checklists,
+        dayPlanItems: dayPlanPack
+          ? (dayPlanPack[0].items as Array<{
+              task_id: string;
+              start_at: string;
+              end_at?: string | null;
+              kind?: string;
+              source?: string;
+            }>)
+          : [],
+        calendarConstraints: dayPlanPack ? dayPlanPack[1] : [],
+        alreadyShownTaskIds,
       });
 
       const { data: recent, error: historyError } = await db

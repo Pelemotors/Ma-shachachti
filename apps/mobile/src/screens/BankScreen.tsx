@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text } from "react-native";
-import { Audio } from "expo-av";
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder,
+  useAudioRecorderState,
+} from "expo-audio";
 import { sendChat } from "../api/chat";
 import { listBankRecordings, uploadBankRecording, type MobileRecording } from "../api/recordings";
 import { useMicDisclosureGate } from "../privacy/micDisclosure";
@@ -8,10 +14,10 @@ import { ErrorText, Field, Hint, PrimaryButton, ScreenShell } from "../ui/chrome
 
 export function BankScreen({ onBack }: { onBack: () => void }) {
   const mic = useMicDisclosureGate();
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder);
   const [items, setItems] = useState<MobileRecording[]>([]);
   const [draft, setDraft] = useState("");
-  const [recording, setRecording] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -21,47 +27,35 @@ export function BankScreen({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     void reload().catch((err) => setError(err instanceof Error ? err.message : "שגיאה"));
-    return () => {
-      void recordingRef.current?.stopAndUnloadAsync().catch(() => undefined);
-    };
   }, [reload]);
 
   async function startRecording() {
     setError("");
     const accepted = await mic.ensureAccepted();
     if (!accepted) return;
-    const permission = await Audio.requestPermissionsAsync();
+    const permission = await AudioModule.requestRecordingPermissionsAsync();
     if (!permission.granted) {
       setError("אין הרשאת מיקרופון.");
       return;
     }
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
     });
-    const next = new Audio.Recording();
-    await next.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-    await next.startAsync();
-    recordingRef.current = next;
-    setRecording(true);
+    await recorder.prepareToRecordAsync();
+    recorder.record();
   }
 
   async function stopAndUpload() {
-    const current = recordingRef.current;
-    recordingRef.current = null;
-    setRecording(false);
-    if (!current) return;
     setBusy(true);
     try {
-      await current.stopAndUnloadAsync();
-      const uri = current.getURI();
-      const status = await current.getStatusAsync();
+      await recorder.stop();
+      const uri = recorder.uri;
       if (!uri) throw new Error("ההקלטה ריקה.");
-      const durationMs =
-        "durationMillis" in status && typeof status.durationMillis === "number"
-          ? status.durationMillis
-          : 1000;
-      const durationSec = Math.min(90, Math.max(1, Math.round(durationMs / 1000)));
+      const durationSec = Math.min(
+        90,
+        Math.max(1, Math.round((recorderState.durationMillis || 1000) / 1000)),
+      );
       const blob = await (await fetch(uri)).blob();
       await uploadBankRecording({
         id: crypto.randomUUID(),
@@ -92,6 +86,7 @@ export function BankScreen({ onBack }: { onBack: () => void }) {
     }
   }
 
+  const recording = recorderState.isRecording;
   return (
     <ScreenShell title="בנק / קול" onBack={onBack}>
       {mic.modal}

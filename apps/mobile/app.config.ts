@@ -63,7 +63,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-dev-client",
     "expo-secure-store",
     "expo-splash-screen",
-    "expo-av",
+    "expo-audio",
+    "expo-asset",
   ],
   extra: {
     mobileApiBaseUrl:

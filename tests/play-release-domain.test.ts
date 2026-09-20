@@ -113,6 +113,14 @@ test("telemetry sanitizer drops content and PII keys", () => {
   assert.equal(cleaned.prompt, undefined);
 });
 
+test("tasks RLS keeps own-row SELECT after household overlay", () => {
+  const sql = read("database/migrations/20260920_play_release_domain.sql");
+  const restore = read("database/migrations/20260920_restore_tasks_select_own.sql");
+  assert.match(sql, /create policy tasks_select_own on public\.tasks/);
+  assert.match(restore, /create policy tasks_select_own on public\.tasks/);
+  assert.match(sql, /create policy tasks_household_select on public\.tasks/);
+});
+
 test("day_plan is SoT; tasks.planned_* is not written by saveTaskPlans", () => {
   const actions = read("lib/actions.ts");
   assert.match(actions, /updateDayPlan/);
