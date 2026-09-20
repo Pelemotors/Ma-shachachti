@@ -1,0 +1,10 @@
+import "./lifecycle.actions.ts";
+import "./task.actions.ts";
+import "./chat.actions.ts";
+import "./planning.actions.ts";
+import "./calendar.actions.ts";
+import "./shopping.actions.ts";
+import "./checklist.actions.ts";
+import "./household.actions.ts";
+import "./notification.actions.ts";
+import "./voice.actions.ts";

@@ -4,10 +4,14 @@ node_modules_broken_*/
 .next/
 .env*
 !.env.example
+!.env.simulation.example
 *.tsbuildinfo
 coverage/
 .vercel/
-test-results/
+test-results/*
+!test-results/simulation/
+test-results/simulation/*
+!test-results/simulation/README.md
 playwright-report/
 .env.qa
 .next-qa
