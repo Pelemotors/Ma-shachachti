@@ -5,11 +5,12 @@ import {
   profileUpdateSchema,
   type UserProfile,
 } from "@/lib/user-profile";
+import { normalizePhoneE164 } from "@/lib/phone";
 
 export const runtime = "nodejs";
 
 const PROFILE_COLUMNS =
-  "user_id,display_name,address_style,onboarding_completed_at,appearance_mode,appearance_season,created_at,updated_at";
+  "user_id,display_name,phone_e164,address_style,onboarding_completed_at,appearance_mode,appearance_season,created_at,updated_at";
 
 function jsonError(error: unknown) {
   if (error instanceof HttpError) {
@@ -48,12 +49,24 @@ export async function PUT(req: Request) {
     if (!parsed.success) {
       throw new HttpError(400, parsed.error.issues[0]?.message ?? "פרופיל לא תקין.");
     }
+    let phone: string | null | undefined = parsed.data.phone_e164 as
+      | string
+      | null
+      | undefined;
+    if (phone !== undefined) {
+      try {
+        phone = normalizePhoneE164(phone);
+      } catch {
+        throw new HttpError(400, "מספר הטלפון אינו תקין.");
+      }
+    }
     const { data, error } = await db
       .from("user_profiles")
       .upsert(
         {
           user_id: userId,
           ...parsed.data,
+          ...(phone !== undefined ? { phone_e164: phone } : {}),
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id" },

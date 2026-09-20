@@ -34,11 +34,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       "android.permission.READ_EXTERNAL_STORAGE",
       "android.permission.WRITE_EXTERNAL_STORAGE",
       "android.permission.SYSTEM_ALERT_WINDOW",
-      "android.permission.RECORD_AUDIO",
       "android.permission.CAMERA",
       "android.permission.ACCESS_FINE_LOCATION",
       "android.permission.ACCESS_COARSE_LOCATION",
       "android.permission.READ_CONTACTS",
+      "com.google.android.gms.permission.AD_ID",
+    ],
+    permissions: [
+      "android.permission.RECORD_AUDIO",
+      "android.permission.POST_NOTIFICATIONS",
     ],
     intentFilters: [
       {
@@ -59,6 +63,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-dev-client",
     "expo-secure-store",
     "expo-splash-screen",
+    "expo-av",
   ],
   extra: {
     mobileApiBaseUrl:

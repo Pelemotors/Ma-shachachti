@@ -1,6 +1,7 @@
 import type { TelemetryEvent } from "./auth/identity.ts";
 
-const BLOCKED = /token|password|email|transcript|audio|authorization|refresh/i;
+const BLOCKED =
+  /token|password|email|transcript|audio|authorization|refresh|phone|title|prompt|message|chat|shopping|calendar/i;
 
 export function sanitizeTelemetryMetadata(
   metadata: Record<string, unknown> | undefined,

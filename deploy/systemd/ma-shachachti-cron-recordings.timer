@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Ma Shachachti recordings retention daily
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+Persistent=true
+Unit=ma-shachachti-cron-recordings.service
+
+[Install]
+WantedBy=timers.target

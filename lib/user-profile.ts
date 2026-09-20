@@ -12,6 +12,7 @@ export const APPEARANCE_SEASONS = [
 export type UserProfile = {
   user_id: string;
   display_name: string | null;
+  phone_e164: string | null;
   address_style: (typeof ADDRESS_STYLES)[number];
   onboarding_completed_at: string | null;
   appearance_mode: "auto" | "season";
@@ -74,6 +75,7 @@ export function extractLegacyProfile(row: unknown): LegacyProfileExtraction {
 
 const profileFields = {
   display_name: z.string().trim().min(1).max(80).nullable(),
+  phone_e164: z.string().trim().max(20).nullable().optional(),
   address_style: z.enum(ADDRESS_STYLES),
   appearance_mode: z.enum(["auto", "season"]),
   appearance_season: z.enum(APPEARANCE_SEASONS).nullable(),
@@ -81,12 +83,15 @@ const profileFields = {
 
 export const profileUpdateSchema = z
   .object(profileFields)
+  .partial()
   .strict()
   .refine(
-    (value) =>
-      value.appearance_mode === "season"
-        ? value.appearance_season !== null
-        : value.appearance_season === null,
+    (value) => {
+      if (value.appearance_mode === undefined) return true;
+      return value.appearance_mode === "season"
+        ? value.appearance_season != null
+        : value.appearance_season == null;
+    },
     { message: "בחירת המראה אינה תקינה." },
   );
 
@@ -110,6 +115,7 @@ export function emptyUserProfile(userId: string): UserProfile {
   return {
     user_id: userId,
     display_name: null,
+    phone_e164: null,
     address_style: "neutral",
     onboarding_completed_at: null,
     appearance_mode: "auto",

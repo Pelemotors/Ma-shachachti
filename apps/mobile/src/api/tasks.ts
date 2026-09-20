@@ -1,10 +1,27 @@
-/**
- * Placeholder modules for future domain APIs.
- * Screens must import from here (or sibling api modules), never fetch() directly.
- */
-
 import { apiRequest } from "./client";
 
-export async function getMobileVersion() {
-  return apiRequest<{ version?: string; min?: string }>("/api/mobile/version");
+export type MobileTask = {
+  id: string;
+  title: string;
+  status: "open" | "done" | "cancelled";
+  due_on: string | null;
+  due_at: string | null;
+};
+
+export async function listTasks() {
+  return apiRequest<{ tasks: MobileTask[] }>("/api/tasks");
+}
+
+export async function createTask(title: string) {
+  return apiRequest<{ tasks: MobileTask[] }>("/api/tasks", {
+    method: "POST",
+    body: JSON.stringify({ type: "task.create", title }),
+  });
+}
+
+export async function completeTask(id: string) {
+  return apiRequest<{ tasks: MobileTask[] }>("/api/tasks", {
+    method: "POST",
+    body: JSON.stringify({ type: "task.complete", id }),
+  });
 }

@@ -38,7 +38,7 @@ export async function GET(req: Request) {
     const { db, userId } = await authorize(req);
     const { data, error } = await db
       .from("notification_preferences")
-      .select("default_reminder_minutes,kinds")
+      .select("default_reminder_minutes,kinds,developer_comms_enabled")
       .eq("user_id", userId)
       .maybeSingle();
     if (error) throw new HttpError(503, "לא הצלחנו לטעון את ההגדרות.");
@@ -46,6 +46,7 @@ export async function GET(req: Request) {
       default_reminder_minutes:
         data?.default_reminder_minutes ?? DEFAULT_REMINDER_MINUTES,
       kinds: (data?.kinds as Record<string, boolean> | null) ?? {},
+      developer_comms_enabled: data?.developer_comms_enabled === true,
     });
   } catch (error) {
     return jsonError(error);
@@ -58,11 +59,18 @@ export async function PUT(req: Request) {
     const body = (await req.json().catch(() => null)) as {
       default_reminder_minutes?: unknown;
       kinds?: unknown;
+      developer_comms_enabled?: unknown;
     } | null;
     if (!isReminderMinuteOption(body?.default_reminder_minutes)) {
       throw new HttpError(400, "זמן התזכורת אינו תקין.");
     }
     const kinds = normalizeKinds(body?.kinds);
+    if (
+      body?.developer_comms_enabled != null &&
+      typeof body.developer_comms_enabled !== "boolean"
+    ) {
+      throw new HttpError(400, "העדפת הודעות מפתח אינה תקינה.");
+    }
     const now = new Date().toISOString();
     const row: Record<string, unknown> = {
       user_id: userId,
@@ -70,11 +78,15 @@ export async function PUT(req: Request) {
       updated_at: now,
     };
     if (kinds) row.kinds = kinds;
+    if (typeof body?.developer_comms_enabled === "boolean") {
+      row.developer_comms_enabled = body.developer_comms_enabled;
+    }
     const { error } = await db.from("notification_preferences").upsert(row);
     if (error) throw new HttpError(503, "לא הצלחנו לשמור את ההגדרה.");
     return Response.json({
       default_reminder_minutes: body.default_reminder_minutes,
       kinds: kinds ?? {},
+      developer_comms_enabled: body?.developer_comms_enabled === true,
     });
   } catch (error) {
     return jsonError(error);

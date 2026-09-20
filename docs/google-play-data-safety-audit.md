@@ -1,15 +1,13 @@
 # Google Play Data Safety audit — מה שכחתי?
 
-**Policy version:** `2026-09-18`  
+**Policy version:** `2026-09-20`  
 **App:** מה שכחתי? · https://mashachachti.co.il  
 **Operator:** Pelemotors · Contact: `noreply@mashachachti.co.il`  
 **Policy / deletion URLs:** `/privacy`, `/account-deletion`
 
 **Important:** Answers below are for data the **backend + declared client capabilities** collect. Do **not** invent undeclared collection. Mark store-binary-specific rows with the correct package.
 
-**Package IDs in repo (pick the shipped one — `REQUIRES_DECISION`):**
-- Capacitor: `il.co.mashachachti.app` (mic + notifications permissions)
-- Expo foundation: `com.mashachachti.app` (mic blocked; INTERNET + VIBRATE)
+**Shipped Play package:** `com.mashachachti.app` (Expo native). Capacitor `il.co.mashachachti.app` is legacy WebView, not the Play binary.
 
 ---
 
@@ -43,7 +41,7 @@ Legend:
 | **Personal info → Email address** | Yes | Yes (Resend for auth email; Auth host) | No | Required for email auth | Account management | Supabase Auth + Resend SMTP |
 | **Personal info → Name** | Yes if user provides display name | Possibly to Auth/AI context if included | No | Optional | Account management; App functionality | Only if entered — do not declare if never stored (`UNVERIFIED` field coverage in Production schema beyond policy text) |
 | **Personal info → User IDs** | Yes | Yes (to processors as account/session identifiers when calling APIs) | No | Required | Account management; App functionality | Supabase user id; device ids for push registration |
-| **Personal info → Address / Phone / Race / Political…** | **No** | No | — | — | — | Not in Lean product facts |
+| **Personal info → Phone number** | Yes | No | No | Optional | App functionality, Account management | `user_profiles.phone_e164`; manual entry only |
 | **Financial info** | **No** | No | — | — | — | Monetization flag disabled in foundation |
 | **Health & fitness** | **No** | No | — | — | — | — |
 | **Messages → Emails / SMS / MIM** | **No** (app is not an email client) | — | — | — | — | Auth emails are transactional via Resend, not user mailbox collection |
@@ -51,7 +49,7 @@ Legend:
 | **Photos and videos** | **Capacitor share intents accept `image/*`** — treat as **Yes if share-to-app is shipped and images are uploaded/stored**; otherwise do not invent server collection | Shared only if sent to backend/AI | No if stored | Optional | App functionality | Capacitor has share image intents. Whether images are persisted server-side beyond capture APIs is `UNVERIFIED` beyond “captures” mobile APIs existing — **do not declare Photos as collected in Play until persistence is confirmed for the shipped build** |
 | **Audio files** | **Yes** on Capacitor / voice-enabled builds | Yes (OpenAI transcription; Storage) | No (stored then TTL) | Optional (voice feature) | App functionality | Raw audio in `recordings` bucket; TTL `processed_at + 7 days`; transcript kept. **Expo foundation: RECORD_AUDIO blocked — do not declare mic audio collection for that binary** |
 | **Files and docs** | **No** undeclared general file picker collection | — | — | — | — | Do not invent |
-| **Calendar** | **No** | — | — | — | — | — |
+| **Calendar** | Yes | No | No | Optional | App functionality, Personalization | `calendar_events_cache` constraints only; tokens encrypted |
 | **Contacts** | **No** | — | — | — | — | Blocked on Expo; not declared on Capacitor |
 | **App activity → App interactions / in-app search** | Partial — first-party telemetry events | No third-party analytics SDK | No (host logs) | Optional | Analytics / App functionality (internal diagnostics) | `logMobileEvent` + sanitize; **not** a third-party analytics share |
 | **App activity → Other user-generated content** | Yes (tasks, shopping, checklists, memories, transcripts) | Yes when sent to OpenAI for agent | No | Optional / core for product value | App functionality | Postgres primary store |

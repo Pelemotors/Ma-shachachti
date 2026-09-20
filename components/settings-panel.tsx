@@ -30,6 +30,7 @@ export function SettingsPanel({
   onSignOut: () => void;
 }) {
   const [name, setName] = useState(profile.display_name ?? "");
+  const [phone, setPhone] = useState(profile.phone_e164 ?? "");
   const [addressStyle, setAddressStyle] = useState(profile.address_style);
   const [appearanceMode, setAppearanceMode] = useState(profile.appearance_mode);
   const [appearanceSeason, setAppearanceSeason] = useState<Season>(
@@ -68,6 +69,7 @@ export function SettingsPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         display_name: name.trim() || null,
+        phone_e164: phone.trim() || null,
         address_style: addressStyle,
         appearance_mode: appearanceMode,
         appearance_season: appearanceMode === "season" ? appearanceSeason : null,
@@ -113,6 +115,15 @@ export function SettingsPanel({
         <label className="field">
           <span>שם לתצוגה</span>
           <input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label className="field">
+          <span>טלפון (אופציונלי)</span>
+          <input
+            value={phone}
+            maxLength={20}
+            inputMode="tel"
+            onChange={(event) => setPhone(event.target.value)}
+          />
         </label>
         <label className="field">
           <span>צורת פנייה</span>

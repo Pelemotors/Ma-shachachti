@@ -10,6 +10,7 @@ import type {
   TaskRow,
 } from "./types.ts";
 import { mutateChecklist, mutateShopping } from "./lists.ts";
+import { removeDayPlanItem, upsertDayPlanItem } from "./day-plan.ts";
 import { mutateSubtask } from "./task-subtasks.ts";
 import {
   preferenceTopicKey,
@@ -181,8 +182,7 @@ export async function executeAction(
           alreadyExists: true,
         });
       }
-      let plannedStart: string | null = null;
-      let plannedEnd: string | null = null;
+      let plannedWindow: { start: string; end: string | null } | null = null;
       if (action.plan_patch === "set") {
         const planned = resolvePlannedWindow(
           action.planned_date,
@@ -190,8 +190,7 @@ export async function executeAction(
           action.planned_end_time,
         );
         if (!planned.ok) return fail(action.type, planned.error);
-        plannedStart = planned.start;
-        plannedEnd = planned.end;
+        plannedWindow = { start: planned.start, end: planned.end };
       }
       const { data, error } = await db
         .from("tasks")
@@ -202,8 +201,6 @@ export async function executeAction(
           due_on: fields.due_on,
           due_at: fields.due_at,
           reminder_at: reminderAt,
-          planned_start_at: plannedStart,
-          planned_end_at: plannedEnd,
           reminder_enabled: reminderEnabled,
           reminder_opted_in_at: reminderEnabled ? now : null,
           reminder_offset_minutes: reminderOffset,
@@ -214,6 +211,15 @@ export async function executeAction(
         .single();
       if (error || !data)
         return fail(action.type, "לא הצלחנו ליצור את המשימה.");
+      if (plannedWindow && action.planned_date) {
+        await upsertDayPlanItem(db, userId, action.planned_date, {
+          task_id: data.id as string,
+          start_at: plannedWindow.start,
+          end_at: plannedWindow.end,
+          kind: "flexible",
+          source: "manual",
+        });
+      }
       return ok(action.type, {
         id: data.id as string,
         title: fields.title,
@@ -266,8 +272,9 @@ export async function executeAction(
       }
       if (action.plan_patch === "clear") {
         nextPlannedStart = null;
-        patch.planned_start_at = null;
-        patch.planned_end_at = null;
+        if (action.planned_date) {
+          await removeDayPlanItem(db, userId, action.planned_date, action.id);
+        }
       } else if (action.plan_patch === "set") {
         const planned = resolvePlannedWindow(
           action.planned_date,
@@ -276,8 +283,15 @@ export async function executeAction(
         );
         if (!planned.ok) return fail(action.type, planned.error);
         nextPlannedStart = planned.start;
-        patch.planned_start_at = planned.start;
-        patch.planned_end_at = planned.end;
+        if (action.planned_date) {
+          await upsertDayPlanItem(db, userId, action.planned_date, {
+            task_id: action.id,
+            start_at: planned.start,
+            end_at: planned.end,
+            kind: "flexible",
+            source: "manual",
+          });
+        }
       }
       Object.assign(
         patch,
@@ -773,7 +787,7 @@ export async function saveTaskPlans(
   }>,
 ) {
   if (!DATE_RE.test(date)) throw new Error("invalid_date");
-  const now = new Date().toISOString();
+  const { updateDayPlan } = await import("./day-plan.ts");
   const blank: AgentAction = {
     type: "task.create",
     id: null,
@@ -796,52 +810,47 @@ export async function saveTaskPlans(
     confidence: null,
     silent: null,
   };
+  const planItems: Array<{
+    task_id: string;
+    start_at: string;
+    end_at: string | null;
+    kind: "fixed" | "flexible";
+    source: "manual";
+  }> = [];
   for (const item of items.slice(0, 20)) {
-    if (item.task_id) {
-      const current = await ownTask(db, userId, item.task_id);
-      if (!current) {
-        throw new Error("forbidden_task");
+    let taskId = item.task_id || "";
+    if (taskId) {
+      const current = await ownTask(db, userId, taskId);
+      if (!current) throw new Error("forbidden_task");
+    } else {
+      const title = item.title?.trim() || "";
+      if (!title) continue;
+      const create = await executeAction(db, userId, {
+        ...blank,
+        title,
+        ...(item.anchor === "fixed"
+          ? { due_on: date, due_time: item.planned_start }
+          : {}),
+      });
+      if (!create.ok || !create.id) {
+        throw new Error(create.ok ? "create_failed" : create.error);
       }
-      const planned = resolvePlannedWindow(
-        date,
-        item.planned_start,
-        item.planned_end,
-      );
-      if (!planned.ok) throw new Error(planned.error);
-      const { error } = await db
-        .from("tasks")
-        .update({
-          planned_start_at: planned.start,
-          planned_end_at: planned.end,
-          ...(current.planned_start_at !== planned.start
-            ? { reminder_sent_at: null, reminder_claimed_at: null }
-            : {}),
-          updated_at: now,
-        })
-        .eq("user_id", userId)
-        .eq("id", item.task_id);
-      if (error) throw error;
-      continue;
+      taskId = create.id;
     }
-    const title = item.title?.trim() || "";
-    if (!title) continue;
-    const create =
-      item.anchor === "fixed"
-        ? await executeAction(db, userId, {
-            ...blank,
-            title,
-            due_on: date,
-            due_time: item.planned_start,
-          })
-        : await executeAction(db, userId, {
-            ...blank,
-            title,
-            plan_patch: "set",
-            planned_date: date,
-            planned_start_time: item.planned_start,
-            planned_end_time: item.planned_end,
-          });
-    if (!create.ok) throw new Error(create.error);
+    const planned = resolvePlannedWindow(
+      date,
+      item.planned_start,
+      item.planned_end,
+    );
+    if (!planned.ok) throw new Error(planned.error);
+    planItems.push({
+      task_id: taskId,
+      start_at: planned.start,
+      end_at: planned.end,
+      kind: item.anchor === "fixed" ? "fixed" : "flexible",
+      source: "manual",
+    });
   }
+  await updateDayPlan(db, userId, date, planItems);
   return loadTasks(db, userId);
 }

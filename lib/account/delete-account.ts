@@ -18,6 +18,12 @@ export async function deleteUserAccountFully(
   admin: SupabaseClient,
   userId: string,
 ): Promise<AccountDeletionSummary> {
+  const { prepareAccountDeletionHousehold } = await import("@/lib/household");
+  const { disconnectCalendar } = await import("@/lib/calendar");
+  await prepareAccountDeletionHousehold(admin, userId);
+  await disconnectCalendar(admin, userId).catch(() => null);
+  await admin.from("background_jobs").delete().eq("user_id", userId);
+  await admin.from("day_plans").delete().eq("scope_type", "user").eq("scope_id", userId);
   const storage = await purgeUserRecordingObjects(admin, userId);
   if (storage.failed > 0) {
     throw new HttpError(

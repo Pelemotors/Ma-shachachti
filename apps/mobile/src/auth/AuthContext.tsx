@@ -11,6 +11,7 @@ import { AppState, type AppStateStatus } from "react-native";
 import type { NativeAuthProvider } from "../api/auth";
 import {
   restoreSession,
+  signInWithEmailPassword,
   signInWithNativeProvider,
   signOut as sessionSignOut,
   type AuthUser,
@@ -22,6 +23,7 @@ type AuthState = {
   user: AuthUser | null;
   error: string | null;
   signIn: (provider: NativeAuthProvider) => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
 };
@@ -81,6 +83,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setError(null);
         try {
           const result = await signInWithNativeProvider(provider);
+          setUser(result.user);
+        } catch (caught) {
+          const message =
+            caught instanceof Error ? caught.message : "ההתחברות נכשלה.";
+          setError(message);
+          throw caught;
+        }
+      },
+      signInWithEmail: async (email, password) => {
+        setError(null);
+        try {
+          const result = await signInWithEmailPassword(email, password);
           setUser(result.user);
         } catch (caught) {
           const message =

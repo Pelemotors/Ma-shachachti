@@ -2,7 +2,8 @@ import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { apiRequest } from "../api/client";
 import { clearSecureSession } from "../storage/secureSession";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Field } from "../ui/chrome";
 
 const PRIVACY_URL = "https://mashachachti.co.il/privacy";
 const DELETION_URL = "https://mashachachti.co.il/account-deletion";
@@ -13,6 +14,28 @@ export function PrivacySettingsScreen({ onBack }: { onBack: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [phone, setPhone] = useState("");
+
+  useEffect(() => {
+    void apiRequest<{ profile?: { phone_e164?: string | null } }>("/api/profile")
+      .then((data) => setPhone(data.profile?.phone_e164 ?? ""))
+      .catch(() => undefined);
+  }, []);
+
+  async function savePhone() {
+    setError("");
+    setBusy(true);
+    try {
+      await apiRequest("/api/profile", {
+        method: "PUT",
+        body: JSON.stringify({ phone_e164: phone.trim() || null }),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שמירת הטלפון נכשלה");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function deleteAccount() {
     setError("");
@@ -35,6 +58,11 @@ export function PrivacySettingsScreen({ onBack }: { onBack: () => void }) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>פרטיות וחשבון</Text>
+
+      <Field value={phone} onChangeText={setPhone} hint="טלפון אופציונלי" />
+      <Pressable style={styles.row} disabled={busy} onPress={() => void savePhone()}>
+        <Text style={styles.rowText}>שמירת טלפון</Text>
+      </Pressable>
 
       <Pressable
         style={styles.row}

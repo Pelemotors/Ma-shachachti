@@ -1,7 +1,8 @@
 import { authorize, HttpError } from "@/lib/server-auth";
 import { recordingId } from "@/lib/recordings";
-import { processBrainDumpTranscript } from "@/lib/agent/brain-dump";
 import { AgentUpstreamError } from "@/lib/agent/openai-orchestrator";
+import { enqueueJob, processQueuedJobs } from "@/lib/jobs";
+import { createServiceClient } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -34,19 +35,13 @@ export async function POST(req: Request) {
       throw new HttpError(409, "ההקלטה עדיין לא מוכנה לעיבוד.");
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new HttpError(503, "חיבור ה-AI עדיין לא הוגדר.");
-
-    const result = await processBrainDumpTranscript({
-      db,
-      userId,
-      recordingId: id,
-      transcript: transcript || String(recording.transcript ?? ""),
-      apiKey,
+    const job = await enqueueJob(db, userId, {
+      job_type: "brain_dump",
+      idempotency_key: `brain-dump:${id}`,
+      recording_id: id,
     });
-
-    // Intentionally no chat reply / no chat messages.
-    return Response.json(result);
+    void processQueuedJobs(createServiceClient()).catch(() => null);
+    return Response.json({ job, recording_id: id, queued: true });
   } catch (error) {
     if (error instanceof HttpError) {
       return Response.json({ error: error.message }, { status: error.status });

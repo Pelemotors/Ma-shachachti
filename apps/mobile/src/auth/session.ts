@@ -33,6 +33,22 @@ export async function restoreSession(): Promise<{
   };
 }
 
+export async function signInWithEmailPassword(
+  email: string,
+  password: string,
+): Promise<{ user: AuthUser }> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  });
+  if (error || !data.session) {
+    throw new Error("התחברות במייל נכשלה.");
+  }
+  await persistSessionMarkers(data.session);
+  return { user: toAuthUser(data.session.user) };
+}
+
 export async function signInWithNativeProvider(
   provider: NativeAuthProvider,
 ): Promise<{ user: AuthUser }> {

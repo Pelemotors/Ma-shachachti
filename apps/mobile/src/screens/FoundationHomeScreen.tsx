@@ -1,61 +1,63 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
-import { getMobileApiBaseUrl } from "../utils/env";
+import { ProductHomeScreen } from "./ProductHomeScreen";
 import { PrivacySettingsScreen } from "./PrivacySettingsScreen";
+import { TasksScreen } from "./TasksScreen";
+import { ChatScreen } from "./ChatScreen";
+import { ListsScreen } from "./ListsScreen";
+import { DayPlanScreen } from "./DayPlanScreen";
+import { BankScreen } from "./BankScreen";
+import { CalendarScreen } from "./CalendarScreen";
+import { HouseholdScreen } from "./HouseholdScreen";
+import { NotificationSettingsScreen } from "./NotificationSettingsScreen";
 
-/** Signed-in foundation placeholder — product screens come later. */
 export function FoundationHomeScreen() {
   const auth = useAuth();
-  const [privacy, setPrivacy] = useState(false);
+  const [screen, setScreen] = useState("home");
 
-  if (privacy) {
-    return <PrivacySettingsScreen onBack={() => setPrivacy(false)} />;
+  if (screen === "privacy") {
+    return <PrivacySettingsScreen onBack={() => setScreen("home")} />;
+  }
+  if (screen === "tasks") {
+    return <TasksScreen onBack={() => setScreen("home")} />;
+  }
+  if (screen === "chat") {
+    return <ChatScreen onBack={() => setScreen("home")} />;
+  }
+  if (screen === "lists") {
+    return <ListsScreen onBack={() => setScreen("home")} />;
+  }
+  if (screen === "plan") {
+    return <DayPlanScreen mode="plan" onBack={() => setScreen("home")} />;
+  }
+  if (screen === "freetime") {
+    return <DayPlanScreen mode="freetime" onBack={() => setScreen("home")} />;
+  }
+  if (screen === "bank") {
+    return <BankScreen onBack={() => setScreen("home")} />;
+  }
+  if (screen === "calendar") {
+    return <CalendarScreen onBack={() => setScreen("home")} />;
+  }
+  if (screen === "household") {
+    return <HouseholdScreen onBack={() => setScreen("home")} />;
+  }
+  if (screen === "notifications") {
+    return <NotificationSettingsScreen onBack={() => setScreen("home")} />;
   }
 
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.title}>Foundation מוכן</Text>
-      <Text style={styles.line}>משתמש: {auth.user?.email ?? auth.user?.id}</Text>
-      <Text style={styles.line}>API: {getMobileApiBaseUrl()}</Text>
-      <Text style={styles.note}>
-        אין מסכי Tasks / Home / Chat / Voice / Widgets בשלב זה.
-      </Text>
-      <Pressable style={styles.button} onPress={() => setPrivacy(true)}>
-        <Text style={styles.buttonText}>פרטיות וחשבון</Text>
-      </Pressable>
-      <Pressable style={styles.secondary} onPress={() => void auth.signOut()}>
-        <Text style={styles.secondaryText}>יציאה</Text>
+    <View style={{ flex: 1 }}>
+      <ProductHomeScreen onOpen={setScreen} />
+      <Pressable style={styles.signOut} onPress={() => void auth.signOut()}>
+        <Text style={styles.back}>יציאה</Text>
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    padding: 24,
-    justifyContent: "center",
-    backgroundColor: "#F7F1EA",
-    gap: 10,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#3D2B1F",
-    textAlign: "right",
-  },
-  line: { fontSize: 14, color: "#5C4033", textAlign: "right" },
-  note: { fontSize: 13, color: "#8A7464", textAlign: "right", marginTop: 8 },
-  button: {
-    marginTop: 20,
-    minHeight: 48,
-    borderRadius: 12,
-    backgroundColor: "#8B5E3C",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
-  secondary: { minHeight: 44, alignItems: "center", justifyContent: "center" },
-  secondaryText: { color: "#8B5E3C", fontSize: 15 },
+  back: { textAlign: "center", color: "#8B5E3C", marginTop: 16 },
+  signOut: { padding: 12, backgroundColor: "#F7F1EA" },
 });

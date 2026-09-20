@@ -48,3 +48,13 @@ export function setNativeIdentityProvider(provider: NativeIdentityProvider) {
 export function getNativeIdentityProvider() {
   return activeProvider;
 }
+
+export function nativeOAuthHint(kind: "google" | "apple" | "calendar") {
+  if (kind === "calendar") {
+    return "חיבור היומן מושבת עד שנטיעת מפתחות OAuth והצפנה תושלם. זה אינו feature עובד.";
+  }
+  if (kind === "google") {
+    return "Google Sign-In מושבת עד שנטיעת GOOGLE_NATIVE_CLIENT_ID תושלם.";
+  }
+  return "Apple Sign-In מושבת עד שנטיעת מפתחות Apple תושלם.";
+}

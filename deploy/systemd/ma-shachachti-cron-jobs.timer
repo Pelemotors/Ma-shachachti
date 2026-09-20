@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Ma Shachachti jobs worker every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Unit=ma-shachachti-cron-jobs.service
+
+[Install]
+WantedBy=timers.target

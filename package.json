@@ -12,6 +12,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "privacy:gate": "node scripts/privacy-ci-gate.mjs",
+    "gate:code-deploy": "node scripts/release/production-code-deploy-gate.mjs",
+    "gate:play-ready": "node scripts/release/google-play-release-ready-gate.mjs",
     "agent:bundle": "node scripts/bundle-instructions.mjs",
     "lint": "npm run typecheck",
     "cap:sync": "npx cap sync",

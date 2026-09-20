@@ -24,7 +24,7 @@ test("privacy pages exist as public Next routes", () => {
   const privacy = read("app/privacy/page.tsx");
   const deletion = read("app/account-deletion/page.tsx");
   assert.match(privacy, /מדיניות פרטיות – מה שכחתי\?/);
-  assert.match(privacy, /2026-09-18/);
+  assert.match(privacy, /2026-09-20/);
   assert.match(privacy, /noreply@mashachachti\.co\.il/);
   assert.match(privacy, /7 ימים/);
   assert.match(privacy, /OpenAI/);
@@ -140,13 +140,31 @@ test("privacy docs deliverables exist", () => {
 test("expo foundation blocks sensitive unused permissions", () => {
   const config = read("apps/mobile/app.config.ts");
   assert.match(config, /blockedPermissions/);
-  assert.match(config, /RECORD_AUDIO/);
   assert.match(config, /READ_CONTACTS/);
+  assert.match(config, /AD_ID/);
   const manifest = read(
     "apps/mobile/android/app/src/main/AndroidManifest.xml",
   );
   assert.match(manifest, /INTERNET/);
-  assert.match(manifest, /RECORD_AUDIO" tools:node="remove"/);
+  assert.match(manifest, /RECORD_AUDIO/);
+  assert.match(manifest, /AD_ID" tools:node="remove"/);
+});
+
+test("expo product screens are real CRUD not JSON dumps", () => {
+  const home = read("apps/mobile/src/screens/FoundationHomeScreen.tsx");
+  assert.match(home, /TasksScreen/);
+  assert.match(home, /ChatScreen/);
+  assert.match(home, /DayPlanScreen/);
+  assert.match(home, /BankScreen/);
+  assert.match(home, /HouseholdScreen/);
+  assert.doesNotMatch(home, /ApiListScreen/);
+  const tasks = read("apps/mobile/src/screens/TasksScreen.tsx");
+  assert.match(tasks, /createTask/);
+  assert.match(tasks, /completeTask/);
+  const gate = read("apps/mobile/src/screens/FoundationGateScreen.tsx");
+  assert.match(gate, /signInWithEmail/);
+  assert.match(gate, /disabled/);
+  assert.match(gate, /nativeOAuthHint/);
 });
 
 test("mobile privacy settings screen is real (not placeholder)", () => {

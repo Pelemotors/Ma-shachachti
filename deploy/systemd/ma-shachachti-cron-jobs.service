@@ -1,0 +1,9 @@
+[Unit]
+Description=Ma Shachachti durable jobs cron
+After=ma-shachachti.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/srv/ira/ma-shachachti/app/.env.production
+WorkingDirectory=/srv/ira/ma-shachachti/app
+ExecStart=/bin/sh /srv/ira/ma-shachachti/app/scripts/release/invoke-cron.sh jobs 3001

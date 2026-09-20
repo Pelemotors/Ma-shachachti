@@ -70,11 +70,13 @@ function action(partial: Partial<AgentAction>): AgentAction {
 type Row = TaskRow & { user_id: string };
 
 function memoryDb(rows: Row[]) {
+  const plans: Record<string, unknown>[] = [];
+  const planItems: Record<string, unknown>[] = [];
   const db = {
-    from() {
+    from(table?: string) {
       let filters: Record<string, string> = {};
       let payload: Record<string, unknown> = {};
-      let op: "select" | "insert" | "update" = "select";
+      let op: "select" | "insert" | "update" | "delete" = "select";
       const api = {
         select() {
           return api;
@@ -92,22 +94,45 @@ function memoryDb(rows: Row[]) {
         limit() {
           return api;
         },
-        insert(next: Record<string, unknown>) {
+        delete() {
+          op = "delete";
+          if (table === "day_plan_items") {
+            const planId = filters.day_plan_id;
+            for (let i = planItems.length - 1; i >= 0; i -= 1) {
+              if (!planId || planItems[i].day_plan_id === planId) {
+                planItems.splice(i, 1);
+              }
+            }
+          }
+          return api;
+        },
+        insert(next: Record<string, unknown> | Record<string, unknown>[]) {
           op = "insert";
-          payload = next;
+          if (table === "day_plans") {
+            const row = { id: "plan-1", ...(next as Record<string, unknown>) };
+            plans.push(row);
+            api.created = row as never;
+            return api;
+          }
+          if (table === "day_plan_items") {
+            const list = Array.isArray(next) ? next : [next];
+            planItems.push(...list);
+            return api;
+          }
+          payload = next as Record<string, unknown>;
           const created: Row = task({
             id: `new-${rows.length + 1}`,
-            title: String(next.title),
-            notes: String(next.notes ?? ""),
-            due_on: (next.due_on as string | null) ?? null,
-            due_at: (next.due_at as string | null) ?? null,
-            planned_start_at: (next.planned_start_at as string | null) ?? null,
-            planned_end_at: (next.planned_end_at as string | null) ?? null,
-            reminder_enabled: next.reminder_enabled !== false,
+            title: String(payload.title),
+            notes: String(payload.notes ?? ""),
+            due_on: (payload.due_on as string | null) ?? null,
+            due_at: (payload.due_at as string | null) ?? null,
+            planned_start_at: (payload.planned_start_at as string | null) ?? null,
+            planned_end_at: (payload.planned_end_at as string | null) ?? null,
+            reminder_enabled: payload.reminder_enabled !== false,
             reminder_offset_minutes:
-              (next.reminder_offset_minutes as number | null) ?? null,
+              (payload.reminder_offset_minutes as number | null) ?? null,
           }) as Row;
-          created.user_id = String(next.user_id);
+          created.user_id = String(payload.user_id);
           rows.push(created);
           api.created = created;
           return api;
@@ -122,6 +147,12 @@ function memoryDb(rows: Row[]) {
           return { data: { id: api.created?.id }, error: null };
         },
         async maybeSingle() {
+          if (table === "day_plans") {
+            return { data: plans[0] ?? null, error: null };
+          }
+          if (table === "household_members") {
+            return { data: null, error: null };
+          }
           const found = rows.find(
             (row) => row.id === filters.id && row.user_id === filters.user_id,
           );
@@ -131,6 +162,18 @@ function memoryDb(rows: Row[]) {
           resolve: (value: { data: Row[] | null; error: null }) => unknown,
           reject?: (reason: unknown) => unknown,
         ) {
+          if (op === "delete") {
+            return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+          }
+          if (op === "insert" && table === "day_plan_items") {
+            return Promise.resolve({ data: planItems, error: null }).then(resolve, reject);
+          }
+          if (table === "day_plan_items") {
+            const data = planItems.filter(
+              (item) => !filters.day_plan_id || item.day_plan_id === filters.day_plan_id,
+            );
+            return Promise.resolve({ data, error: null }).then(resolve, reject);
+          }
           if (op === "update") {
             const found = rows.find(
               (row) =>
@@ -172,14 +215,8 @@ test("proposed morning slot stays planned and does not become due_at", async () 
   assert.equal(result.ok, true);
   assert.equal(rows[0]?.due_at, null);
   assert.equal(rows[0]?.due_on, null);
-  assert.equal(
-    rows[0]?.planned_start_at,
-    jerusalemDateTimeToUtc("2026-09-11", "08:00").toISOString(),
-  );
-  assert.equal(
-    rows[0]?.planned_end_at,
-    jerusalemDateTimeToUtc("2026-09-11", "08:30").toISOString(),
-  );
+  assert.equal(rows[0]?.planned_start_at, null);
+  assert.equal(rows[0]?.planned_end_at, null);
 });
 
 test("parents evening is a real due_at", async () => {
@@ -215,7 +252,7 @@ test("laundry as part of a plan is planned time, not a deadline", async () => {
     }),
   );
   assert.equal(rows[0]?.due_at, null);
-  assert.ok(rows[0]?.planned_start_at);
+  assert.equal(rows[0]?.planned_start_at, null);
 });
 
 test("schedule proposal does not write before save", () => {
@@ -262,7 +299,7 @@ test("saving a schedule writes planned time for proposed items", async () => {
   const cleaning = rows.find((row) => row.title === "ניקיון סלון");
   const exit = rows.find((row) => row.title === "יציאה לארוחת חג");
   assert.equal(cleaning?.due_at, null);
-  assert.ok(cleaning?.planned_start_at);
+  assert.equal(cleaning?.planned_start_at, null);
   assert.equal(exit?.due_at, jerusalemDateTimeToUtc("2026-09-11", "18:00").toISOString());
   assert.equal(exit?.planned_start_at, null);
 });

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Ma Shachachti reminders every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Unit=ma-shachachti-cron-reminders.service
+
+[Install]
+WantedBy=timers.target

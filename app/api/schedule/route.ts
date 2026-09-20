@@ -1,6 +1,7 @@
 import { authorize, HttpError } from "@/lib/server-auth";
 import { loadScheduleTasks } from "@/lib/actions";
-import { classifyScheduleDay } from "@/lib/schedule";
+import { loadDayPlan } from "@/lib/day-plan";
+import { jerusalemParts } from "@/lib/time";
 import { DATE_RE, todayContext } from "@/lib/time";
 
 export const runtime = "nodejs";
@@ -11,16 +12,24 @@ export async function GET(req: Request) {
     const requested = new URL(req.url).searchParams.get("date");
     const date =
       requested && DATE_RE.test(requested) ? requested : todayContext().date;
+    const { items } = await loadDayPlan(db, userId, date);
     const tasks = await loadScheduleTasks(db, userId);
-    const day = classifyScheduleDay(tasks, date);
+    const byId = new Map(tasks.map((task) => [task.id, task]));
+    const timed = items
+      .map((item) => {
+        const task = byId.get(String(item.task_id));
+        if (!task) return null;
+        return {
+          ...task,
+          start: jerusalemParts(String(item.start_at)).time,
+          end: item.end_at ? jerusalemParts(String(item.end_at)).time : null,
+          fixed: item.kind === "fixed",
+        };
+      })
+      .filter(Boolean);
     return Response.json({
       date,
-      timed: day.timed.map((item) => ({
-        ...item.task,
-        start: item.start,
-        end: item.end,
-        fixed: item.fixed,
-      })),
+      timed,
     });
   } catch (error) {
     if (error instanceof HttpError) {

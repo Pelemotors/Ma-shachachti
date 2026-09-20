@@ -7,34 +7,34 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../auth/AuthContext";
-import { getMobileApiBaseUrl } from "../utils/env";
+import { nativeOAuthHint } from "../auth/nativeIdentity";
+import { Field } from "../ui/chrome";
 
 /**
- * Foundation-only gate screen — not product Home/Tasks/Chat.
- * Native Google/Apple buttons call /api/auth/native via the auth layer;
- * until native SDKs are wired they surface a clear unavailable message.
+ * Working path is email/password. Google/Apple stay visibly disabled until
+ * credentials are planted (HUMAN RELEASE CHECK / Gate B).
  */
 export function FoundationGateScreen() {
   const auth = useAuth();
-  const [busy, setBusy] = useState<"google" | "apple" | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  async function run(provider: "google" | "apple") {
-    setBusy(provider);
+  async function emailSignIn() {
+    setBusy(true);
     try {
-      await auth.signIn(provider);
+      await auth.signInWithEmail(email, password);
     } catch {
       /* error shown via auth.error */
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
 
   return (
     <View style={styles.wrap}>
       <Text style={styles.brand}>מה שכחתי?</Text>
-      <Text style={styles.subtitle}>Mobile Foundation</Text>
-      <Text style={styles.meta}>API: {getMobileApiBaseUrl()}</Text>
-      <Text style={styles.meta}>Package: com.mashachachti.app</Text>
+      <Text style={styles.subtitle}>התחברות</Text>
 
       {auth.error ? (
         <Text style={styles.error} accessibilityRole="alert">
@@ -42,35 +42,34 @@ export function FoundationGateScreen() {
         </Text>
       ) : null}
 
+      <Field value={email} onChangeText={setEmail} placeholder="אימייל" />
+      <Field
+        value={password}
+        onChangeText={setPassword}
+        placeholder="סיסמה"
+        secure
+      />
       <Pressable
         style={styles.button}
-        disabled={busy !== null}
-        onPress={() => void run("google")}
+        disabled={busy}
+        onPress={() => void emailSignIn()}
       >
-        {busy === "google" ? (
+        {busy ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.buttonText}>המשך עם Google</Text>
+          <Text style={styles.buttonText}>כניסה</Text>
         )}
       </Pressable>
 
-      <Pressable
-        style={[styles.button, styles.secondary]}
-        disabled={busy !== null}
-        onPress={() => void run("apple")}
-      >
-        {busy === "apple" ? (
-          <ActivityIndicator color="#5C4033" />
-        ) : (
-          <Text style={[styles.buttonText, styles.secondaryText]}>
-            המשך עם Apple
-          </Text>
-        )}
+      <Pressable style={[styles.button, styles.disabled]} disabled>
+        <Text style={styles.buttonText}>המשך עם Google</Text>
       </Pressable>
+      <Text style={styles.hint}>{nativeOAuthHint("google")}</Text>
 
-      <Text style={styles.hint}>
-        אין WebView. Auth עובר דרך src/api → /api/auth/native → Secure Storage.
-      </Text>
+      <Pressable style={[styles.button, styles.secondary, styles.disabled]} disabled>
+        <Text style={[styles.buttonText, styles.secondaryText]}>המשך עם Apple</Text>
+      </Pressable>
+      <Text style={styles.hint}>{nativeOAuthHint("apple")}</Text>
     </View>
   );
 }
@@ -90,7 +89,6 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   subtitle: { fontSize: 16, color: "#6B5344", textAlign: "right" },
-  meta: { fontSize: 12, color: "#8A7464", textAlign: "right" },
   error: {
     color: "#9B2C2C",
     backgroundColor: "#FDE8E8",
@@ -111,7 +109,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#D4C4B5",
   },
+  disabled: { opacity: 0.45 },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   secondaryText: { color: "#5C4033" },
-  hint: { marginTop: 16, fontSize: 12, color: "#8A7464", textAlign: "right" },
+  hint: { fontSize: 12, color: "#8A7464", textAlign: "right" },
 });
