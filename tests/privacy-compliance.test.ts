@@ -152,14 +152,16 @@ test("expo foundation blocks sensitive unused permissions", () => {
 
 test("expo product screens are real CRUD not JSON dumps", () => {
   const home = read("apps/mobile/src/screens/FoundationHomeScreen.tsx");
-  assert.match(home, /TasksScreen/);
-  assert.match(home, /ChatScreen/);
-  assert.match(home, /DayPlanScreen/);
-  assert.match(home, /BankScreen/);
-  assert.match(home, /HouseholdScreen/);
+  assert.match(home, /ProductShell/);
+  const shell = read("apps/mobile/src/navigation/ProductShell.tsx");
+  assert.match(shell, /TasksScreen/);
+  assert.match(shell, /ChatScreen/);
+  assert.match(shell, /BankScreen/);
+  assert.match(shell, /PlanComposerScreen|DayPlanScreen/);
+  assert.doesNotMatch(shell, /ApiListScreen/);
   assert.doesNotMatch(home, /ApiListScreen/);
   const tasks = read("apps/mobile/src/screens/TasksScreen.tsx");
-  assert.match(tasks, /createTask/);
+  assert.match(tasks, /listTasks/);
   assert.match(tasks, /completeTask/);
   const gate = read("apps/mobile/src/screens/FoundationGateScreen.tsx");
   assert.match(gate, /signInWithEmail/);
