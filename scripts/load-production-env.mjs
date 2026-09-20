@@ -72,7 +72,7 @@ export function assertProductionSafe(env, { source = "env" } = {}) {
   }
 }
 
-export function applyProductionEnv() {
+export function applyProductionEnv(envFile = ENV_FILE) {
   // Shell/export leftovers from a prior QA session must not override production bake.
   const poisoned = [];
   for (const [key, value] of Object.entries(process.env)) {
@@ -95,8 +95,8 @@ export function applyProductionEnv() {
     );
   }
 
-  const fileEnv = parseEnvFile(ENV_FILE);
-  assertProductionSafe(fileEnv, { source: ".env.production" });
+  const fileEnv = parseEnvFile(envFile);
+  assertProductionSafe(fileEnv, { source: envFile });
 
   for (const [key, value] of Object.entries(fileEnv)) {
     process.env[key] = value;
@@ -114,7 +114,7 @@ export function applyProductionEnv() {
     { source: "process.env after load" },
   );
   return {
-    envFile: ENV_FILE,
+    envFile,
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
   };
 }

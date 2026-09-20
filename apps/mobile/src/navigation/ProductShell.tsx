@@ -4,6 +4,7 @@ import { AppScreen, BottomNavBar, SuccessState, type ProductTab } from "../compo
 import { HOME_COLOR } from "../product/homeGeometry";
 import { useAuth } from "../auth/AuthContext";
 import { BankScreen } from "../screens/BankScreen";
+import { CalendarScreen } from "../screens/CalendarScreen";
 import { ChatScreen } from "../screens/ChatScreen";
 import { ChecklistDetailScreen } from "../screens/ChecklistDetailScreen";
 import { ChecklistsScreen } from "../screens/ChecklistsScreen";
@@ -27,6 +28,7 @@ type Overlay =
   | "planSuccess"
   | "bank"
   | "privacy"
+  | "calendar"
   | null;
 
 export function ProductShell() {
@@ -50,7 +52,15 @@ export function ProductShell() {
   }
 
   if (overlay === "privacy") {
-    return <PrivacySettingsScreen onBack={() => setOverlay(null)} />;
+    return (
+      <PrivacySettingsScreen
+        onBack={() => setOverlay(null)}
+        onOpenCalendar={() => setOverlay("calendar")}
+      />
+    );
+  }
+  if (overlay === "calendar") {
+    return <CalendarScreen onBack={() => setOverlay(null)} />;
   }
   if (overlay === "bank") {
     return <BankScreen onBack={() => setOverlay(null)} />;
@@ -80,7 +90,12 @@ export function ProductShell() {
     return <FreeTimeResultsScreen minutes={30} onBack={() => setOverlay(null)} />;
   }
   if (overlay === "schedule") {
-    return <ScheduleScreen onBack={() => setOverlay(null)} />;
+    return (
+      <ScheduleScreen
+        onBack={() => setOverlay(null)}
+        onOpenCalendar={() => setOverlay("calendar")}
+      />
+    );
   }
   if (overlay === "checklists") {
     return (

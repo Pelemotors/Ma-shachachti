@@ -164,11 +164,19 @@ export function appleAudiencesFromEnv() {
     .filter((value): value is string => Boolean(value));
 }
 
+export function googleSignInWebClientId() {
+  return (
+    process.env.GOOGLE_WEB_CLIENT_ID?.trim() ||
+    process.env.GOOGLE_CALENDAR_CLIENT_ID?.trim() ||
+    ""
+  );
+}
+
 export function googleAudiencesFromEnv() {
   return [
     process.env.GOOGLE_ANDROID_CLIENT_ID,
     process.env.GOOGLE_WEB_CLIENT_ID,
-    process.env.GOOGLE_IOS_CLIENT_ID,
+    process.env.GOOGLE_CALENDAR_CLIENT_ID,
   ]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));

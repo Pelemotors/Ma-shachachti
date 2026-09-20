@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { nativeOAuthHint } from "../auth/nativeIdentity";
 import {
@@ -14,18 +14,33 @@ export function FoundationGateScreen() {
   const auth = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"email" | "google" | null>(null);
 
   async function emailSignIn() {
-    setBusy(true);
+    if (busy) return;
+    setBusy("email");
     try {
       await auth.signInWithEmail(email, password);
     } catch {
       /* error shown via auth.error */
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
+
+  async function googleSignIn() {
+    if (busy) return;
+    setBusy("google");
+    try {
+      await auth.signIn("google");
+    } catch {
+      /* error shown via auth.error */
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const locked = Boolean(busy);
 
   return (
     <AppScreen>
@@ -40,16 +55,28 @@ export function FoundationGateScreen() {
           placeholder="סיסמה"
           secure
         />
-        {busy ? (
+        {busy === "email" ? (
           <ActivityIndicator color={colors.accent} />
         ) : (
-          <PrimaryActionButton label="כניסה" onPress={() => void emailSignIn()} />
+          <PrimaryActionButton label="כניסה" onPress={() => void emailSignIn()} disabled={locked} />
         )}
-        <PrimaryActionButton label="המשך עם Google" onPress={() => undefined} disabled />
+        {busy === "google" ? (
+          <ActivityIndicator color={colors.accent} />
+        ) : (
+          <PrimaryActionButton
+            label="המשך עם Google"
+            onPress={() => void googleSignIn()}
+            disabled={locked}
+          />
+        )}
         <Text style={styles.hint}>{nativeOAuthHint("google")}</Text>
-        <SecondaryPillButton label="המשך עם Apple" onPress={() => undefined} />
-        <Text style={styles.hint}>{nativeOAuthHint("apple")}</Text>
-        <PrimaryActionButton label="המשך לצפייה" onPress={auth.enterPreview} />
+        {Platform.OS !== "android" ? (
+          <>
+            <SecondaryPillButton label="המשך עם Apple" onPress={() => undefined} />
+            <Text style={styles.hint}>{nativeOAuthHint("apple")}</Text>
+          </>
+        ) : null}
+        <PrimaryActionButton label="המשך לצפייה" onPress={auth.enterPreview} disabled={locked} />
       </View>
     </AppScreen>
   );

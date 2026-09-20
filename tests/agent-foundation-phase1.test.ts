@@ -54,7 +54,7 @@ test("generated instruction bundle has no drift", () => {
   const bundled = readFileSync(
     new URL("lib/agent/instructions.ts", root),
     "utf8",
-  );
+  ).replace(/\r\n/g, "\n");
   assert.equal(bundled, generateInstructionsSource({ core, modes }));
 });
 

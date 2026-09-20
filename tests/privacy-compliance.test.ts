@@ -158,15 +158,16 @@ test("expo product screens are real CRUD not JSON dumps", () => {
   assert.match(shell, /ChatScreen/);
   assert.match(shell, /BankScreen/);
   assert.match(shell, /PlanComposerScreen|DayPlanScreen/);
+  assert.match(shell, /CalendarScreen/);
   assert.doesNotMatch(shell, /ApiListScreen/);
-  assert.doesNotMatch(home, /ApiListScreen/);
   const tasks = read("apps/mobile/src/screens/TasksScreen.tsx");
   assert.match(tasks, /listTasks/);
   assert.match(tasks, /completeTask/);
   const gate = read("apps/mobile/src/screens/FoundationGateScreen.tsx");
   assert.match(gate, /signInWithEmail/);
-  assert.match(gate, /disabled/);
+  assert.match(gate, /signIn\("google"\)/);
   assert.match(gate, /nativeOAuthHint/);
+  assert.doesNotMatch(gate, /label="המשך עם Google"[\s\S]{0,120}onPress=\{\(\) => undefined\}/);
 });
 
 test("mobile privacy settings screen is real (not placeholder)", () => {

@@ -69,6 +69,14 @@ export async function upsertIdentityAndSession(input: {
       user_metadata: input.fullName ? { full_name: input.fullName } : undefined,
     });
     if (created.error || !created.data.user) {
+      const detail = created.error?.message ?? "";
+      if (/already|exists|registered|duplicate/i.test(detail)) {
+        return {
+          ok: false as const,
+          error: "האימייל כבר משויך לחשבון אחר. אין קישור אוטומטי לפי אימייל.",
+          status: 409,
+        };
+      }
       return {
         ok: false as const,
         error: "לא הצלחנו ליצור משתמש.",

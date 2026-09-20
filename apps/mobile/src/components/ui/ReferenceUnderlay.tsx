@@ -1,4 +1,4 @@
-import { Dimensions, Image } from "react-native";
+import { Dimensions, Image, View } from "react-native";
 import { HOME_REF } from "../../product/homeGeometry";
 
 const REF = require("../../../assets/ui/home-master-underlay.png");
@@ -11,8 +11,7 @@ export function ReferenceUnderlay({ opacity = 0 }: { opacity?: number }) {
   const w = HOME_REF.w * s;
   const h = HOME_REF.h * s;
   return (
-    <Image
-      source={REF}
+    <View
       pointerEvents="none"
       style={{
         position: "absolute",
@@ -23,7 +22,8 @@ export function ReferenceUnderlay({ opacity = 0 }: { opacity?: number }) {
         opacity,
         zIndex: 40,
       }}
-      resizeMode="stretch"
-    />
+    >
+      <Image source={REF} style={{ width: "100%", height: "100%" }} resizeMode="stretch" />
+    </View>
   );
 }

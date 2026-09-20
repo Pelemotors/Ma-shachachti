@@ -79,6 +79,7 @@ test("calendar mapper keeps only title/start/end", () => {
     end: { dateTime: "2026-09-20T14:00:00Z" },
   });
   assert.deepEqual(Object.keys(mapped ?? {}).sort(), [
+    "calendar_ref",
     "end_at",
     "provider_event_id",
     "start_at",
@@ -143,4 +144,5 @@ test("oauth buttons stay disabled without credentials", () => {
   const calendar = read("app/api/calendar/route.ts");
   assert.match(calendar, /calendarOAuthConfigured/);
   assert.match(calendar, /חיבור היומן אינו מוגדר/);
+  assert.match(calendar, /assertServerOwnedCalendarBody/);
 });

@@ -9,7 +9,13 @@ const PRIVACY_URL = "https://mashachachti.co.il/privacy";
 const DELETION_URL = "https://mashachachti.co.il/account-deletion";
 
 /** Privacy & account settings for Android foundation. */
-export function PrivacySettingsScreen({ onBack }: { onBack: () => void }) {
+export function PrivacySettingsScreen({
+  onBack,
+  onOpenCalendar,
+}: {
+  onBack: () => void;
+  onOpenCalendar?: () => void;
+}) {
   const auth = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -64,6 +70,11 @@ export function PrivacySettingsScreen({ onBack }: { onBack: () => void }) {
         <Text style={styles.rowText}>שמירת טלפון</Text>
       </Pressable>
 
+      {onOpenCalendar ? (
+        <Pressable style={styles.row} onPress={onOpenCalendar}>
+          <Text style={styles.rowText}>יומן Google</Text>
+        </Pressable>
+      ) : null}
       <Pressable
         style={styles.row}
         onPress={() => void Linking.openURL(PRIVACY_URL)}

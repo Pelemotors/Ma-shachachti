@@ -5,7 +5,13 @@ import { formatPlanTime, getDayPlan, todayJerusalemDate, type MobileDayPlan } fr
 import { listTasks, type MobileTask } from "../api/tasks";
 import { space } from "../theme";
 
-export function ScheduleScreen({ onBack }: { onBack: () => void }) {
+export function ScheduleScreen({
+  onBack,
+  onOpenCalendar,
+}: {
+  onBack: () => void;
+  onOpenCalendar?: () => void;
+}) {
   const [plan, setPlan] = useState<MobileDayPlan | null>(null);
   const [tasks, setTasks] = useState<MobileTask[]>([]);
 
@@ -24,6 +30,9 @@ export function ScheduleScreen({ onBack }: { onBack: () => void }) {
     <AppScreen
       footer={
         <View style={styles.footer}>
+          {onOpenCalendar ? (
+            <PrimaryActionButton label="יומן Google" onPress={onOpenCalendar} />
+          ) : null}
           <PrimaryActionButton label="שמור ללו״ז" onPress={onBack} />
         </View>
       }

@@ -1,5 +1,13 @@
 # Mobile Platform Readiness — מה שכחתי?
 
+## Current Play target (authoritative)
+
+The shipped Android / Google Play binary is **Expo / React Native** in `apps/mobile`, package **`com.mashachachti.app`**.
+
+Capacitor (`il.co.mashachachti.app`) is **legacy WebView** only. Do not treat it as the current Play target.
+
+Google Sign-In (identity) and Google Calendar (opt-in, server-owned, `calendar.events.readonly`) are separate consents.
+
 ## Architecture boundaries
 
 | Layer | Responsibility |
@@ -13,6 +21,13 @@
 Native tooling: **Capacitor 7** — reuses the existing Next.js shared product inside a native shell instead of rewriting UI in SwiftUI/Compose.
 
 ## Bundle / package IDs
+
+**Current Play / Expo**
+
+- Android applicationId: `com.mashachachti.app`
+- Deep link scheme: `mashachachti://`
+
+**Legacy Capacitor (not the current Play binary)**
 
 - iOS Bundle ID: `il.co.mashachachti.app`
 - Android applicationId: `il.co.mashachachti.app`
@@ -42,9 +57,11 @@ Capacitor bridge: `lib/native/capacitor-adapter.ts`
 
 ## Google owner setup (`OWNER_REQUIRED`)
 
-1. Firebase / Google Cloud Android app for `il.co.mashachachti.app`
-2. Place `android/app/google-services.json` (gitignored)
-3. Set `GOOGLE_ANDROID_CLIENT_ID` / `GOOGLE_WEB_CLIENT_ID`
+1. Google Cloud Android OAuth client for `com.mashachachti.app` (Play App Signing SHA-1)
+2. Web OAuth client: `GOOGLE_WEB_CLIENT_ID` or fallback `GOOGLE_CALENDAR_CLIENT_ID`
+3. Calendar Web client + secret + `CALENDAR_TOKEN_ENCRYPTION_KEY` (already on Production)
+4. Authorized redirect URI on the Web OAuth client:
+   `https://mashachachti.co.il/api/calendar/oauth/callback`
 4. Optional server push: `FCM_SERVER_KEY` + `NATIVE_PUSH_ENABLED=true`
 5. Publish `assetlinks.json` with release signing cert SHA-256
 

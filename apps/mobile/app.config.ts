@@ -65,6 +65,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-splash-screen",
     "expo-audio",
     "expo-asset",
+    "expo-web-browser",
   ],
   extra: {
     mobileApiBaseUrl:

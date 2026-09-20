@@ -52,25 +52,23 @@ export function ProductHomeScreen({
 
   return (
     <View style={[styles.root, { width, height, backgroundColor: HOME_COLOR.page }]}>
-      <Image
-        source={BRANCH_TL}
+      <View
         pointerEvents="none"
-        resizeMode="contain"
         style={abs(HOME_BOX.branchTopLeft.x, HOME_BOX.branchTopLeft.y, HOME_BOX.branchTopLeft.w, HOME_BOX.branchTopLeft.h)}
-      />
-      <Image
-        source={BRANCH_BR}
+      >
+        <Image source={BRANCH_TL} resizeMode="contain" style={{ width: "100%", height: "100%" }} />
+      </View>
+      <View
         pointerEvents="none"
-        resizeMode="contain"
-        style={[
-          abs(
-            HOME_BOX.branchBottomRight.x,
-            HOME_BOX.branchBottomRight.y,
-            HOME_BOX.branchBottomRight.w,
-            HOME_BOX.branchBottomRight.h,
-          ),
-        ]}
-      />
+        style={abs(
+          HOME_BOX.branchBottomRight.x,
+          HOME_BOX.branchBottomRight.y,
+          HOME_BOX.branchBottomRight.w,
+          HOME_BOX.branchBottomRight.h,
+        )}
+      >
+        <Image source={BRANCH_BR} resizeMode="contain" style={{ width: "100%", height: "100%" }} />
+      </View>
 
       <Text
         style={[

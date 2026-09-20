@@ -1,11 +1,12 @@
 import { authorize, HttpError } from "@/lib/server-auth";
 import { createServiceClient } from "@/lib/supabase-admin";
 import {
+  CalendarReconnectError,
+  assertServerOwnedCalendarBody,
   calendarOAuthConfigured,
   disconnectCalendar,
-  mapGoogleEvent,
   nativeOAuthConfigured,
-  storeCalendarTokens,
+  syncGoogleCalendar,
 } from "@/lib/calendar";
 
 export const runtime = "nodejs";
@@ -21,7 +22,8 @@ export async function GET(req: Request) {
   try {
     const { db, userId } = await authorize(req);
     const configured = nativeOAuthConfigured();
-    const { data: connection } = await db
+    const admin = createServiceClient();
+    const { data: connection } = await admin
       .from("calendar_connections")
       .select("provider,updated_at")
       .eq("user_id", userId)
@@ -51,6 +53,7 @@ export async function POST(req: Request) {
       refresh_token?: string;
       events?: unknown[];
     };
+    assertServerOwnedCalendarBody(body);
     if (!calendarOAuthConfigured() && body.action !== "disconnect") {
       throw new HttpError(503, "חיבור היומן אינו מוגדר בסביבה זו.");
     }
@@ -59,32 +62,15 @@ export async function POST(req: Request) {
       await disconnectCalendar(admin, userId);
       return Response.json({ ok: true, connected: false });
     }
-    if (body.action === "connect") {
-      if (!body.access_token) throw new HttpError(400, "חסר אסימון.");
-      await storeCalendarTokens(admin, userId, {
-        access_token: body.access_token,
-        refresh_token: body.refresh_token,
-      });
-      return Response.json({ ok: true, connected: true });
-    }
     if (body.action === "sync") {
-      const mapped = (body.events ?? [])
-        .map((event) => mapGoogleEvent(event as never))
-        .filter(Boolean);
-      await admin.from("calendar_events_cache").delete().eq("user_id", userId);
-      if (mapped.length) {
-        await admin.from("calendar_events_cache").insert(
-          mapped.map((event) => ({
-            user_id: userId,
-            provider: "google",
-            ...event,
-          })),
-        );
-      }
-      return Response.json({ ok: true, stored: mapped.length });
+      const result = await syncGoogleCalendar(admin, userId);
+      return Response.json({ ok: true, connected: true, stored: result.stored });
     }
     throw new HttpError(400, "פעולה לא מוכרת.");
   } catch (error) {
+    if (error instanceof CalendarReconnectError) {
+      return Response.json({ error: error.message, reconnectRequired: true }, { status: 409 });
+    }
     return jsonError(error);
   }
 }
