@@ -1,6 +1,7 @@
 import { authorize, HttpError } from "@/lib/server-auth";
 import { loadTasks } from "@/lib/actions";
 import { DEFAULT_REMINDER_MINUTES } from "@/lib/reminders";
+import { productNow } from "@/lib/product-clock-server";
 import { listUpcomingReminders } from "@/lib/upcoming-reminders";
 
 export const runtime = "nodejs";
@@ -21,6 +22,7 @@ export async function GET(req: Request) {
       Number.isFinite(Number(prefs.data?.default_reminder_minutes))
         ? Number(prefs.data?.default_reminder_minutes)
         : DEFAULT_REMINDER_MINUTES,
+      productNow(),
     );
     return Response.json({ upcoming });
   } catch (error) {

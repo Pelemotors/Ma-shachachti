@@ -4,7 +4,7 @@ import {
   reminderLabel,
   remindAtIso,
 } from "./reminders.ts";
-import { productNow } from "./product-clock-server.ts";
+import { productNow } from "./product-clock.ts";
 import { jerusalemParts } from "./time.ts";
 import type { TaskRow } from "./types.ts";
 
