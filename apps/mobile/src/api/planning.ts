@@ -1,3 +1,4 @@
+import { productNowMs } from "../product/productClock";
 import { apiRequest } from "./client";
 
 export type MobilePlanItem = {
@@ -16,13 +17,31 @@ export type MobileDayPlan = {
   conflicts: Array<{ title: string }>;
 };
 
-export function todayJerusalemDate() {
-  return new Intl.DateTimeFormat("en-CA", {
+export function jerusalemDateFromNow(days = 0) {
+  const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jerusalem",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+  }).format(new Date(productNowMs()));
+  if (!days) return today;
+  const [year, month, day] = today.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+export function selectOpenTaskIdsForDate(
+  tasks: Array<{ id: string; status: string; due_on?: string | null }>,
+  date: string,
+  alreadyOnPlan: string[] = [],
+) {
+  const dueThatDay = tasks
+    .filter((task) => task.status === "open" && task.due_on === date)
+    .map((task) => task.id);
+  return [...new Set([...alreadyOnPlan, ...dueThatDay])];
+}
+
+export function todayJerusalemDate() {
+  return jerusalemDateFromNow(0);
 }
 
 export async function getDayPlan(date: string) {

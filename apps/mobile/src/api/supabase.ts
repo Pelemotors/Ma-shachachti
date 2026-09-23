@@ -49,3 +49,29 @@ export async function clearSessionMarkers(): Promise<void> {
 export async function readStoredAccessToken(): Promise<string | null> {
   return secureGet(SESSION_KEYS.accessToken);
 }
+
+/**
+ * Live access token from Supabase Auth.
+ * getSession() / refreshSession() use the real wall clock — never ProductClock.
+ */
+export async function getFreshAccessToken(): Promise<string | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.auth.getSession();
+  if (!error && data.session?.access_token) {
+    await persistSessionMarkers(data.session);
+    return data.session.access_token;
+  }
+  const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+  if (!refreshError && refreshed.session?.access_token) {
+    await persistSessionMarkers(refreshed.session);
+    return refreshed.session.access_token;
+  }
+  return readStoredAccessToken();
+}
+
+export async function refreshAccessToken(): Promise<string | null> {
+  const { data, error } = await getSupabase().auth.refreshSession();
+  if (error || !data.session?.access_token) return null;
+  await persistSessionMarkers(data.session);
+  return data.session.access_token;
+}

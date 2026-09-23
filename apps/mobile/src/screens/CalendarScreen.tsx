@@ -129,7 +129,7 @@ export function CalendarScreen({ onBack }: { onBack: () => void }) {
   const busy = phase !== "idle";
 
   return (
-    <ScreenShell title="יומן" onBack={onBack}>
+    <ScreenShell title="לוח שנה" onBack={onBack}>
       {!live ? <Hint>{nativeOAuthHint("calendar")}</Hint> : null}
       {live && !state?.connected ? (
         <PrimaryButton

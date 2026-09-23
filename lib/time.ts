@@ -1,3 +1,5 @@
+import { productNow } from "./product-clock.ts";
+
 export const TIME_ZONE = "Asia/Jerusalem";
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -78,7 +80,7 @@ export function zonedDateParts(instant: Date | string, timeZone = TIME_ZONE) {
   };
 }
 
-export function todayContext(now = new Date(), timeZone = TIME_ZONE) {
+export function todayContext(now = productNow(), timeZone = TIME_ZONE) {
   const zone = resolveTimeZone(timeZone);
   const parts = zonedDateParts(now, zone);
   const weekday = new Intl.DateTimeFormat("he-IL", {
@@ -173,7 +175,7 @@ export function formatClockRange(start: string, end: string | null) {
   return end ? `${start}–${end}` : start;
 }
 
-export function formatSessionWhen(iso: string, now = new Date()) {
+export function formatSessionWhen(iso: string, now = productNow()) {
   const stamp = jerusalemParts(iso);
   const today = todayContext(now).date;
   const yesterday = addJerusalemDays(today, -1);

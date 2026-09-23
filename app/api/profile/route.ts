@@ -20,17 +20,33 @@ function jsonError(error: unknown) {
   return Response.json({ error: "לא הצלחנו לעדכן את הפרופיל." }, { status: 500 });
 }
 
+const PROFILE_COLUMNS_WITHOUT_PHONE =
+  "user_id,display_name,address_style,onboarding_completed_at,appearance_mode,appearance_season,created_at,updated_at";
+
 async function readProfile(
   db: Awaited<ReturnType<typeof authorize>>["db"],
   userId: string,
 ) {
-  const { data, error } = await db
+  const first = await db
     .from("user_profiles")
     .select(PROFILE_COLUMNS)
     .eq("user_id", userId)
     .maybeSingle();
+  if (!first.error) {
+    return (first.data as UserProfile | null) ?? emptyUserProfile(userId);
+  }
+  if (!/phone_e164/i.test(first.error.message ?? "")) throw first.error;
+  const { data, error } = await db
+    .from("user_profiles")
+    .select(PROFILE_COLUMNS_WITHOUT_PHONE)
+    .eq("user_id", userId)
+    .maybeSingle();
   if (error) throw error;
-  return (data as UserProfile | null) ?? emptyUserProfile(userId);
+  return {
+    ...emptyUserProfile(userId),
+    ...((data as UserProfile | null) ?? {}),
+    phone_e164: null,
+  };
 }
 
 export async function GET(req: Request) {

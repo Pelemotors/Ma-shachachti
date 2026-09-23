@@ -101,6 +101,17 @@ export async function completeWithHashedToken(hashedToken: string) {
   return { user: toAuthUser(data.session.user) };
 }
 
+export async function requestPasswordReset(email: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: "https://mashachachti.co.il/auth/reset-password",
+  });
+  if (error) {
+    const tooMany = /rate limit|for security purposes|יותר מדי/i.test(error.message);
+    if (tooMany) throw new Error("נשלחו יותר מדי מיילים. נסי שוב בעוד כדקה.");
+  }
+}
+
 export async function signOut(): Promise<void> {
   const supabase = getSupabase();
   await supabase.auth.signOut();

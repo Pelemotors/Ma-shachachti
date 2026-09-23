@@ -1,6 +1,8 @@
+import { productNow } from "./product-clock.ts";
+
 export type Season = "spring" | "summer" | "autumn" | "winter";
 
-export function seasonForDate(date = new Date()): Season {
+export function seasonForDate(date = productNow()): Season {
   const month = date.getMonth() + 1;
   if (month >= 3 && month <= 5) return "spring";
   if (month >= 6 && month <= 8) return "summer";

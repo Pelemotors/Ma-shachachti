@@ -4,10 +4,12 @@ import {
   formatPlanTime,
   getDayPlan,
   replanDay,
+  selectOpenTaskIdsForDate,
   todayJerusalemDate,
   type MobileDayPlan,
 } from "../api/planning";
 import { listTasks } from "../api/tasks";
+import { productNowMs, syncProductClock } from "../product/productClock";
 import { ErrorText, Hint, PrimaryButton, ScreenShell } from "../ui/chrome";
 
 export function DayPlanScreen({
@@ -17,14 +19,14 @@ export function DayPlanScreen({
   onBack: () => void;
   mode: "plan" | "freetime";
 }) {
-  const date = todayJerusalemDate();
   const [plan, setPlan] = useState<MobileDayPlan | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => {
-    setPlan(await getDayPlan(date));
-  }, [date]);
+    await syncProductClock();
+    setPlan(await getDayPlan(todayJerusalemDate()));
+  }, []);
 
   useEffect(() => {
     void reload().catch((err) => setError(err instanceof Error ? err.message : "שגיאה"));
@@ -35,8 +37,10 @@ export function DayPlanScreen({
     setError("");
     try {
       const tasks = await listTasks();
-      const openIds = tasks.tasks.filter((task) => task.status === "open").map((task) => task.id);
-      setPlan(await replanDay(date, openIds));
+      await syncProductClock();
+      const date = todayJerusalemDate();
+      const alreadyOnPlan = (plan?.items ?? []).map((item) => item.task_id);
+      setPlan(await replanDay(date, selectOpenTaskIdsForDate(tasks.tasks, date, alreadyOnPlan)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "תכנון נכשל");
     } finally {
@@ -112,7 +116,7 @@ function describeFreeSlots(
   ].sort((a, b) => a.start - b.start);
   const dayStart = blocked[0]
     ? new Date(blocked[0].start).setHours(9, 0, 0, 0)
-    : Date.now();
+    : productNowMs();
   const windows: string[] = [];
   let cursor = dayStart;
   for (const block of blocked) {

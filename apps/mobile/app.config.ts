@@ -22,6 +22,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     package: BUNDLE_ID,
+    versionCode: 3,
     adaptiveIcon: {
       foregroundImage: "./assets/android-icon-foreground.png",
       backgroundImage: "./assets/android-icon-background.png",
@@ -60,18 +61,22 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
   },
   plugins: [
-    "expo-dev-client",
     "expo-secure-store",
     "expo-splash-screen",
     "expo-audio",
     "expo-asset",
     "expo-web-browser",
+    "expo-image-picker",
+    "expo-notifications",
   ],
   extra: {
     mobileApiBaseUrl:
-      process.env.MOBILE_API_BASE_URL ?? "https://mashachachti.co.il",
+      process.env.EXPO_PUBLIC_MOBILE_API_BASE_URL ??
+      process.env.MOBILE_API_BASE_URL ??
+      "",
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
+    weekSimulationQa: process.env.EXPO_PUBLIC_WEEK_SIMULATION_QA === "true",
     eas: {
       projectId: process.env.EAS_PROJECT_ID,
     },

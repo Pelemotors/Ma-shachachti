@@ -7,6 +7,7 @@ import type {
 } from "../../types.ts";
 import type { Checklist, ShoppingItem } from "../../lists.ts";
 import type { AgentProfileContext } from "../../user-profile.ts";
+import { productNow } from "../../product-clock.ts";
 import { dueTimeFromDueAt, jerusalemParts, todayContext } from "../../time.ts";
 import { reminderBase } from "../../reminders.ts";
 import { selectPersonalMemories } from "./memory-select.ts";
@@ -186,7 +187,7 @@ export function buildCompactContext(input: {
     tasks.some((task) => task.id === row.task_id),
   );
 
-  const now = input.now ?? new Date();
+  const now = input.now ?? productNow();
   const todayDate = todayContext(now).date;
   const dayPlanDate = resolveMentionedJerusalemDate(input.queryHint, now);
   const dayPlanItems = dayPlanDate

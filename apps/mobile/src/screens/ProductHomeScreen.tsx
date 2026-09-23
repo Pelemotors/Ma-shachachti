@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Dimensions, Image, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { BottomNavBar, ChatComposer, HeroPetalActions, TaskRow, VoiceBankButton } from "../components/ui";
+import { BottomNavBar, ChatComposer, HeroPetalActions, VoiceBankButton } from "../components/ui";
 import type { ProductTab } from "../components/ui";
 import { sendChat } from "../api/chat";
 import { HOME_BOX, HOME_COLOR, HOME_TYPE, homeFrame } from "../product/homeGeometry";
-import { HOME_QA_FIXTURE_ENABLED, homeQaNow } from "../product/homeQaFixture";
+import { timeGreeting } from "../product/greeting";
+import { homeSendResult } from "../product/surfaceCommit";
 
 const BRANCH_TL = require("../../assets/ui/branch-from-master.png");
 const BRANCH_BR = require("../../assets/ui/branch-bottom-right.png");
@@ -26,12 +27,13 @@ export function ProductHomeScreen({
   async function send() {
     const message = draft.trim();
     if (!message) return;
-    setDraft("");
     try {
       await sendChat(message);
-      onOpen("chat");
+      const result = homeSendResult(true);
+      if (result.clearDraft) setDraft("");
+      if (result.navigateToChat) onOpen("chat");
     } catch {
-      onOpen("chat");
+      homeSendResult(false);
     }
   }
 
@@ -44,11 +46,7 @@ export function ProductHomeScreen({
   });
 
   const card = HOME_BOX.nowCard;
-  const greeting = HOME_QA_FIXTURE_ENABLED
-    ? homeQaNow.greeting
-    : displayName
-      ? `בוקר טוב, ${displayName}.`
-      : "ערב טוב.";
+  const greeting = timeGreeting(displayName);
 
   return (
     <View style={[styles.root, { width, height, backgroundColor: HOME_COLOR.page }]}>
@@ -77,7 +75,7 @@ export function ProductHomeScreen({
           { fontSize: HOME_TYPE.tagline.size * s, lineHeight: HOME_TYPE.tagline.line * s },
         ]}
       >
-        {homeQaNow.tagline}
+        הבית שלך, בקצב שלך
       </Text>
       <Text
         style={[
@@ -135,7 +133,7 @@ export function ProductHomeScreen({
             },
           ]}
         >
-          {homeQaNow.done} מתוך {homeQaNow.total} {homeQaNow.caption}
+          אין עדיין לו״ז להיום
         </Text>
         <View
           style={[
@@ -148,7 +146,7 @@ export function ProductHomeScreen({
             },
           ]}
         >
-          <View style={[styles.fill, { width: `${(homeQaNow.done / homeQaNow.total) * 100}%` }]} />
+          <View style={[styles.fill, { width: "0%" }]} />
         </View>
         <View
           style={{
@@ -158,16 +156,7 @@ export function ProductHomeScreen({
             width: HOME_BOX.row1.w * s,
             height: HOME_BOX.row1.h * s,
           }}
-        >
-          <TaskRow
-            time="16:30"
-            title="להכין ארוחת ערב"
-            icon="restaurant-outline"
-            homeMaster
-            scale={s}
-            onPress={() => onOpen("schedule")}
-          />
-        </View>
+        />
         <View
           style={{
             position: "absolute",
@@ -176,16 +165,7 @@ export function ProductHomeScreen({
             width: HOME_BOX.row2.w * s,
             height: HOME_BOX.row2.h * s,
           }}
-        >
-          <TaskRow
-            time="17:15"
-            title="לאסוף הילדים מהגן"
-            icon="people-outline"
-            homeMaster
-            scale={s}
-            onPress={() => onOpen("schedule")}
-          />
-        </View>
+        />
       </View>
 
       <View style={[styles.more, abs(HOME_BOX.chevron.x, HOME_BOX.chevron.y, HOME_BOX.chevron.w, HOME_BOX.chevron.h)]}>

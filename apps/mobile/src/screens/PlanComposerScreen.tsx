@@ -1,16 +1,22 @@
-import { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { BackHandler, StyleSheet, Text, View } from "react-native";
 import {
   AppScreen,
   PrimaryActionButton,
   ScreenHeader,
   SecondaryPillButton,
 } from "../components/ui";
-import { replanDay, todayJerusalemDate } from "../api/planning";
+import { getDayPlan, jerusalemDateFromNow, replanDay, selectOpenTaskIdsForDate, todayJerusalemDate } from "../api/planning";
 import { listTasks } from "../api/tasks";
+import { FREETIME_DEFAULT_MINUTES } from "../product/surfaceCommit";
 import { rtlText, space, type } from "../theme";
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
+const DATE_CHIPS: Array<{ id: "today" | "tomorrow" | "later"; label: string; days: number }> = [
+  { id: "today", label: "היום", days: 0 },
+  { id: "tomorrow", label: "מחר", days: 1 },
+  { id: "later", label: "אחר", days: 2 },
+];
 
 export function PlanComposerScreen({
   mode,
@@ -19,23 +25,37 @@ export function PlanComposerScreen({
 }: {
   mode: "plan" | "freetime";
   onBack: () => void;
-  onDone: (kind: "success" | "schedule" | "freetime") => void;
+  onDone: (payload: { kind: "success" | "schedule" | "freetime"; minutes: number; date: string }) => void;
 }) {
-  const [minutes, setMinutes] = useState(mode === "freetime" ? 30 : 45);
-  const [later, setLater] = useState(false);
+  const [minutes, setMinutes] = useState(mode === "freetime" ? FREETIME_DEFAULT_MINUTES : 45);
+  const [dateChip, setDateChip] = useState<(typeof DATE_CHIPS)[number]["id"]>("today");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const planMode = mode === "plan";
+  const selectedDate = jerusalemDateFromNow(DATE_CHIPS.find((chip) => chip.id === dateChip)?.days ?? 0);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [onBack]);
 
   async function submit() {
     setBusy(true);
     setError("");
     try {
-      const tasks = await listTasks();
-      const openIds = tasks.tasks.filter((task) => task.status === "open").map((task) => task.id);
-      await replanDay(todayJerusalemDate(), openIds);
-      onDone(planMode ? "success" : "freetime");
+      if (!planMode) {
+        onDone({ kind: "freetime", minutes, date: todayJerusalemDate() });
+        return;
+      }
+      const date = selectedDate;
+      const [tasks, current] = await Promise.all([listTasks(), getDayPlan(date)]);
+      const alreadyOnPlan = current.items.map((item) => item.task_id);
+      await replanDay(date, selectOpenTaskIdsForDate(tasks.tasks, date, alreadyOnPlan));
+      onDone({ kind: "success", minutes, date });
     } catch (err) {
       setError(err instanceof Error ? err.message : "תכנון נכשל");
     } finally {
@@ -60,6 +80,21 @@ export function PlanComposerScreen({
         onBack={onBack}
         icon={planMode ? "calendar-outline" : "time-outline"}
       />
+      {planMode ? (
+        <>
+          <Text style={styles.sub}>לאיזה יום לתכנן?</Text>
+          <View style={styles.pills}>
+            {DATE_CHIPS.map((chip) => (
+              <SecondaryPillButton
+                key={chip.id}
+                label={chip.label}
+                selected={dateChip === chip.id}
+                onPress={() => setDateChip(chip.id)}
+              />
+            ))}
+          </View>
+        </>
+      ) : null}
       <Text style={styles.sub}>
         {planMode ? "באיזה זמן יש לך?" : "כמה זמן פנוי?"}
       </Text>
@@ -68,19 +103,12 @@ export function PlanComposerScreen({
           <SecondaryPillButton
             key={value}
             label={String(value)}
-            selected={minutes === value && !later}
-            onPress={() => {
-              setLater(false);
-              setMinutes(value);
-            }}
+            selected={minutes === value}
+            onPress={() => setMinutes(value)}
           />
         ))}
       </View>
-      {planMode ? (
-        <View style={styles.pills}>
-          <SecondaryPillButton label="מאוחר יותר" selected={later} onPress={() => setLater(true)} />
-        </View>
-      ) : (
+      {planMode ? null : (
         <Text style={styles.hint}>מציגים משימות שמתאימות לחלון של עד {minutes} דקות.</Text>
       )}
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -91,7 +119,7 @@ export function PlanComposerScreen({
 const styles = StyleSheet.create({
   sub: { ...type.body, ...rtlText, marginBottom: space.lg },
   hint: { ...type.caption, ...rtlText, marginTop: space.md },
-  pills: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 10 },
+  pills: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 10, marginBottom: space.lg },
   footer: { paddingHorizontal: 24, paddingBottom: 16 },
   error: { ...rtlText, color: "#8B2E1F", marginTop: space.md },
 });

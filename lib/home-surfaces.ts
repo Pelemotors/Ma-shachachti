@@ -1,3 +1,5 @@
+import { productNow } from "./product-clock.ts";
+
 export const CHAT_SURFACES = [
   "forgotten",
   "deep-check",
@@ -61,7 +63,7 @@ export function isChatSurface(value: unknown): value is ChatSurface {
   );
 }
 
-export function greetingForDate(date = new Date()) {
+export function greetingForDate(date = productNow()) {
   const hour = Number(
     new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Jerusalem",

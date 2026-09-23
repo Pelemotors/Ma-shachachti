@@ -132,7 +132,19 @@ export async function executeIdempotentActions(
     });
     if (error) throw error;
     if (!isActionResult(data)) throw new Error("invalid_action_receipt");
-    results.push(data);
+    if (
+      data.ok &&
+      action.type === "shopping.toggle" &&
+      action.purchased != null
+    ) {
+      results.push({
+        ...data,
+        title: data.title ?? action.title,
+        purchased: action.purchased === true,
+      });
+    } else {
+      results.push(data);
+    }
   }
   return results;
 }

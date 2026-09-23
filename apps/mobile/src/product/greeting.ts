@@ -1,12 +1,22 @@
-export function timeGreeting(name?: string | null) {
-  const hour = Number(
+import { productNow } from "./productClock";
+
+export function jerusalemHour(now = productNow()) {
+  return Number(
     new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Jerusalem",
       hour: "numeric",
       hour12: false,
-    }).format(new Date()),
+    }).format(now),
   );
-  const part = hour < 12 ? "בוקר טוב" : hour < 17 ? "צהריים טובים" : "ערב טוב";
+}
+
+export function daypartGreeting(now = productNow()) {
+  const hour = jerusalemHour(now);
+  return hour < 12 ? "בוקר טוב" : hour < 17 ? "צהריים טובים" : "ערב טוב";
+}
+
+export function timeGreeting(name?: string | null, now = productNow()) {
+  const part = daypartGreeting(now);
   const trimmed = name?.trim();
   return trimmed ? `${part}, ${trimmed}.` : `${part}.`;
 }

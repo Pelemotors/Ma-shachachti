@@ -38,6 +38,38 @@ export function categoryLabel(category: MemoryCategory): string {
   return CATEGORY_LABELS[category] ?? "פרט";
 }
 
+/** Unwrap agent_memory JSON envelopes so temporal rules see the human text. */
+function memoryPlainText(content: string): string {
+  const raw = content.trim();
+  if (!raw.startsWith("{")) return raw;
+  try {
+    const parsed = JSON.parse(raw) as { text?: unknown };
+    if (typeof parsed.text === "string" && parsed.text.trim()) {
+      return parsed.text.trim();
+    }
+  } catch {
+    /* keep raw */
+  }
+  return raw;
+}
+
+/** Day/event-scoped wording → temporary unless an explicit durable routine/preference. */
+const DAY_SCOPED_RE =
+  /(?:^|[\s,."״])(?:היום|מחר|הערב|הלילה|השבוע|כרגע|הפעם|רק\s+היום|בפעם\s+הזו|חריג|זמנית)(?:$|[\s,."״])/;
+
+const DURABLE_ROUTINE_RE =
+  /בימי\s+\S+|כל\s+(?:יום|בוקר|ערב|שבוע)|תמיד|בדרך\s+כלל|מעולם|אני\s+לא\s+אוהב|אני\s+לא\s+אוהבת|אנחנו\s+לא\s+\S+\s+ב/;
+
+export function isDayScopedTemporalContent(content: string): boolean {
+  const text = memoryPlainText(content);
+  if (!text) return false;
+  if (DURABLE_ROUTINE_RE.test(text)) return false;
+  return (
+    DAY_SCOPED_RE.test(text) ||
+    /מחר|הפעם|רק היום|בפעם הזו|חריג|זמנית/.test(text)
+  );
+}
+
 export function inferMemoryCategory(
   content: string,
   kind: MemoryKind,
@@ -51,11 +83,19 @@ export function inferMemoryCategory(
     explicit === "fact" ||
     explicit === "note"
   ) {
+    // Day-scoped facts must not stay durable "fact/note" just because the model set category.
+    if (
+      (explicit === "fact" || explicit === "note" || explicit === "preference") &&
+      isDayScopedTemporalContent(content) &&
+      !DURABLE_ROUTINE_RE.test(memoryPlainText(content))
+    ) {
+      return "exception";
+    }
     return explicit;
   }
   const relation = parseActionFollowupRelation(content);
   if (relation) return "relation";
-  if (/מחר|הפעם|רק היום|חריג|זמנית|בפעם הזו/.test(content)) {
+  if (isDayScopedTemporalContent(content)) {
     return "exception";
   }
   if (kind === "preference") return "preference";
@@ -68,9 +108,18 @@ export function inferMemoryScope(
   category: MemoryCategory,
   explicit?: string | null,
 ): MemoryScope {
-  if (explicit === "temporary" || explicit === "always") return explicit;
+  if (explicit === "temporary" || explicit === "always") {
+    if (
+      explicit === "always" &&
+      isDayScopedTemporalContent(content) &&
+      !DURABLE_ROUTINE_RE.test(memoryPlainText(content))
+    ) {
+      return "temporary";
+    }
+    return explicit;
+  }
   if (category === "exception") return "temporary";
-  if (/מחר|הפעם|רק היום|בפעם הזו/.test(content)) return "temporary";
+  if (isDayScopedTemporalContent(content)) return "temporary";
   return "always";
 }
 
@@ -119,6 +168,9 @@ export function preferenceTopicKey(content: string): string | null {
   if (folded.includes("קיפול") || folded.includes("כביסה")) {
     return "קיפול-כביסה";
   }
+  if (/אל תעמיס|מה שחייב|לו״ז קל|לוז קל/.test(folded)) {
+    return "יום-קל-עומס";
+  }
   const match = folded.match(
     /(לנקות|ניקוי|לבשל|בישול|לישון|שינה).{0,40}/,
   );
@@ -127,20 +179,41 @@ export function preferenceTopicKey(content: string): string | null {
   return folded.slice(0, 60);
 }
 
+/** Stable entity key for household/domain facts so corrections can supersede. */
+export function factEntityKey(content: string): string | null {
+  const normalized = normalizeExactText(content).toLowerCase();
+  if (!normalized) return null;
+  // Child health/logistics: key by child + topic so adult corrections supersede.
+  if (
+    normalized.includes("תום") &&
+    /רופא|גן|מרגיש|חוזר|לוקח|לוקחת|נשאר/.test(normalized)
+  ) {
+    return "תום:טיפול-ילד";
+  }
+  if (/חשמלאי/.test(normalized)) return "חשמלאי:תיקון";
+  if (/כלב|צארלי|צ׳ארלי|אוכל לצ/.test(normalized)) return "צארלי:חיית-מחמד";
+  const entities = ["תום", "דני", "מאיה", "עידו", "צארלי", "צ׳ארלי"];
+  const hits = entities.filter((name) => normalized.includes(name));
+  if (!hits.length) return null;
+  return `${hits.sort().join("+")}:כללי`;
+}
+
 export type MemoryReconcileDecision =
-  | { mode: "insert"; category: MemoryCategory; scope: MemoryScope }
+  | { mode: "insert"; category: MemoryCategory; scope: MemoryScope; supersedes?: string }
   | {
       mode: "update";
       id: string;
       category: MemoryCategory;
       scope: MemoryScope;
       deactivatePrevious?: string;
+      supersedes?: string;
     }
   | {
       mode: "exception";
       category: "exception";
       scope: "temporary";
       keepStandingId?: string;
+      deactivateIds?: string[];
     };
 
 /**
@@ -185,6 +258,7 @@ export function reconcileMemoryWrite(input: {
 
   if (scope === "temporary" || category === "exception") {
     const topic = preferenceTopicKey(input.content);
+    const entity = factEntityKey(input.content);
     const standing = topic
       ? input.existing.find(
           (row) =>
@@ -194,12 +268,58 @@ export function reconcileMemoryWrite(input: {
             preferenceTopicKey(row.content) === topic,
         )
       : undefined;
+    const staleFacts = entity
+      ? input.existing
+          .filter(
+            (row) =>
+              row.active !== false &&
+              factEntityKey(row.content) === entity &&
+              normalizeExactText(row.content) !==
+                normalizeExactText(input.content),
+          )
+          .map((row) => row.id)
+      : [];
     return {
       mode: "exception",
       category: "exception",
       scope: "temporary",
       keepStandingId: standing?.id,
+      deactivateIds: staleFacts,
     };
+  }
+
+  if (input.kind === "fact" || category === "fact") {
+    const entity = factEntityKey(input.content);
+    if (entity) {
+      const previous = input.existing.find(
+        (row) =>
+          row.active !== false &&
+          factEntityKey(row.content) === entity &&
+          normalizeExactText(row.content) !== normalizeExactText(input.content),
+      );
+      if (previous) {
+        return {
+          mode: "update",
+          id: previous.id,
+          category: "fact",
+          scope: "always",
+          supersedes: previous.id,
+        };
+      }
+      const exact = input.existing.find(
+        (row) =>
+          row.active !== false &&
+          normalizeExactText(row.content) === normalizeExactText(input.content),
+      );
+      if (exact) {
+        return {
+          mode: "update",
+          id: exact.id,
+          category: "fact",
+          scope: "always",
+        };
+      }
+    }
   }
 
   if (input.kind === "preference" || category === "preference") {

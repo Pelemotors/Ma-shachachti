@@ -778,7 +778,9 @@ function successLine(result: Extract<ActionResult, { ok: true }>) {
     case "shopping.update":
       return `עדכנתי${title} ברשימת הקניות.`;
     case "shopping.toggle":
-      return `עדכנתי את מצב הקנייה של${title}.`;
+      return result.purchased
+        ? `סימנתי${title}.`
+        : `עדכנתי את מצב הקנייה של${title}.`;
     case "shopping.remove":
       return `הסרתי${title} מרשימת הקניות.`;
     case "checklist.create":

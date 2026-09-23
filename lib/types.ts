@@ -161,6 +161,7 @@ export type ActionResult =
       due_time?: string | null;
       alreadyExists?: boolean;
       silent?: boolean;
+      purchased?: boolean;
     }
   | {
       ok: false;

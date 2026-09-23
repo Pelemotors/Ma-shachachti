@@ -8,6 +8,7 @@ import {
   type ReminderTask,
 } from "./reminder-plan.ts";
 
+import { productNow } from "./product-clock.ts";
 import { vapidPublicKey } from "./push.ts";
 import { recordAppNotification } from "./notifications/record.ts";
 import {
@@ -114,7 +115,7 @@ export async function dispatchDueReminders(
     requireVapid?: boolean;
   } = {},
 ) {
-  const now = options.now ?? new Date();
+  const now = options.now ?? productNow();
   const requireVapid = options.requireVapid !== false;
   if (requireVapid && !options.send && !configureWebPush()) {
     return {

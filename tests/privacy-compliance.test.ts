@@ -155,7 +155,7 @@ test("expo product screens are real CRUD not JSON dumps", () => {
   assert.match(home, /ProductShell/);
   const shell = read("apps/mobile/src/navigation/ProductShell.tsx");
   assert.match(shell, /TasksScreen/);
-  assert.match(shell, /ChatScreen/);
+  assert.match(shell, /ChatScreen|ChatV4Screen/);
   assert.match(shell, /BankScreen/);
   assert.match(shell, /PlanComposerScreen|DayPlanScreen/);
   assert.match(shell, /CalendarScreen/);

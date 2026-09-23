@@ -199,21 +199,32 @@ export function detectConflicts(
   return conflicts;
 }
 
-/**
- * Re-plan only when explicitly invoked. Uses calendar cache as constraints.
- * Does NOT create day_plan_items from calendar events.
- */
-export async function replanDay(
-  db: SupabaseClient,
-  userId: string,
+export function taskIdsForPlanDate(
+  tasks: Array<{ id: string; status?: string; due_on?: string | null }>,
   date: string,
-  taskIds: string[],
-  constraints: CalendarConstraint[],
-  household = false,
+  alreadyOnPlan: string[] = [],
 ) {
-  const slots: DayPlanItemInput[] = [];
-  let cursor = jerusalemDateTimeToUtc(date, "09:00").getTime();
-  for (const taskId of taskIds) {
+  const dueThatDay = tasks
+    .filter((task) => (task.status ?? "open") === "open" && task.due_on === date)
+    .map((task) => task.id);
+  return [...new Set([...alreadyOnPlan, ...dueThatDay])];
+}
+
+export function mergeDayPlanItems(
+  existing: DayPlanItemInput[],
+  incomingIds: string[],
+  date: string,
+  constraints: CalendarConstraint[],
+) {
+  const kept = existing.filter((item) => item.task_id);
+  const keptIds = new Set(kept.map((item) => item.task_id));
+  const toAdd = incomingIds.filter((id) => id && !keptIds.has(id));
+  let cursor = kept.reduce((max, item) => {
+    const end = item.end_at ? Date.parse(item.end_at) : Date.parse(item.start_at);
+    return Number.isNaN(end) ? max : Math.max(max, end + 15 * 60 * 1000);
+  }, jerusalemDateTimeToUtc(date, "09:00").getTime());
+  const added: DayPlanItemInput[] = [];
+  for (const taskId of toAdd) {
     let start = cursor;
     let end = start + 45 * 60 * 1000;
     for (const event of constraints) {
@@ -224,7 +235,7 @@ export async function replanDay(
         end = start + 45 * 60 * 1000;
       }
     }
-    slots.push({
+    added.push({
       task_id: taskId,
       start_at: new Date(start).toISOString(),
       end_at: new Date(end).toISOString(),
@@ -233,6 +244,54 @@ export async function replanDay(
     });
     cursor = end + 15 * 60 * 1000;
   }
+  return [...kept, ...added];
+}
+
+/**
+ * Re-plan only when explicitly invoked. Preserves existing items (fixed and flexible).
+ * Only appends newly requested, date-relevant task ids. Never dumps the full open list.
+ */
+export async function replanDay(
+  db: SupabaseClient,
+  userId: string,
+  date: string,
+  taskIds: string[],
+  constraints: CalendarConstraint[],
+  household = false,
+) {
+  const current = await loadDayPlan(db, userId, date, household);
+  const existing: DayPlanItemInput[] = (current.items ?? []).map((raw) => {
+    const row = raw as Record<string, unknown>;
+    return {
+      task_id: String(row.task_id ?? ""),
+      start_at: String(row.start_at),
+      end_at: row.end_at ? String(row.end_at) : null,
+      kind: row.kind === "fixed" ? "fixed" : "flexible",
+      source:
+        row.source === "calendar"
+          ? "calendar"
+          : row.source === "replan"
+            ? "replan"
+            : "manual",
+    };
+  });
+  const requested = Array.from(new Set(taskIds.filter(Boolean)));
+  let allowed = requested;
+  if (requested.length) {
+    const { data: rows } = await db
+      .from("tasks")
+      .select("id,status,due_on")
+      .eq("user_id", userId)
+      .in("id", requested);
+    allowed = taskIdsForPlanDate(
+      (rows ?? []) as Array<{ id: string; status?: string; due_on?: string | null }>,
+      date,
+      existing.map((item) => item.task_id),
+    );
+  } else {
+    allowed = existing.map((item) => item.task_id);
+  }
+  const slots = mergeDayPlanItems(existing, allowed, date, constraints);
   const saved = await updateDayPlan(db, userId, date, slots, household);
   return { ...saved, conflicts: detectConflicts(slots, constraints) };
 }

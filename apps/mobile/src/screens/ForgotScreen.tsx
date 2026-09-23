@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { AppScreen, ChecklistRow, EmptyState, PrimaryActionButton, ScreenHeader } from "../components/ui";
 import { completeTask, listTasks, type MobileTask } from "../api/tasks";
+import { productNowMs } from "../product/productClock";
 import { rtlText, space, type } from "../theme";
 
 function isForgotten(task: MobileTask) {
   if (task.status !== "open") return false;
   if (!task.due_on && !task.due_at) return true;
-  if (task.due_at && Date.parse(task.due_at) < Date.now()) return true;
+  if (task.due_at && Date.parse(task.due_at) < productNowMs()) return true;
   return false;
 }
 

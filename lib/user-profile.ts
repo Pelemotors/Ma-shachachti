@@ -17,6 +17,8 @@ export type UserProfile = {
   onboarding_completed_at: string | null;
   appearance_mode: "auto" | "season";
   appearance_season: (typeof APPEARANCE_SEASONS)[number] | null;
+  avatar_path?: string | null;
+  avatar_url?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -120,6 +122,8 @@ export function emptyUserProfile(userId: string): UserProfile {
     onboarding_completed_at: null,
     appearance_mode: "auto",
     appearance_season: null,
+    avatar_path: null,
+    avatar_url: null,
     created_at: null,
     updated_at: null,
   };

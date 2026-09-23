@@ -16,6 +16,7 @@ export async function authorizeIdentity(req: Request) {
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) throw new HttpError(401, "צריך להתחבר כדי להמשיך.");
 
+  // JWT verification uses Supabase/GoTrue wall-clock expiry — never ProductClock.
   const db = createClient(url, key, {
     global: { headers: { Authorization: `Bearer ${token}` } },
     auth: { persistSession: false, autoRefreshToken: false },
@@ -25,7 +26,7 @@ export async function authorizeIdentity(req: Request) {
   if (error || !data.user)
     throw new HttpError(401, "ההתחברות הסתיימה. יש להתחבר שוב.");
 
-  return { db, userId: data.user.id };
+  return { db, userId: data.user.id, accessToken: token };
 }
 
 export async function authorize(req: Request) {

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { AppScreen, ChecklistRow, EmptyState, ScreenHeader } from "../components/ui";
 import { addShopping, listShopping, toggleShopping, type MobileShoppingItem } from "../api/shopping";
 import { ChatComposer } from "../components/ui/ChatComposer";
-import { space } from "../theme";
+import { shoppingAddResult } from "../product/surfaceCommit";
+import { rtlText, space } from "../theme";
 
 export function ShoppingScreen() {
   const [items, setItems] = useState<MobileShoppingItem[]>([]);
   const [draft, setDraft] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => {
     setItems((await listShopping()).shopping);
@@ -19,12 +22,22 @@ export function ShoppingScreen() {
 
   async function add() {
     const title = draft.trim();
-    if (!title) return;
-    setDraft("");
+    if (!title || busy) return;
+    setBusy(true);
+    setError("");
     try {
-      setItems((await addShopping(title)).shopping);
-    } catch {
-      /* stay */
+      const data = await addShopping(title);
+      const result = shoppingAddResult(true, title);
+      if (result.acceptList) setItems(data.shopping);
+      setDraft(result.nextDraft);
+    } catch (err) {
+      const result = shoppingAddResult(false, draft);
+      setDraft(result.nextDraft);
+      if (result.showError) {
+        setError(err instanceof Error ? err.message : "לא הצלחנו להוסיף את הפריט");
+      }
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -32,6 +45,11 @@ export function ShoppingScreen() {
     <AppScreen
       footer={
         <View style={styles.footer}>
+          {error ? (
+            <Pressable onPress={() => void add()} accessibilityLabel="נסי שוב">
+              <Text style={styles.error}>{error} · נסי שוב</Text>
+            </Pressable>
+          ) : null}
           <ChatComposer
             value={draft}
             onChangeText={setDraft}
@@ -73,5 +91,6 @@ function setShoppingSafe(
 
 const styles = StyleSheet.create({
   list: { gap: space.sm },
-  footer: { paddingHorizontal: 24, paddingBottom: 8 },
+  footer: { paddingHorizontal: 24, paddingBottom: 8, gap: 8 },
+  error: { ...rtlText, color: "#8B2E1F", fontSize: 13 },
 });

@@ -1,3 +1,4 @@
+import { productNow } from "./product-clock.ts";
 import type { TaskRow } from "./types.ts";
 import { jerusalemParts, todayContext } from "./time.ts";
 
@@ -29,7 +30,7 @@ function timedInstant(task: TaskRow) {
 
 export function buildHomeDisplay(
   tasks: TaskRow[],
-  now = new Date(),
+  now = productNow(),
   limit = HOME_CHRONOLOGICAL_LIMIT,
 ): HomeDisplaySummary {
   const date = todayContext(now).date;

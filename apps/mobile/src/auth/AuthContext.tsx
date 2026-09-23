@@ -16,6 +16,11 @@ import {
   signOut as sessionSignOut,
   type AuthUser,
 } from "./session";
+import { ensureLocalNotificationRuntime } from "../notifications/localReminders";
+import {
+  bootstrapNativePush,
+  revokeNativePushRegistration,
+} from "../notifications/pushLifecycle";
 import { getSupabase } from "../api/supabase";
 
 type AuthState = {
@@ -40,6 +45,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const restored = await restoreSession();
       setUser(restored.user);
+      if (restored.user && restored.user.id !== "ui-preview") {
+        void ensureLocalNotificationRuntime();
+        void bootstrapNativePush();
+      }
     } catch (caught) {
       setUser(null);
       setError(
@@ -92,6 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const result = await signInWithNativeProvider(provider);
           setUser(result.user);
+          void ensureLocalNotificationRuntime();
+          void bootstrapNativePush();
         } catch (caught) {
           const message =
             caught instanceof Error ? caught.message : "ההתחברות נכשלה.";
@@ -104,6 +115,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const result = await signInWithEmailPassword(email, password);
           setUser(result.user);
+          void ensureLocalNotificationRuntime();
+          void bootstrapNativePush();
         } catch (caught) {
           const message =
             caught instanceof Error ? caught.message : "ההתחברות נכשלה.";
@@ -116,6 +129,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser({ id: "ui-preview", email: null, displayName: null });
       },
       signOut: async () => {
+        if (user && user.id !== "ui-preview") {
+          try {
+            await revokeNativePushRegistration();
+          } catch {
+            /* revoke is best-effort before session drop */
+          }
+        }
         try {
           await sessionSignOut();
         } catch {

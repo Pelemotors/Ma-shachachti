@@ -33,6 +33,7 @@ function ok(
     due_time?: string | null;
     alreadyExists?: boolean;
     silent?: boolean;
+    purchased?: boolean;
   } = {},
 ): ActionResult {
   return { ok: true, type, ...extra };
@@ -291,6 +292,13 @@ export async function executeAction(
             kind: "flexible",
             source: "manual",
           });
+          const priorDates = new Set<string>();
+          if (current.due_on && current.due_on !== action.planned_date) {
+            priorDates.add(current.due_on);
+          }
+          for (const prior of priorDates) {
+            await removeDayPlanItem(db, userId, prior, action.id);
+          }
         }
       }
       Object.assign(
@@ -603,57 +611,105 @@ export async function executeAction(
     }
     case "shopping.add": {
       if (!action.title || action.quantity == null) return fail(action.type, "חסר פריט קניות תקין.");
-      await mutateShopping(db, userId, { action: "add", title: action.title, quantity: action.quantity });
+      try {
+        await mutateShopping(db, userId, { action: "add", title: action.title, quantity: action.quantity });
+      } catch {
+        return fail(action.type, "לא הצלחנו להוסיף לרשימת הקניות.");
+      }
       return ok(action.type, { title: action.title });
     }
     case "shopping.update": {
       if (!action.id) return fail(action.type, "חסר מזהה פריט.");
-      await mutateShopping(db, userId, { action: "update", id: action.id, ...(action.title ? { title: action.title } : {}), ...(action.quantity != null ? { quantity: action.quantity } : {}) });
+      try {
+        await mutateShopping(db, userId, { action: "update", id: action.id, ...(action.title ? { title: action.title } : {}), ...(action.quantity != null ? { quantity: action.quantity } : {}) });
+      } catch {
+        return fail(action.type, "לא הצלחנו לעדכן את פריט הקניות.");
+      }
       return ok(action.type, { id: action.id, title: action.title });
     }
     case "shopping.toggle": {
       if (!action.id || action.purchased == null) return fail(action.type, "חסר מצב קנייה תקין.");
-      await mutateShopping(db, userId, { action: "toggle", id: action.id, purchased: action.purchased });
-      return ok(action.type, { id: action.id, title: action.title });
+      try {
+        await mutateShopping(db, userId, { action: "toggle", id: action.id, purchased: action.purchased });
+      } catch {
+        return fail(action.type, "לא הצלחנו לעדכן את מצב הקנייה.");
+      }
+      return ok(action.type, {
+        id: action.id,
+        title: action.title,
+        purchased: action.purchased === true,
+      });
     }
     case "shopping.remove": {
       if (!action.id) return fail(action.type, "חסר מזהה פריט.");
-      await mutateShopping(db, userId, { action: "remove", id: action.id });
+      try {
+        await mutateShopping(db, userId, { action: "remove", id: action.id });
+      } catch {
+        return fail(action.type, "לא הצלחנו להסיר את פריט הקניות.");
+      }
       return ok(action.type, { id: action.id, title: action.title });
     }
     case "checklist.create": {
       if (!action.title) return fail(action.type, "חסר שם רשימה.");
-      await mutateChecklist(db, userId, { action: "create", title: action.title });
+      try {
+        await mutateChecklist(db, userId, { action: "create", title: action.title });
+      } catch {
+        return fail(action.type, "לא הצלחנו ליצור את הרשימה.");
+      }
       return ok(action.type, { title: action.title });
     }
     case "checklist.rename": {
       if (!action.id || !action.title) return fail(action.type, "חסרים פרטי הרשימה.");
-      await mutateChecklist(db, userId, { action: "rename", id: action.id, title: action.title });
+      try {
+        await mutateChecklist(db, userId, { action: "rename", id: action.id, title: action.title });
+      } catch {
+        return fail(action.type, "לא הצלחנו לשנות את שם הרשימה.");
+      }
       return ok(action.type, { id: action.id, title: action.title });
     }
     case "checklist.delete": {
       if (!action.id) return fail(action.type, "חסר מזהה רשימה.");
-      await mutateChecklist(db, userId, { action: "delete", id: action.id });
+      try {
+        await mutateChecklist(db, userId, { action: "delete", id: action.id });
+      } catch {
+        return fail(action.type, "לא הצלחנו למחוק את הרשימה.");
+      }
       return ok(action.type, { id: action.id, title: action.title });
     }
     case "checklist.item.add": {
       if (!action.checklist_id || !action.text) return fail(action.type, "חסרים פרטי הפריט.");
-      await mutateChecklist(db, userId, { action: "item.add", checklist_id: action.checklist_id, text: action.text });
+      try {
+        await mutateChecklist(db, userId, { action: "item.add", checklist_id: action.checklist_id, text: action.text });
+      } catch {
+        return fail(action.type, "לא הצלחנו להוסיף פריט לרשימה.");
+      }
       return ok(action.type, { title: action.text });
     }
     case "checklist.item.update": {
       if (!action.checklist_id || !action.id || !action.text) return fail(action.type, "חסרים פרטי הפריט.");
-      await mutateChecklist(db, userId, { action: "item.update", checklist_id: action.checklist_id, id: action.id, text: action.text });
+      try {
+        await mutateChecklist(db, userId, { action: "item.update", checklist_id: action.checklist_id, id: action.id, text: action.text });
+      } catch {
+        return fail(action.type, "לא הצלחנו לעדכן את הפריט.");
+      }
       return ok(action.type, { id: action.id, title: action.text });
     }
     case "checklist.item.toggle": {
       if (!action.checklist_id || !action.id || action.checked == null) return fail(action.type, "חסר מצב סימון תקין.");
-      await mutateChecklist(db, userId, { action: "item.toggle", checklist_id: action.checklist_id, id: action.id, checked: action.checked });
+      try {
+        await mutateChecklist(db, userId, { action: "item.toggle", checklist_id: action.checklist_id, id: action.id, checked: action.checked });
+      } catch {
+        return fail(action.type, "לא הצלחנו לעדכן את הסימון.");
+      }
       return ok(action.type, { id: action.id, title: action.title });
     }
     case "checklist.item.remove": {
       if (!action.checklist_id || !action.id) return fail(action.type, "חסרים פרטי הפריט.");
-      await mutateChecklist(db, userId, { action: "item.remove", checklist_id: action.checklist_id, id: action.id });
+      try {
+        await mutateChecklist(db, userId, { action: "item.remove", checklist_id: action.checklist_id, id: action.id });
+      } catch {
+        return fail(action.type, "לא הצלחנו להסיר את הפריט.");
+      }
       return ok(action.type, { id: action.id, title: action.title });
     }
     default:
@@ -733,19 +789,35 @@ export async function loadMemory(
   userId: string,
   options: { includeInactive?: boolean } = {},
 ): Promise<MemoryRow[]> {
+  const fullSelect =
+    "id,kind,content,confidence,source,seen_at,created_at,updated_at,active,scope,category,supersedes";
+  const baseSelect =
+    "id,kind,content,confidence,source,seen_at,created_at,updated_at";
   let query = db
     .from("agent_memory")
-    .select(
-      "id,kind,content,confidence,source,seen_at,created_at,updated_at,active,scope,category,supersedes",
-    )
+    .select(fullSelect)
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
     .limit(60);
   if (!options.includeInactive) {
     query = query.eq("active", true);
   }
-  const { data, error } = await query;
-  if (error) throw error;
+  let { data, error } = await query;
+  if (error) {
+    const missingNewCols = /active|scope|category|supersedes|PGRST204/i.test(
+      error.message ?? "",
+    );
+    if (!missingNewCols) throw error;
+    const fallback = await db
+      .from("agent_memory")
+      .select(baseSelect)
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(60);
+    if (fallback.error) throw fallback.error;
+    // Legacy rows lack active/scope/category/supersedes — cast via MemoryRow defaults.
+    return (fallback.data ?? []) as MemoryRow[];
+  }
   return (data ?? []) as MemoryRow[];
 }
 

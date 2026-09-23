@@ -1,5 +1,5 @@
 import { getMobileApiBaseUrl } from "../utils/env";
-import { readStoredAccessToken } from "./supabase";
+import { getFreshAccessToken, refreshAccessToken } from "./supabase";
 
 export class ApiError extends Error {
   status: number;
@@ -33,11 +33,23 @@ export async function apiRequest<T = unknown>(
     headers.set("Content-Type", "application/json");
   }
   if (!init.anonymous) {
-    const token = await readStoredAccessToken();
+    const token = await getFreshAccessToken();
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(url, { ...init, headers });
+  if (response.status === 401 && !init.anonymous) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      headers.set("Authorization", `Bearer ${refreshed}`);
+      const retry = await fetch(url, { ...init, headers });
+      return readApiBody<T>(retry);
+    }
+  }
+  return readApiBody<T>(response);
+}
+
+async function readApiBody<T>(response: Response): Promise<T> {
   const text = await response.text();
   let body: unknown = null;
   if (text) {

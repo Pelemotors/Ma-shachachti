@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { AppScreen, ChecklistRow, EmptyState, PrimaryActionButton, ScreenHeader } from "../components/ui";
 import { formatPlanTime, getDayPlan, todayJerusalemDate, type MobileDayPlan } from "../api/planning";
 import { listTasks, type MobileTask } from "../api/tasks";
+import { syncProductClock } from "../product/productClock";
 import { space } from "../theme";
 
 export function ScheduleScreen({
@@ -16,12 +17,14 @@ export function ScheduleScreen({
   const [tasks, setTasks] = useState<MobileTask[]>([]);
 
   useEffect(() => {
-    void getDayPlan(todayJerusalemDate())
-      .then(setPlan)
-      .catch(() => setPlan(null));
-    void listTasks()
-      .then((data) => setTasks(data.tasks))
-      .catch(() => setTasks([]));
+    void (async () => {
+      await syncProductClock();
+      const date = todayJerusalemDate();
+      await Promise.all([
+        getDayPlan(date).then(setPlan).catch(() => setPlan(null)),
+        listTasks().then((data) => setTasks(data.tasks)).catch(() => setTasks([])),
+      ]);
+    })();
   }, []);
 
   const items = plan?.items ?? [];

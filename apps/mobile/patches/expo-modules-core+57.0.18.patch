@@ -1,0 +1,96 @@
+diff --git a/node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/ExpoBridgeModule.kt b/node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/ExpoBridgeModule.kt
+index 1111111..2222222 100644
+--- a/node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/ExpoBridgeModule.kt
++++ b/node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/ExpoBridgeModule.kt
+@@ -1,41 +1,44 @@
+ package expo.modules.kotlin
+ 
++import android.util.Log
+ import com.facebook.react.bridge.ReactApplicationContext
+ import com.facebook.react.bridge.ReactContextBaseJavaModule
+ import com.facebook.react.bridge.ReactMethod
+ import expo.modules.adapters.react.NativeModulesProxy
+ import java.lang.ref.WeakReference
+ 
+ /**
+  * The classic bridge module that is responsible for installing the host object to the runtime.
++ *
++ * Ma-shachachti: Do NOT busy-wait for hasActiveReactInstance() on the calling thread.
++ * ensureNativeModulesAreInstalled() invokes this synchronously during JS module init
++ * (EventEmitter.ts). Waiting deadlocks: ReactInstance cannot become active until the
++ * current JS stack completes, so the wait expires, installJSIInterop is a no-op, and JS
++ * crashes with EventEmitter of undefined. Settings native modules widened PackageList
++ * and made this race hit cold-start on emulator.
+  */
+ class ExpoBridgeModule(
+   reactContext: ReactApplicationContext,
+   private val nativeModulesProxy: WeakReference<NativeModulesProxy>
+ ) :
+   ReactContextBaseJavaModule(reactContext) {
+   override fun getName(): String = "ExpoModulesCore"
+ 
+   @ReactMethod(isBlockingSynchronousMethod = true)
+   fun installModules(): Boolean {
+-    // Bridgeless ReactHostImpl may have BridgelessReactContext ready but not ReactInstance.
+-    // Try to busy wait until ReactInstance is available so we could get the javaScriptContextHolder.
+-    tryWaitSync(waitMs = 100, retries = 10) {
+-      reactApplicationContext.hasActiveReactInstance()
+-    }
+     val kotlinInterop = nativeModulesProxy.get()?.kotlinInteropModuleRegistry
+       ?: throw IllegalStateException("Couldn't find KotlinInteropModuleRegistry")
+ 
++    val holder = reactApplicationContext.javaScriptContextHolder?.get()
++    if (holder == null || holder == 0L) {
++      Log.w(
++        "ExpoBridgeModule",
++        "installModules() called without a JS runtime pointer; globalThis.expo may stay unset"
++      )
++    }
++
+     kotlinInterop.installJSIInterop()
+     return true
+   }
+-
+-  private fun tryWaitSync(waitMs: Long, retries: Int, predicate: () -> Boolean) {
+-    repeat(retries) inner@{
+-      if (predicate()) {
+-        return
+-      }
+-      Thread.sleep(waitMs)
+-    }
+-  }
+ }
+diff --git a/node_modules/expo-modules-core/src/ensureNativeModulesAreInstalled.native.ts b/node_modules/expo-modules-core/src/ensureNativeModulesAreInstalled.native.ts
+index 1111111..2222222 100644
+--- a/node_modules/expo-modules-core/src/ensureNativeModulesAreInstalled.native.ts
++++ b/node_modules/expo-modules-core/src/ensureNativeModulesAreInstalled.native.ts
+@@ -1,18 +1,25 @@
+ import { TurboModuleRegistry } from 'react-native';
+ 
+ /**
+  * Ensures that the native modules are installed in the current runtime.
+  * Otherwise, it synchronously calls a native function that installs them.
++ *
++ * NOTE (Ma-shachachti): Do NOT early-return on `typeof window === 'undefined'`.
++ * On Android Bridgeless/Hermes, `window` is often undefined; the old check skipped
++ * `installModules()` and left `globalThis.expo` unset, so EventEmitter.ts crashed with:
++ *   TypeError: Cannot read property 'EventEmitter' of undefined
++ *   [runtime not ready]
+  */
+ export function ensureNativeModulesAreInstalled(): void {
+-  if (globalThis.expo || typeof window === 'undefined') {
++  if (globalThis.expo) {
+     return;
+   }
+ 
+   try {
+-    // TODO: ExpoModulesCore shouldn't be optional here,
+-    // but to keep backwards compatibility let's just ignore it in SDK 50.
+-    // In most cases the modules were already installed from the native side.
+     (
+       TurboModuleRegistry.get('ExpoModulesCore') as { installModules: () => void } | null
+     )?.installModules();
+   } catch (error) {
+     console.error(`Unable to install Expo modules: ${error}`);
+   }
+ }

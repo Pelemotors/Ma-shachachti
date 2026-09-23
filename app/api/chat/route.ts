@@ -49,6 +49,7 @@ import { validateStoredPresentation } from "@/lib/chat-presentation";
 import { loadAgentProfile } from "@/lib/user-profile";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadChecklists, loadShopping } from "@/lib/lists";
+import { productNow } from "@/lib/product-clock";
 import { todayContext } from "@/lib/time";
 import { jerusalemDayRange } from "@/lib/schedule";
 import { loadDayPlan } from "@/lib/day-plan";
@@ -255,7 +256,8 @@ export async function POST(req: Request) {
       new Map();
 
     if (!agent) {
-      const mentionedDate = resolveMentionedJerusalemDate(message);
+      const businessNow = productNow();
+      const mentionedDate = resolveMentionedJerusalemDate(message, businessNow);
       const [memory, consequences, profile, shopping, checklists, dayPlanPack, priorShown] =
         await Promise.all([
           loadMemory(db, userId),
@@ -300,7 +302,7 @@ export async function POST(req: Request) {
         surface,
         surfaceContext,
         profile,
-        currentTime: todayContext().currentTime,
+        currentTime: todayContext(businessNow).currentTime,
         queryHint: message,
         allTasks: tasks,
         allMemory: memory,
@@ -318,6 +320,7 @@ export async function POST(req: Request) {
           : [],
         calendarConstraints: dayPlanPack ? dayPlanPack[1] : [],
         alreadyShownTaskIds,
+        now: businessNow,
       });
 
       const { data: recent, error: historyError } = await db
@@ -340,13 +343,14 @@ export async function POST(req: Request) {
         .map((item) => ({ role: item.role, content: item.content }));
       openaiInput.push({
         role: "user",
-        content: `${surfaceInputHint(surface, surfaceContext)}${message}`,
+        content: `${surfaceInputHint(surface, surfaceContext, businessNow)}${message}`,
       });
 
       let prompt = buildTurnPrompt({
         compact,
         surface,
         surfaceContext,
+        now: businessNow,
       });
       promptModules = prompt.modules;
       promptChars = prompt.approxChars;
@@ -381,6 +385,7 @@ export async function POST(req: Request) {
             compact,
             surface,
             surfaceContext,
+            now: businessNow,
             deepAccessAppendix: appendix,
           });
           promptModules = prompt.modules;
@@ -541,7 +546,7 @@ export async function POST(req: Request) {
     let presentation = resolveAgentPresentation(
       scoped.presentation,
       nextTasks,
-      new Date(),
+      productNow(),
       surface,
       [...turnConsequences.values()],
     );
@@ -577,7 +582,7 @@ export async function POST(req: Request) {
         targetDate:
           scheduleCtx && "date" in scheduleCtx && typeof scheduleCtx.date === "string"
             ? scheduleCtx.date
-            : todayContext().date,
+            : todayContext(productNow()).date,
         dayStart:
           scheduleCtx &&
           "day_start" in scheduleCtx &&
@@ -630,6 +635,10 @@ export async function POST(req: Request) {
       presentation: storedPresentation,
     });
 
+    const mutations = {
+      ok: results.filter((result) => result.ok).length,
+      failed: results.filter((result) => !result.ok).length,
+    };
     const responseBody = {
       reply,
       id: saved.id,
@@ -639,6 +648,7 @@ export async function POST(req: Request) {
       proposal,
       session_id: sessionId,
       turn_id: turnKey,
+      mutations,
     };
     await completeAgentTurn(db, userId, turnClaim.id, responseBody);
     activeTurn = null;

@@ -1,4 +1,5 @@
 import { UUID_RE } from "./action-schema.ts";
+import { productNow } from "./product-clock.ts";
 import { DATE_RE, TIME_RE, dueTimeFromDueAt, todayContext } from "./time.ts";
 import type {
   ClientPresentation,
@@ -64,7 +65,7 @@ export function resolveTaskListPresentation(
 export function resolveSchedulePlanPresentation(
   presentation: unknown,
   tasks: TaskRow[],
-  now = new Date(),
+  now = productNow(),
 ): Extract<ClientPresentation, { type: "schedule_plan" }> | null {
   if (
     !presentation ||
@@ -179,7 +180,7 @@ export function buildScheduleFallbackPresentation(input: {
   dayEnd?: string;
   now?: Date;
 }): Extract<ClientPresentation, { type: "schedule_plan" }> {
-  const now = input.now ?? new Date();
+  const now = input.now ?? productNow();
   const { date: today, currentTime } = todayContext(now);
   const dayStart = input.dayStart && TIME_RE.test(input.dayStart)
     ? input.dayStart
@@ -345,7 +346,7 @@ export function resolveInsightsPresentation(
 export function resolveAgentPresentation(
   presentation: unknown,
   tasks: TaskRow[],
-  now = new Date(),
+  now = productNow(),
   surface: string | null = null,
   consequences: ConsequenceRow[] = [],
 ): ClientPresentation | null {

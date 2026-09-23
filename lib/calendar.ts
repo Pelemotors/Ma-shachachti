@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { productNow } from "./product-clock.ts";
 import { HttpError } from "./server-auth.ts";
 import {
   calendarEncryptionReady,
@@ -269,7 +270,7 @@ export async function getValidCalendarAccessToken(
   return refreshed.access_token;
 }
 
-export function calendarSyncWindow(now = new Date()) {
+export function calendarSyncWindow(now = productNow()) {
   const from = new Date(now);
   from.setUTCDate(from.getUTCDate() - CALENDAR_SYNC_LOOKBACK_DAYS);
   const to = new Date(now);
@@ -364,6 +365,11 @@ export async function loadCalendarConstraints(
     .eq("user_id", userId)
     .lt("start_at", toIso)
     .gt("end_at", fromIso);
-  if (error) throw new HttpError(503, "טעינת אירועי היומן נכשלה.");
+  if (error) {
+    if (/PGRST205|schema cache|calendar_events_cache/i.test(error.message ?? "")) {
+      return [];
+    }
+    throw new HttpError(503, "טעינת אירועי היומן נכשלה.");
+  }
   return data ?? [];
 }

@@ -19,6 +19,7 @@ import {
   fulfillContextRequests,
   parseContextRequests,
 } from "./context/deep-access.ts";
+import { productNow } from "../product-clock.ts";
 import { todayContext } from "../time.ts";
 import { latestOrCreateChatSession } from "../chat-sessions.ts";
 import { recordActivity } from "../activity.ts";
@@ -149,11 +150,12 @@ export async function processBrainDumpTranscript(input: {
       tasks.filter((task) => task.status === "open").map((task) => task.id),
     );
 
+    const businessNow = productNow();
     const compact = buildCompactContext({
       surface: null,
       surfaceContext: null,
       profile,
-      currentTime: todayContext().currentTime,
+      currentTime: todayContext(businessNow).currentTime,
       queryHint: transcript,
       allTasks: tasks,
       allMemory: memory,
@@ -161,9 +163,10 @@ export async function processBrainDumpTranscript(input: {
       shopping,
       checklists,
       purpose: "brain-dump",
+      now: businessNow,
     });
 
-    const base = buildAgentPrompt({ compact, surface: null });
+    const base = buildAgentPrompt({ compact, surface: null, now: businessNow });
     const instructions = `${base.instructions}
 
 ## הוראות Brain Dump

@@ -1,3 +1,4 @@
+import { productNow } from "../product-clock.ts";
 import type { ConsequenceRow, TaskRow } from "../types.ts";
 import { dueTimeFromDueAt, jerusalemParts, todayContext } from "../time.ts";
 
@@ -25,7 +26,7 @@ export function scoreTaskCandidate(input: {
   now?: Date;
   freeMinutes?: number | null;
 }): RankedCandidate {
-  const now = input.now ?? new Date();
+  const now = input.now ?? productNow();
   const { date: today, currentTime } = todayContext(now);
   const task = input.task;
   let score = 0;

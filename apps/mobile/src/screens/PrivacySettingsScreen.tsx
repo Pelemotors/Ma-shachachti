@@ -1,47 +1,36 @@
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { BackHandler, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
 import { apiRequest } from "../api/client";
 import { clearSecureSession } from "../storage/secureSession";
 import { useEffect, useState } from "react";
-import { Field } from "../ui/chrome";
+import { heebo } from "./home-v4/homeV4Theme";
+import { S } from "./settings/settingsTheme";
 
 const PRIVACY_URL = "https://mashachachti.co.il/privacy";
 const DELETION_URL = "https://mashachachti.co.il/account-deletion";
 
-/** Privacy & account settings for Android foundation. */
+/** Privacy & account — only real destinations, no decorative controls. */
 export function PrivacySettingsScreen({
   onBack,
-  onOpenCalendar,
 }: {
   onBack: () => void;
   onOpenCalendar?: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const auth = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
-  const [phone, setPhone] = useState("");
 
   useEffect(() => {
-    void apiRequest<{ profile?: { phone_e164?: string | null } }>("/api/profile")
-      .then((data) => setPhone(data.profile?.phone_e164 ?? ""))
-      .catch(() => undefined);
-  }, []);
-
-  async function savePhone() {
-    setError("");
-    setBusy(true);
-    try {
-      await apiRequest("/api/profile", {
-        method: "PUT",
-        body: JSON.stringify({ phone_e164: phone.trim() || null }),
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "שמירת הטלפון נכשלה");
-    } finally {
-      setBusy(false);
-    }
-  }
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [onBack]);
 
   async function deleteAccount() {
     setError("");
@@ -61,36 +50,52 @@ export function PrivacySettingsScreen({
     }
   }
 
+  const rows = [
+    {
+      icon: "document-text-outline" as const,
+      title: "הנתונים שלך",
+      subtitle: "מדיניות פרטיות",
+      onPress: () => void Linking.openURL(PRIVACY_URL),
+    },
+    {
+      icon: "trash-outline" as const,
+      title: "מחיקת נתונים",
+      subtitle: "בקשת מחיקת חשבון בדפדפן",
+      onPress: () => void Linking.openURL(DELETION_URL),
+    },
+  ];
+
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.title}>פרטיות וחשבון</Text>
-
-      <Field value={phone} onChangeText={setPhone} hint="טלפון אופציונלי" />
-      <Pressable style={styles.row} disabled={busy} onPress={() => void savePhone()}>
-        <Text style={styles.rowText}>שמירת טלפון</Text>
-      </Pressable>
-
-      {onOpenCalendar ? (
-        <Pressable style={styles.row} onPress={onOpenCalendar}>
-          <Text style={styles.rowText}>יומן Google</Text>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <Pressable onPress={onBack} style={styles.backHit} accessibilityLabel="חזרה">
+          <Ionicons name="chevron-forward" size={22} color={S.darkBrown} />
         </Pressable>
-      ) : null}
-      <Pressable
-        style={styles.row}
-        onPress={() => void Linking.openURL(PRIVACY_URL)}
-      >
-        <Text style={styles.rowText}>מדיניות פרטיות</Text>
-      </Pressable>
+        <Text style={styles.title}>פרטיות ואבטחה</Text>
+        <View style={styles.backHit} />
+      </View>
+
+      <View style={styles.card}>
+        {rows.map((row, i) => (
+          <Pressable
+            key={row.title}
+            style={[styles.row, i < rows.length - 1 && styles.border]}
+            onPress={row.onPress}
+          >
+            <View style={styles.iconCircle}>
+              <Ionicons name={row.icon} size={20} color={S.darkBrown} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle}>{row.title}</Text>
+              <Text style={styles.rowSub}>{row.subtitle}</Text>
+            </View>
+            <Ionicons name="chevron-back" size={18} color={S.muted} />
+          </Pressable>
+        ))}
+      </View>
 
       <Pressable
-        style={styles.row}
-        onPress={() => void Linking.openURL(DELETION_URL)}
-      >
-        <Text style={styles.rowText}>מחיקת חשבון (בדפדפן)</Text>
-      </Pressable>
-
-      <Pressable
-        style={[styles.row, styles.danger]}
+        style={[styles.danger, (busy || done) && { opacity: 0.5 }]}
         disabled={busy || done}
         onPress={() => void deleteAccount()}
       >
@@ -98,43 +103,52 @@ export function PrivacySettingsScreen({
           {done ? "החשבון נמחק" : busy ? "מוחקים…" : "מחיקת החשבון שלי"}
         </Text>
       </Pressable>
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <Pressable style={styles.back} onPress={onBack}>
-        <Text style={styles.backText}>חזרה</Text>
-      </Pressable>
+      {error ? <Text style={styles.err}>{error}</Text> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    padding: 24,
-    backgroundColor: "#F7F1EA",
-    gap: 12,
-    justifyContent: "center",
+  root: { flex: 1, backgroundColor: S.page, paddingHorizontal: S.padX },
+  header: {
+    height: 72,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#3D2B1F",
-    textAlign: "right",
-    marginBottom: 8,
+  backHit: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  title: { fontFamily: heebo("700"), fontSize: 26, color: S.text },
+  card: {
+    borderRadius: S.radiusCard,
+    backgroundColor: S.surface,
+    overflow: "hidden",
+    marginBottom: 16,
   },
   row: {
-    minHeight: 48,
-    borderRadius: 12,
-    backgroundColor: "#fff",
+    minHeight: 68,
+    paddingHorizontal: 16,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 12,
+  },
+  border: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: S.divider },
+  iconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: S.beige,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 16,
   },
-  rowText: { fontSize: 16, color: "#3D2B1F", fontWeight: "600" },
-  danger: { backgroundColor: "#F3E0D8" },
-  dangerText: { fontSize: 16, color: "#8B2E1F", fontWeight: "700" },
-  error: { color: "#8B2E1F", textAlign: "right" },
-  back: { marginTop: 12, alignItems: "center" },
-  backText: { color: "#8B5E3C", fontSize: 15 },
+  rowTitle: { fontFamily: heebo("600"), fontSize: 16, color: S.text, textAlign: "right" },
+  rowSub: { fontFamily: heebo("400"), fontSize: 13, color: S.muted, textAlign: "right" },
+  danger: {
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: S.logoutBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dangerText: { fontFamily: heebo("700"), fontSize: 16, color: S.logout },
+  err: { marginTop: 12, color: S.logout, textAlign: "center", fontFamily: heebo("400") },
 });

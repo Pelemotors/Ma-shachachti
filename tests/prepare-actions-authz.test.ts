@@ -336,3 +336,77 @@ test("ensureClearShoppingAdd synthesizes add when model asked for quantity", asy
   assert.equal(actions[0]?.title, "חלב");
   assert.equal(actions[0]?.quantity, 1);
 });
+
+test("ensureDayPlanFromScheduleUtterance upserts day_plan when model emits nothing", async () => {
+  const { ensureDayPlanFromScheduleUtterance } = await import(
+    "../lib/agent/prepare-actions.ts"
+  );
+  const openTasks: TaskRow[] = [
+    {
+      id: "doc-1",
+      title: "רופא ילדים לתום",
+      notes: "",
+      status: "open",
+      due_on: "2026-09-21",
+      due_at: null,
+      reminder_at: null,
+      reminder_offset_minutes: null,
+      reminder_enabled: false,
+      reminder_sent_at: null,
+      reminder_claimed_at: null,
+      planned_start_at: null,
+      planned_end_at: null,
+      reschedule_count: 0,
+      last_rescheduled_at: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      completed_at: null,
+    },
+  ];
+  const empty = ensureDayPlanFromScheduleUtterance({
+    actions: [],
+    openTasks,
+    userMessage: "מחר ב-17:00 רופא ילדים לתום",
+    now: new Date("2026-09-20T20:50:00.000Z"),
+  });
+  assert.equal(empty.length, 1);
+  assert.equal(empty[0]?.type, "task.update");
+  assert.equal(empty[0]?.id, "doc-1");
+  assert.equal(empty[0]?.plan_patch, "set");
+  assert.equal(empty[0]?.planned_date, "2026-09-21");
+  assert.equal(empty[0]?.planned_start_time, "17:00");
+
+  const move = ensureDayPlanFromScheduleUtterance({
+    actions: [
+      {
+        type: "task.complete",
+        id: "doc-1",
+        title: "רופא ילדים לתום",
+        notes: null,
+        due_on: null,
+        due_time: null,
+        due_patch: null,
+        reminder_enabled: null,
+        reminder_at: null,
+        reminder_at_patch: null,
+        reminder_offset_minutes: null,
+        reminder_patch: null,
+        plan_patch: null,
+        planned_date: null,
+        planned_start_time: null,
+        planned_end_time: null,
+        kind: null,
+        content: null,
+        confidence: null,
+        silent: null,
+      },
+    ],
+    openTasks,
+    userMessage: "תעבירי את הרופא לשש",
+    now: new Date("2026-09-21T03:25:00.000Z"),
+  });
+  assert.equal(move.length, 1);
+  assert.equal(move[0]?.type, "task.update");
+  assert.equal(move[0]?.planned_start_time, "18:00");
+  assert.equal(move[0]?.plan_patch, "set");
+});

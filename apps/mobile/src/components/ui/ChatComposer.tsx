@@ -69,8 +69,9 @@ export function ChatComposer({
 
 const styles = StyleSheet.create({
   wrap: {
-    height: "100%",
-    minHeight: 36,
+    flexGrow: 0,
+    flexShrink: 0,
+    minHeight: 48,
     borderRadius: 22,
     backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
@@ -84,7 +85,8 @@ const styles = StyleSheet.create({
     ...rtlText,
     color: colors.text,
     fontSize: 13,
-    height: "100%",
+    minHeight: 40,
+    paddingVertical: 8,
     paddingHorizontal: 6,
   },
   send: {

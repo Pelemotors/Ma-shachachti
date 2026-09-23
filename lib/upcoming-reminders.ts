@@ -4,6 +4,7 @@ import {
   reminderLabel,
   remindAtIso,
 } from "./reminders.ts";
+import { productNow } from "./product-clock.ts";
 import { jerusalemParts } from "./time.ts";
 import type { TaskRow } from "./types.ts";
 
@@ -20,7 +21,7 @@ export type UpcomingReminder = {
 export function listUpcomingReminders(
   tasks: TaskRow[],
   defaultMinutes: number,
-  now = new Date(),
+  now = productNow(),
   limit = 20,
 ): UpcomingReminder[] {
   const current = now.getTime();
@@ -55,7 +56,7 @@ export function listUpcomingReminders(
   return rows.slice(0, limit);
 }
 
-export function formatUpcomingWhen(remindAt: string, now = new Date()) {
+export function formatUpcomingWhen(remindAt: string, now = productNow()) {
   const parts = jerusalemParts(remindAt);
   const today = jerusalemParts(now).date;
   if (parts.date === today) return `היום · ${parts.time}`;

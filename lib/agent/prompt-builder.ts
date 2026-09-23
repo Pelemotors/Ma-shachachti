@@ -8,6 +8,7 @@ import type { ChatSurface } from "../home-surfaces.ts";
 import type { SurfaceContext } from "../chat-request.ts";
 import type { CompactContext } from "./context/compact.ts";
 import { renderContextBlock } from "./context/compact.ts";
+import { productNow } from "../product-clock.ts";
 import { todayContext } from "../time.ts";
 import { resolveDayBoundsFromMemory } from "./schedule-isolation.ts";
 
@@ -75,7 +76,7 @@ surface=free-time; minutes=${minutes}; effort=${effort}; now=${currentTime}.
 export function surfaceInputHint(
   surface: ChatSurface | null,
   contextOrNow: SurfaceContext | Date | null = null,
-  requestedNow = new Date(),
+  requestedNow = productNow(),
 ) {
   if (!surface) return "";
   const context = contextOrNow instanceof Date ? null : contextOrNow;

@@ -1,3 +1,4 @@
+import { productNow } from "./product-clock.ts";
 import { addJerusalemDays, todayContext } from "./time.ts";
 
 export type DayPlanQueryItem = {
@@ -17,7 +18,7 @@ export type DayPlanQueryTask = {
 /** Resolve a Jerusalem calendar date mentioned in a Hebrew user turn. */
 export function resolveMentionedJerusalemDate(
   text: string,
-  now = new Date(),
+  now = productNow(),
 ): string | null {
   const today = todayContext(now).date;
   if (/מחר/.test(text)) return addJerusalemDays(today, 1);

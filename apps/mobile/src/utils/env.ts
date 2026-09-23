@@ -4,6 +4,7 @@ type Extra = {
   mobileApiBaseUrl?: string;
   supabaseUrl?: string;
   supabaseAnonKey?: string;
+  weekSimulationQa?: boolean | string;
 };
 
 function extra(): Extra {
@@ -12,7 +13,9 @@ function extra(): Extra {
 
 /** Canonical API origin for all Mobile HTTP. No hardcoded URLs in screens. */
 export function getMobileApiBaseUrl(): string {
-  const fromEnv = process.env.MOBILE_API_BASE_URL?.trim();
+  const fromEnv =
+    process.env.EXPO_PUBLIC_MOBILE_API_BASE_URL?.trim() ||
+    process.env.MOBILE_API_BASE_URL?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
   const fromExtra = extra().mobileApiBaseUrl?.trim();
   if (fromExtra) return fromExtra.replace(/\/$/, "");
@@ -25,6 +28,12 @@ export function getSupabaseUrl(): string {
     extra().supabaseUrl?.trim() ||
     ""
   );
+}
+
+export function isWeekSimulationQaEnabled() {
+  if (process.env.EXPO_PUBLIC_WEEK_SIMULATION_QA === "true") return true;
+  const flag = extra().weekSimulationQa;
+  return flag === true || flag === "true";
 }
 
 export function getSupabaseAnonKey(): string {
