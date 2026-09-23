@@ -1,33 +1,30 @@
 diff --git a/node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/ExpoBridgeModule.kt b/node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/ExpoBridgeModule.kt
-index 1111111..2222222 100644
+index 9ffaba8..818187e 100644
 --- a/node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/ExpoBridgeModule.kt
 +++ b/node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/ExpoBridgeModule.kt
-@@ -1,41 +1,44 @@
+@@ -1,5 +1,6 @@
  package expo.modules.kotlin
  
 +import android.util.Log
  import com.facebook.react.bridge.ReactApplicationContext
  import com.facebook.react.bridge.ReactContextBaseJavaModule
  import com.facebook.react.bridge.ReactMethod
- import expo.modules.adapters.react.NativeModulesProxy
- import java.lang.ref.WeakReference
+@@ -8,6 +9,14 @@ import java.lang.ref.WeakReference
  
  /**
   * The classic bridge module that is responsible for installing the host object to the runtime.
 + *
-+ * Ma-shachachti: Do NOT busy-wait for hasActiveReactInstance() on the calling thread.
++ * Ma-shachachti fix: Do NOT busy-wait for hasActiveReactInstance() on the calling thread.
 + * ensureNativeModulesAreInstalled() invokes this synchronously during JS module init
-+ * (EventEmitter.ts). Waiting deadlocks: ReactInstance cannot become active until the
-+ * current JS stack completes, so the wait expires, installJSIInterop is a no-op, and JS
-+ * crashes with EventEmitter of undefined. Settings native modules widened PackageList
-+ * and made this race hit cold-start on emulator.
++ * (EventEmitter.ts). Waiting here deadlocks: ReactInstance cannot become "active" until the
++ * current JS stack completes, so the wait always expires, installJSIInterop becomes a no-op,
++ * and JS crashes with: Cannot read property 'EventEmitter' of undefined [runtime not ready].
++ * Settings-native modules (notifications / image-picker / manipulator) widened PackageList
++ * and made this race hit cold-start reliably on emulator.
   */
  class ExpoBridgeModule(
    reactContext: ReactApplicationContext,
-   private val nativeModulesProxy: WeakReference<NativeModulesProxy>
- ) :
-   ReactContextBaseJavaModule(reactContext) {
-   override fun getName(): String = "ExpoModulesCore"
+@@ -18,24 +27,18 @@ class ExpoBridgeModule(
  
    @ReactMethod(isBlockingSynchronousMethod = true)
    fun installModules(): Boolean {
@@ -61,12 +58,10 @@ index 1111111..2222222 100644
 -  }
  }
 diff --git a/node_modules/expo-modules-core/src/ensureNativeModulesAreInstalled.native.ts b/node_modules/expo-modules-core/src/ensureNativeModulesAreInstalled.native.ts
-index 1111111..2222222 100644
+index 8f5fd22..b310555 100644
 --- a/node_modules/expo-modules-core/src/ensureNativeModulesAreInstalled.native.ts
 +++ b/node_modules/expo-modules-core/src/ensureNativeModulesAreInstalled.native.ts
-@@ -1,18 +1,25 @@
- import { TurboModuleRegistry } from 'react-native';
- 
+@@ -3,16 +3,19 @@ import { TurboModuleRegistry } from 'react-native';
  /**
   * Ensures that the native modules are installed in the current runtime.
   * Otherwise, it synchronously calls a native function that installs them.
@@ -90,7 +85,3 @@ index 1111111..2222222 100644
      (
        TurboModuleRegistry.get('ExpoModulesCore') as { installModules: () => void } | null
      )?.installModules();
-   } catch (error) {
-     console.error(`Unable to install Expo modules: ${error}`);
-   }
- }
