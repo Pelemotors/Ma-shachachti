@@ -1,4 +1,4 @@
-import { productNow } from "../product-clock.ts";
+import { productNow } from "../product-clock-server.ts";
 import type { ConsequenceRow, TaskRow } from "../types.ts";
 import { dueTimeFromDueAt, jerusalemParts, todayContext } from "../time.ts";
 

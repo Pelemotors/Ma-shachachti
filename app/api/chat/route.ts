@@ -49,7 +49,7 @@ import { validateStoredPresentation } from "@/lib/chat-presentation";
 import { loadAgentProfile } from "@/lib/user-profile";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadChecklists, loadShopping } from "@/lib/lists";
-import { productNow } from "@/lib/product-clock";
+import { productNow } from "@/lib/product-clock-server";
 import { todayContext } from "@/lib/time";
 import { jerusalemDayRange } from "@/lib/schedule";
 import { loadDayPlan } from "@/lib/day-plan";

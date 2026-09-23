@@ -1,5 +1,5 @@
 import { UUID_RE } from "./action-schema.ts";
-import { productNow } from "./product-clock.ts";
+import { productNow } from "./product-clock-server.ts";
 import { DATE_RE, TIME_RE, dueTimeFromDueAt, todayContext } from "./time.ts";
 import type {
   ClientPresentation,

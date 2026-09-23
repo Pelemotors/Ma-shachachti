@@ -7,7 +7,7 @@ import type {
 } from "../../types.ts";
 import type { Checklist, ShoppingItem } from "../../lists.ts";
 import type { AgentProfileContext } from "../../user-profile.ts";
-import { productNow } from "../../product-clock.ts";
+import { productNow } from "../../product-clock-server.ts";
 import { dueTimeFromDueAt, jerusalemParts, todayContext } from "../../time.ts";
 import { reminderBase } from "../../reminders.ts";
 import { selectPersonalMemories } from "./memory-select.ts";

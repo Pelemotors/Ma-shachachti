@@ -2,7 +2,7 @@ import {
   rankTaskCandidates,
   stabilizeForgottenSelection,
 } from "./agent/candidate-rank.ts";
-import { productNow } from "./product-clock.ts";
+import { productNow } from "./product-clock-server.ts";
 import { addJerusalemDays, jerusalemDateTimeToUtc, todayContext } from "./time.ts";
 import type { ConsequenceRow, TaskRow } from "./types.ts";
 

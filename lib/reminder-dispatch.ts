@@ -8,7 +8,7 @@ import {
   type ReminderTask,
 } from "./reminder-plan.ts";
 
-import { productNow } from "./product-clock.ts";
+import { productNow } from "./product-clock-server.ts";
 import { vapidPublicKey } from "./push.ts";
 import { recordAppNotification } from "./notifications/record.ts";
 import {

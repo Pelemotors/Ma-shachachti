@@ -1,4 +1,4 @@
-import { productNow } from "./product-clock.ts";
+import { productNow } from "./product-clock-server.ts";
 import { addJerusalemDays, todayContext } from "./time.ts";
 
 export type DayPlanQueryItem = {

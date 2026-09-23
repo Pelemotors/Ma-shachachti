@@ -9,7 +9,7 @@ import {
   resetQaClock,
   setQaClock,
   wallNow,
-} from "../lib/product-clock.ts";
+} from "../lib/product-clock-server.ts";
 import { resolveMentionedJerusalemDate } from "../lib/schedule-query.ts";
 import { todayContext } from "../lib/time.ts";
 

@@ -19,7 +19,7 @@ import {
   fulfillContextRequests,
   parseContextRequests,
 } from "./context/deep-access.ts";
-import { productNow } from "../product-clock.ts";
+import { productNow } from "../product-clock-server.ts";
 import { todayContext } from "../time.ts";
 import { latestOrCreateChatSession } from "../chat-sessions.ts";
 import { recordActivity } from "../activity.ts";

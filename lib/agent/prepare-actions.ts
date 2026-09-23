@@ -20,7 +20,7 @@ import {
 } from "./turn-flags.ts";
 import { normalizeExactText, findRelatedOpenTask, findRelatedOpenTasks } from "../task-identity.ts";
 import { resolveMentionedJerusalemDate } from "../schedule-query.ts";
-import { productNow } from "../product-clock.ts";
+import { productNow } from "../product-clock-server.ts";
 import { todayContext } from "../time.ts";
 
 /**
