@@ -3,6 +3,7 @@ import { HomeV4Icon } from "./homeV4Icons";
 import { heebo, V4 } from "./homeV4Theme";
 
 const FALLBACK = require("../../../assets/home-v4/avatar-fallback.png");
+const TAGLINE_SPRIG = require("../../../assets/home-master/decor/tagline-sprig.png");
 
 export function HomeHeader({
   scale,
@@ -54,6 +55,18 @@ export function HomeHeader({
       <View style={styles.center}>
         <Text
           style={{
+            fontFamily: heebo("400"),
+            fontSize: 14 * s,
+            lineHeight: 18 * s,
+            color: V4.muted,
+            textAlign: "center",
+          }}
+        >
+          הבית שלך, בקצב שלך
+        </Text>
+        <Image source={TAGLINE_SPRIG} resizeMode="contain" style={{ width: 76 * s, height: 30 * s, alignSelf: "center" }} />
+        <Text
+          style={{
             fontFamily: heebo("700"),
             fontSize: 22 * s,
             lineHeight: 28 * s,
@@ -70,7 +83,7 @@ export function HomeHeader({
             lineHeight: 18 * s,
             color: V4.muted,
             textAlign: "center",
-            marginTop: 2 * s,
+            marginTop: 0,
           }}
         >
           בואי נעשה סדר בראש

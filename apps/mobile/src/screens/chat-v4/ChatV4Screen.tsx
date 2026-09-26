@@ -65,6 +65,9 @@ export function ChatV4Screen({
   const listRef = useRef<FlatList<ChatV4Row>>(null);
   const sendLock = useRef(false);
   const userScrolled = useRef(false);
+  const nearBottom = useRef(true);
+  const pendingMessageScroll = useRef(false);
+  const messageCount = useRef(0);
 
   const [messages, setMessages] = useState<ChatV4Row[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -97,10 +100,11 @@ export function ChatV4Screen({
       .finally(() => setLoading(false));
   }, [reload]);
 
-  function scrollToLatest() {
-    if (userScrolled.current) return;
-    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
-  }
+  useEffect(() => {
+    if (messages.length === messageCount.current) return;
+    messageCount.current = messages.length;
+    pendingMessageScroll.current = true;
+  }, [messages.length]);
 
   async function sendText(raw: string, retryId?: string) {
     const message = raw.trim();
@@ -280,7 +284,7 @@ export function ChatV4Screen({
       />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={0}
       >
         <FlatList
@@ -290,7 +294,18 @@ export function ChatV4Screen({
           data={messages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingTop: 8 * s, paddingBottom: 12 * s, gap: 10 * s, flexGrow: 1 }}
-          onContentSizeChange={scrollToLatest}
+          onContentSizeChange={() => {
+            if (!pendingMessageScroll.current || !nearBottom.current || userScrolled.current) return;
+            pendingMessageScroll.current = false;
+            requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
+          }}
+          onScroll={(event) => {
+            const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+            const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+            nearBottom.current = distanceFromBottom <= 64 * s;
+            userScrolled.current = distanceFromBottom > 64 * s;
+          }}
+          scrollEventThrottle={100}
           onScrollBeginDrag={() => {
             userScrolled.current = true;
           }}

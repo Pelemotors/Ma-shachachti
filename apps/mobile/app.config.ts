@@ -23,6 +23,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     package: BUNDLE_ID,
     versionCode: 3,
+    softwareKeyboardLayoutMode: "resize",
     adaptiveIcon: {
       foregroundImage: "./assets/android-icon-foreground.png",
       backgroundImage: "./assets/android-icon-background.png",
@@ -68,6 +69,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-web-browser",
     "expo-image-picker",
     "expo-notifications",
+    "@react-native-community/datetimepicker",
   ],
   extra: {
     mobileApiBaseUrl:

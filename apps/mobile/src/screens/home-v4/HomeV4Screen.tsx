@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Dimensions, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   AudioModule,
   RecordingPresets,
@@ -17,7 +17,10 @@ import { useMicDisclosureGate } from "../../privacy/micDisclosure";
 import { ForgotHeroCard } from "./ForgotHeroCard";
 import { HomeBottomNavigation } from "./HomeBottomNavigation";
 import { HomeHeader } from "./HomeHeader";
-import { QuickActionGrid } from "./QuickActionGrid";
+import { HomeFlowerActions } from "./HomeFlowerActions";
+import { HomeAgentComposer } from "./HomeAgentComposer";
+import { HomeMasterBackdrop } from "./HomeMasterBackdrop";
+import { HomeBankButton } from "./HomeBankButton";
 import { SmartReminderCard } from "./SmartReminderCard";
 import { TodayOverviewCard } from "./TodayOverviewCard";
 import { homeScale, heebo, V4 } from "./homeV4Theme";
@@ -127,7 +130,8 @@ export function HomeV4Screen({
   const secondaryError = data.errors.plan || data.errors.tasks || data.errors.notifications;
 
   return (
-    <View style={[styles.root, { backgroundColor: V4.page }]}>
+    <View style={[styles.root, { backgroundColor: V4.page }]}> 
+      <HomeMasterBackdrop width={width} height={Dimensions.get("window").height} />
       {mic.modal}
       <View style={{ height: insets.top, backgroundColor: V4.page }} />
       <HomeHeader
@@ -146,15 +150,17 @@ export function HomeV4Screen({
       >
         <ForgotHeroCard
           scale={s}
-          value={draft}
-          onChangeText={setDraft}
-          onSend={() => void send()}
-          onMic={() => void toggleMic()}
           onOpenForgot={() => onOpen("forgot")}
-          sending={sending}
-          recording={recorderState.isRecording}
-          error={sendError}
         />
+        <View style={{ marginHorizontal: 16 * s }}>
+          <HomeFlowerActions
+            width={358 * s}
+            onCreatePlan={() => onOpen("plan")}
+            onFreeTime={() => onOpen("freetime")}
+            onChecklists={() => onOpen("checklists")}
+            onForgot={() => onOpen("forgot")}
+          />
+        </View>
         <TodayOverviewCard
           scale={s}
           done={data.progressDone}
@@ -165,7 +171,7 @@ export function HomeV4Screen({
           onCreatePlan={() => onOpen("plan")}
           onComplete={(id) => void completeRow(id)}
         />
-        <QuickActionGrid scale={s} onOpen={onOpen} />
+        <HomeBankButton scale={s} onPress={() => onOpen("bank")} />
         <SmartReminderCard
           scale={s}
           candidate={data.reminder}
@@ -180,6 +186,18 @@ export function HomeV4Screen({
           </Pressable>
         ) : null}
       </ScrollView>
+      <View style={[styles.floatingComposer, { left: 16 * s, right: 16 * s, bottom: 76 * s }]}>
+        <HomeAgentComposer
+          scale={s}
+          value={draft}
+          onChangeText={setDraft}
+          onSend={() => void send()}
+          onMic={() => void toggleMic()}
+          sending={sending}
+          recording={recorderState.isRecording}
+          error={sendError}
+        />
+      </View>
       <HomeBottomNavigation scale={s} active="home" onChange={onTab} />
     </View>
   );
@@ -188,4 +206,5 @@ export function HomeV4Screen({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
+  floatingComposer: { position: "absolute" },
 });
