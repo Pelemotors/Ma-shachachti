@@ -1,0 +1,49 @@
+{
+  "pack": "CHECKLIST_ASSET_PACK_V1",
+  "purpose": "Checklist screens for Ma Shachachti",
+  "use": {
+    "background": "Use V2 botanical PNGs only as low-emphasis absolute decoration behind real UI.",
+    "icons": "SVG preferred; PNG fallback included. Tint only when explicitly needed.",
+    "ui": "Cards, rows, checkboxes, progress bars, tabs, inputs and sheets MUST be real components, not raster images."
+  },
+  "icons": [
+    "actions/add",
+    "actions/archive",
+    "actions/calendar",
+    "actions/chevron-down",
+    "actions/chevron-right",
+    "actions/drag",
+    "actions/duplicate",
+    "actions/edit",
+    "actions/link-task",
+    "actions/more",
+    "actions/repeat",
+    "actions/reset",
+    "actions/search",
+    "actions/share",
+    "actions/template-star",
+    "actions/trash",
+    "categories/bag",
+    "categories/car",
+    "categories/cleaning",
+    "categories/food",
+    "categories/gift",
+    "categories/home",
+    "categories/kids",
+    "categories/pet",
+    "categories/shopping",
+    "categories/travel",
+    "navigation/cart",
+    "navigation/chat",
+    "navigation/home",
+    "navigation/tasks",
+    "states/checkbox-done",
+    "states/checkbox-empty",
+    "states/progress-ring"
+  ],
+  "background": [
+    "botanical-left-top-master-v2.png",
+    "botanical-right-blur-master-v2.png",
+    "botanical-left-mid-master.png"
+  ]
+}

@@ -12,7 +12,8 @@ function fail(error: unknown) {
 export async function GET(req: Request) {
   try {
     const { db, userId } = await authorize(req);
-    return Response.json({ checklists: await loadChecklists(db, userId) });
+    const occurrenceKey = new URL(req.url).searchParams.get("occurrence_key") ?? undefined;
+    return Response.json({ checklists: await loadChecklists(db, userId, occurrenceKey) });
   } catch (error) { return fail(error); }
 }
 

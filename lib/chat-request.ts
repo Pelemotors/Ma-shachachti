@@ -17,6 +17,7 @@ export type SurfaceContext =
       date: string;
       day_start: string;
       day_end: string;
+      planning_context?: string;
     }
   | {
       type: "free-time";
@@ -58,7 +59,7 @@ function parseSurfaceContext(
     context.type === "schedule" &&
     isValidScheduleDate(context.date) &&
     keys.every((key) =>
-      ["type", "date", "day_start", "day_end"].includes(key),
+      ["type", "date", "day_start", "day_end", "planning_context"].includes(key),
     ) &&
     keys.includes("date")
   ) {
@@ -71,6 +72,9 @@ function parseSurfaceContext(
         ? context.day_end
         : DEFAULT_DAY_END;
     if (day_end <= day_start) return { ok: false };
+    if (context.planning_context != null && (typeof context.planning_context !== "string" || context.planning_context.length > 4000)) {
+      return { ok: false };
+    }
     return {
       ok: true,
       value: {
@@ -78,6 +82,7 @@ function parseSurfaceContext(
         date: context.date,
         day_start,
         day_end,
+        ...(typeof context.planning_context === "string" ? { planning_context: context.planning_context } : {}),
       },
     };
   }

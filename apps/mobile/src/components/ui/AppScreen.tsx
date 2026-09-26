@@ -11,12 +11,14 @@ export function AppScreen({
   scroll = true,
   padded = true,
   stickToBottom = false,
+  decor = true,
 }: {
   children: ReactNode;
   footer?: ReactNode;
   scroll?: boolean;
   padded?: boolean;
   stickToBottom?: boolean;
+  decor?: boolean;
 }) {
   const scrollRef = useRef<ScrollView>(null);
   const body = scroll ? (
@@ -39,10 +41,11 @@ export function AppScreen({
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
-      <LeafDecor />
+      {decor ? <LeafDecor /> : null}
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "android" ? 12 : 0}
       >
         {body}
         {footer ? <View style={styles.footerSlot}>{footer}</View> : null}

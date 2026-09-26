@@ -64,6 +64,7 @@ test("runtime registry publishes only implemented Phase 1 capabilities", () => {
     "memory",
     "shopping",
     "checklists",
+    "routines",
     "presentations",
     "context-access",
     "consequences",

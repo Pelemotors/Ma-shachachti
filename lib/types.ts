@@ -26,6 +26,8 @@ export type TaskRow = {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  estimate_minutes?: number | null;
+  checklist_id?: string | null;
 };
 
 export const CONSEQUENCE_SEVERITIES = [
@@ -117,6 +119,15 @@ export const ACTION_TYPES = [
   "checklist.item.update",
   "checklist.item.toggle",
   "checklist.item.remove",
+  "checklist.item.reorder",
+  "checklist.duplicate",
+  "checklist.reset",
+  "checklist.archive",
+  "task.duplicate",
+  "routine.create",
+  "routine.update",
+  "routine.stop",
+  "routine.exception",
 ] as const;
 
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -149,6 +160,18 @@ export type AgentAction = {
   purchased?: boolean | null;
   checked?: boolean | null;
   done?: boolean | null;
+  estimate_minutes?: number | null;
+  weekdays?: number[] | null;
+  time_of_day?: string | null;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  occurrence_date?: string | null;
+  exception_kind?: "skip" | "override" | "done" | "clear" | null;
+  series_scope?: "once" | "from_today" | "series" | null;
+  occurrence_key?: string | null;
+  estimate_patch?: DuePatch | null;
+  checklist_patch?: DuePatch | null;
+  ids?: string[] | null;
 };
 
 export type ActionResult =

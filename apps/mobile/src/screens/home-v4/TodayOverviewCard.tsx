@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { TodayTaskRow } from "./TodayTaskRow";
 import { HomeV4Icon } from "./homeV4Icons";
 import { heebo, V4 } from "./homeV4Theme";
@@ -9,18 +9,20 @@ export function TodayOverviewCard({
   done,
   total,
   rows,
+  hasMore,
   hasPlan,
-  onShowAll,
   onCreatePlan,
+  onOpenSchedule,
   onComplete,
 }: {
   scale: number;
   done: number;
   total: number;
   rows: HomeNowRow[];
+  hasMore: boolean;
   hasPlan: boolean;
-  onShowAll: () => void;
   onCreatePlan: () => void;
+  onOpenSchedule: () => void;
   onComplete: (taskId: string | null) => void;
 }) {
   const s = scale;
@@ -30,7 +32,7 @@ export function TodayOverviewCard({
       style={[
         styles.card,
         {
-          marginHorizontal: 16 * s,
+          marginHorizontal: 8 * s,
           minHeight: 176 * s,
           borderRadius: 24 * s,
           padding: 16 * s,
@@ -38,14 +40,13 @@ export function TodayOverviewCard({
       ]}
     >
       <View style={styles.top}>
-        <Pressable onPress={onShowAll} style={styles.showAll} accessibilityLabel="הצג הכל">
-          <HomeV4Icon name="chevron" size={14 * s} color={V4.muted} />
-          <Text style={{ fontFamily: heebo("500"), fontSize: 13 * s, color: V4.muted }}>הצג הכל</Text>
-        </Pressable>
+        <View style={styles.showAll} />
         <View style={{ alignItems: "flex-end", flex: 1 }}>
-          <Text style={{ fontFamily: heebo("700"), fontSize: 18 * s, lineHeight: 24 * s, color: V4.text }}>
-            עכשיו אצלך
-          </Text>
+          <Pressable onPress={onOpenSchedule} accessibilityLabel="הלו״ז שלך">
+            <Text style={{ fontFamily: heebo("700"), fontSize: 18 * s, lineHeight: 24 * s, color: V4.text }}>
+              עכשיו אצלך
+            </Text>
+          </Pressable>
           <Text style={{ fontFamily: heebo("400"), fontSize: 11 * s, color: V4.muted, marginTop: 2 * s }}>
             {hasPlan ? `${done} מתוך ${total} משימות בוצעו` : "אין עדיין לו״ז להיום"}
           </Text>
@@ -78,6 +79,7 @@ export function TodayOverviewCard({
           ))
         )}
       </View>
+      {hasMore ? <Image source={require("../../../assets/home-master/decor/double-chevron.png")} resizeMode="contain" style={{ width: 26 * s, height: 22 * s, alignSelf: "center", marginTop: 8 * s }} /> : null}
     </View>
   );
 }

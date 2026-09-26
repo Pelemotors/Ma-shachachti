@@ -9,20 +9,19 @@ import {
 } from "expo-audio";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { sendChat } from "../../api/chat";
-import { completeTask, enableTaskReminder } from "../../api/tasks";
+import { completeTask } from "../../api/tasks";
 import { transcribeRecording } from "../../api/transcribe";
 import type { ProductTab } from "../../components/ui";
 import { claimSendLock, homeSendResult, newChatTurnId } from "../../product/surfaceCommit";
 import { useMicDisclosureGate } from "../../privacy/micDisclosure";
-import { ForgotHeroCard } from "./ForgotHeroCard";
 import { HomeBottomNavigation } from "./HomeBottomNavigation";
 import { HomeHeader } from "./HomeHeader";
 import { HomeFlowerActions } from "./HomeFlowerActions";
 import { HomeAgentComposer } from "./HomeAgentComposer";
 import { HomeMasterBackdrop } from "./HomeMasterBackdrop";
 import { HomeBankButton } from "./HomeBankButton";
-import { SmartReminderCard } from "./SmartReminderCard";
 import { TodayOverviewCard } from "./TodayOverviewCard";
+import { TodayTaskRow } from "./TodayTaskRow";
 import { homeScale, heebo, V4 } from "./homeV4Theme";
 import { useHomeV4Data } from "./useHomeV4Data";
 
@@ -44,7 +43,6 @@ export function HomeV4Screen({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
-  const [reminderBusy, setReminderBusy] = useState(false);
   const sendLock = useRef(false);
 
   const send = useCallback(
@@ -113,34 +111,16 @@ export function HomeV4Screen({
     }
   }
 
-  async function addReminder() {
-    if (!data.hasLiveReminder || !data.reminder) return;
-    const id = data.reminder.id;
-    setReminderBusy(true);
-    try {
-      await enableTaskReminder(id);
-      await data.reload();
-    } catch {
-      /* keep */
-    } finally {
-      setReminderBusy(false);
-    }
-  }
-
   const secondaryError = data.errors.plan || data.errors.tasks || data.errors.notifications;
 
   return (
-    <View style={[styles.root, { backgroundColor: V4.page }]}> 
+    <View style={[styles.root, { backgroundColor: "#FBF7F0" }]}> 
       <HomeMasterBackdrop width={width} height={Dimensions.get("window").height} />
       {mic.modal}
       <View style={{ height: insets.top, backgroundColor: V4.page }} />
       <HomeHeader
         scale={s}
         greeting={data.greeting}
-        avatarUrl={data.avatarUrl}
-        unread={data.unread}
-        onBell={() => onOpen("notifications")}
-        onAvatar={() => onOpen("settings")}
       />
       <ScrollView
         style={styles.flex}
@@ -148,13 +128,9 @@ export function HomeV4Screen({
         refreshControl={<RefreshControl refreshing={data.loading} onRefresh={() => void data.reload()} />}
         keyboardShouldPersistTaps="handled"
       >
-        <ForgotHeroCard
-          scale={s}
-          onOpenForgot={() => onOpen("forgot")}
-        />
-        <View style={{ marginHorizontal: 16 * s }}>
+        <View style={{ alignItems: "center" }}>
           <HomeFlowerActions
-            width={358 * s}
+            width={Math.min(width * 0.77, 340)}
             onCreatePlan={() => onOpen("plan")}
             onFreeTime={() => onOpen("freetime")}
             onChecklists={() => onOpen("checklists")}
@@ -166,18 +142,22 @@ export function HomeV4Screen({
           done={data.progressDone}
           total={data.progressTotal}
           rows={data.rows}
+          hasMore={data.allRows.length > 2}
           hasPlan={data.hasPlan}
-          onShowAll={() => onOpen("schedule")}
           onCreatePlan={() => onOpen("plan")}
+          onOpenSchedule={() => onOpen("schedule")}
           onComplete={(id) => void completeRow(id)}
         />
-        <HomeBankButton scale={s} onPress={() => onOpen("bank")} />
-        <SmartReminderCard
-          scale={s}
-          candidate={data.reminder}
-          busy={reminderBusy}
-          onAdd={() => void addReminder()}
-        />
+        {data.allRows.length > 2 ? data.allRows.slice(2).map((row) => (
+          <TodayTaskRow
+            key={row.id}
+            scale={s}
+            time={row.time}
+            title={row.title}
+            icon={row.icon}
+            onToggle={() => void completeRow(row.taskId)}
+          />
+        )) : null}
         {secondaryError ? (
           <Pressable onPress={() => void data.reload()}>
             <Text style={{ fontFamily: heebo("400"), fontSize: 12 * s, color: V4.muted, textAlign: "center" }}>
@@ -186,7 +166,10 @@ export function HomeV4Screen({
           </Pressable>
         ) : null}
       </ScrollView>
-      <View style={[styles.floatingComposer, { left: 16 * s, right: 16 * s, bottom: 76 * s }]}>
+      <View style={[styles.floatingBank, { left: 0, right: 0, bottom: 130 * s }]}>
+        <HomeBankButton scale={s} onPress={() => onOpen("bank")} />
+      </View>
+      <View style={[styles.floatingComposer, { left: 16 * s, right: 16 * s, bottom: 76 * s }]}> 
         <HomeAgentComposer
           scale={s}
           value={draft}
@@ -207,4 +190,5 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
   floatingComposer: { position: "absolute" },
+  floatingBank: { position: "absolute", alignItems: "center" },
 });

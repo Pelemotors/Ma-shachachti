@@ -7,6 +7,8 @@ const ICONS = {
   cart: require("../../../assets/home-v4/icons/cart.png"),
   checklist: require("../../../assets/home-v4/icons/checklist.png"),
   mic: require("../../../assets/home-v4/icons/mic.png"),
+  send: require("../../../assets/home-master/icons/send.png"),
+  people: require("../../../assets/home-master/icons/people.png"),
   sparkle: require("../../../assets/home-v4/icons/sparkle.png"),
   home: require("../../../assets/home-v4/icons/home.png"),
   "home-active": require("../../../assets/home-v4/icons/home-active.png"),

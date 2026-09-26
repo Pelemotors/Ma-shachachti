@@ -1,8 +1,10 @@
 import { authorize, HttpError } from "@/lib/server-auth";
-import { DATE_RE } from "@/lib/time";
+import { DATE_RE, TIME_RE } from "@/lib/time";
 import { jerusalemDayRange } from "@/lib/schedule";
 import {
+  dayPlanItemFromRow,
   detectConflicts,
+  ensureRoutineOccurrences,
   itemFromExplicitCalendarAction,
   loadDayPlan,
   replanDay,
@@ -27,7 +29,7 @@ export async function GET(req: Request) {
     const date = url.searchParams.get("date") || "";
     if (!DATE_RE.test(date)) throw new HttpError(400, "תאריך אינו תקין.");
     const household = url.searchParams.get("scope") === "household";
-    const plan = await loadDayPlan(db, userId, date, household);
+    const plan = await ensureRoutineOccurrences(db, userId, date, household);
     const range = jerusalemDayRange(date);
     const constraints = await loadCalendarConstraints(
       db,
@@ -57,6 +59,10 @@ export async function POST(req: Request) {
       scope?: string;
       items?: DayPlanItemInput[];
       task_ids?: string[];
+      window_start?: string;
+      window_end?: string;
+      planning_context?: string;
+      plan_updated_at?: string | null;
       calendar_item?: { task_id: string; start_at: string; end_at?: string | null };
     };
     if (!body.date || !DATE_RE.test(body.date)) {
@@ -64,6 +70,12 @@ export async function POST(req: Request) {
     }
     const household = body.scope === "household";
     if (body.action === "replan") {
+      if ((body.window_start && !TIME_RE.test(body.window_start)) || (body.window_end && !TIME_RE.test(body.window_end))) {
+        throw new HttpError(400, "טווח השעות אינו תקין.");
+      }
+      if (body.window_start && body.window_end && body.window_start >= body.window_end) {
+        throw new HttpError(400, "שעת ההתחלה חייבת להיות לפני שעת הסיום.");
+      }
       const range = jerusalemDayRange(body.date);
       const constraints = await loadCalendarConstraints(
         db,
@@ -78,6 +90,12 @@ export async function POST(req: Request) {
         Array.isArray(body.task_ids) ? body.task_ids : [],
         constraints,
         household,
+        {
+          windowStart: body.window_start,
+          windowEnd: body.window_end,
+          planningContext: body.planning_context,
+          planUpdatedAt: body.plan_updated_at,
+        },
       );
       return Response.json(result);
     }
@@ -85,17 +103,10 @@ export async function POST(req: Request) {
       if (!body.calendar_item) throw new HttpError(400, "חסר אירוע לשיבוץ.");
       const current = await loadDayPlan(db, userId, body.date, household);
       const next = [
-        ...(current.items as DayPlanItemInput[]).map((item) => ({
-          task_id: String(item.task_id),
-          start_at: String(item.start_at),
-          end_at: item.end_at ? String(item.end_at) : null,
-          kind: (item.kind === "fixed" ? "fixed" : "flexible") as "fixed" | "flexible",
-          source: (item.source === "calendar"
-            ? "calendar"
-            : item.source === "replan"
-              ? "replan"
-              : "manual") as DayPlanItemInput["source"],
-        })),
+        ...(current.items as Record<string, unknown>[]).flatMap((raw) => {
+          const item = dayPlanItemFromRow(raw);
+          return item ? [item] : [];
+        }),
         itemFromExplicitCalendarAction(body.calendar_item),
       ];
       return Response.json(await updateDayPlan(db, userId, body.date, next, household));

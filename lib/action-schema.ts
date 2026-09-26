@@ -53,6 +53,18 @@ export const ActionSchema = z.object({
   purchased: z.boolean().nullable().optional(),
   checked: z.boolean().nullable().optional(),
   done: z.boolean().nullable().optional(),
+  estimate_minutes: z.number().int().min(1).max(1440).nullable().optional(),
+  weekdays: z.array(z.number().int().min(0).max(6)).max(7).nullable().optional(),
+  time_of_day: z.string().regex(TIME_RE).nullable().optional(),
+  starts_on: z.string().regex(DATE_RE).nullable().optional(),
+  ends_on: z.string().regex(DATE_RE).nullable().optional(),
+  occurrence_date: z.string().regex(DATE_RE).nullable().optional(),
+  exception_kind: z.enum(["skip", "override", "done", "clear"]).nullable().optional(),
+  series_scope: z.enum(["once", "from_today", "series"]).nullable().optional(),
+  occurrence_key: z.string().trim().min(1).max(200).nullable().optional(),
+  estimate_patch: z.enum(["keep", "set", "clear"]).nullable().optional(),
+  checklist_patch: z.enum(["keep", "set", "clear"]).nullable().optional(),
+  ids: z.array(z.string().uuid()).max(500).nullable().optional(),
 }).strict().superRefine((action, context) => {
   const requireField = (field: "id" | "title" | "checklist_id" | "task_id" | "text" | "quantity" | "purchased" | "checked" | "done") => {
     if (action[field] == null || action[field] === "") {
@@ -73,6 +85,25 @@ export const ActionSchema = z.object({
   if (action.type === "shopping.toggle") requireField("purchased");
   if (action.type === "checklist.item.toggle") requireField("checked");
   if (action.type === "task.subtask.toggle") requireField("done");
+  if (action.type === "task.duplicate" || action.type === "checklist.duplicate" || action.type === "checklist.reset" || action.type === "checklist.archive") requireField("id");
+  if (action.type === "routine.update" || action.type === "routine.stop" || action.type === "routine.exception") requireField("id");
+  if (action.type === "routine.create") requireField("task_id");
+  if (action.type === "routine.create" && !action.starts_on) {
+    context.addIssue({ code: "custom", path: ["starts_on"], message: "required" });
+  }
+  if (action.type === "routine.create" && (!action.weekdays || !action.weekdays.length)) {
+    context.addIssue({ code: "custom", path: ["weekdays"], message: "required" });
+  }
+  if (action.type === "routine.exception" && !action.occurrence_date) {
+    context.addIssue({ code: "custom", path: ["occurrence_date"], message: "required" });
+  }
+  if (action.type === "routine.exception" && !action.exception_kind) {
+    context.addIssue({ code: "custom", path: ["exception_kind"], message: "required" });
+  }
+  if (action.type === "checklist.item.reorder") {
+    requireField("checklist_id");
+    if (!action.ids?.length) context.addIssue({ code: "custom", path: ["ids"], message: "required" });
+  }
 });
 
 function nullable(schema: Record<string, unknown>) {
@@ -136,6 +167,18 @@ export const AGENT_TURN_JSON_SCHEMA = {
           "purchased",
           "checked",
           "done",
+          "estimate_minutes",
+          "weekdays",
+          "time_of_day",
+          "starts_on",
+          "ends_on",
+          "occurrence_date",
+          "exception_kind",
+          "series_scope",
+          "occurrence_key",
+          "estimate_patch",
+          "checklist_patch",
+          "ids",
         ],
         properties: {
           type: {
@@ -196,6 +239,18 @@ export const AGENT_TURN_JSON_SCHEMA = {
           purchased: nullable({ type: "boolean" }),
           checked: nullable({ type: "boolean" }),
           done: nullable({ type: "boolean" }),
+          estimate_minutes: nullable({ type: "integer", minimum: 1, maximum: 1440 }),
+          weekdays: nullable({ type: "array", maxItems: 7, items: { type: "integer", minimum: 0, maximum: 6 } }),
+          time_of_day: nullable({ type: "string", pattern: TIME_RE.source }),
+          starts_on: nullable({ type: "string", pattern: DATE_RE.source }),
+          ends_on: nullable({ type: "string", pattern: DATE_RE.source }),
+          occurrence_date: nullable({ type: "string", pattern: DATE_RE.source }),
+          exception_kind: nullable({ type: "string", enum: ["skip", "override", "done", "clear"] }),
+          series_scope: nullable({ type: "string", enum: ["once", "from_today", "series"] }),
+          occurrence_key: nullable({ type: "string", minLength: 1, maxLength: 200 }),
+          estimate_patch: nullable({ type: "string", enum: ["keep", "set", "clear"] }),
+          checklist_patch: nullable({ type: "string", enum: ["keep", "set", "clear"] }),
+          ids: nullable({ type: "array", maxItems: 500, items: { type: "string", pattern: UUID_RE.source } }),
         },
       },
     },
@@ -242,6 +297,18 @@ export const AGENT_TURN_JSON_SCHEMA = {
                   "purchased",
                   "checked",
                   "done",
+                  "estimate_minutes",
+                  "weekdays",
+                  "time_of_day",
+                  "starts_on",
+                  "ends_on",
+                  "occurrence_date",
+                  "exception_kind",
+                  "series_scope",
+                  "occurrence_key",
+                  "estimate_patch",
+                  "checklist_patch",
+                  "ids",
                 ],
                 properties: {
                   type: { type: "string", enum: [...ACTION_TYPES] },
@@ -333,6 +400,18 @@ export const AGENT_TURN_JSON_SCHEMA = {
                   purchased: nullable({ type: "boolean" }),
                   checked: nullable({ type: "boolean" }),
                   done: nullable({ type: "boolean" }),
+                  estimate_minutes: nullable({ type: "integer", minimum: 1, maximum: 1440 }),
+          weekdays: nullable({ type: "array", maxItems: 7, items: { type: "integer", minimum: 0, maximum: 6 } }),
+          time_of_day: nullable({ type: "string", pattern: TIME_RE.source }),
+          starts_on: nullable({ type: "string", pattern: DATE_RE.source }),
+          ends_on: nullable({ type: "string", pattern: DATE_RE.source }),
+          occurrence_date: nullable({ type: "string", pattern: DATE_RE.source }),
+          exception_kind: nullable({ type: "string", enum: ["skip", "override", "done", "clear"] }),
+          series_scope: nullable({ type: "string", enum: ["once", "from_today", "series"] }),
+          occurrence_key: nullable({ type: "string", minLength: 1, maxLength: 200 }),
+          estimate_patch: nullable({ type: "string", enum: ["keep", "set", "clear"] }),
+          checklist_patch: nullable({ type: "string", enum: ["keep", "set", "clear"] }),
+          ids: nullable({ type: "array", maxItems: 500, items: { type: "string", pattern: UUID_RE.source } }),
                 },
               },
             },
@@ -685,6 +764,18 @@ export function toAgentAction(data: z.infer<typeof ActionSchema>): AgentAction {
     purchased: data.purchased ?? null,
     checked: data.checked ?? null,
     done: data.done ?? null,
+    estimate_minutes: data.estimate_minutes ?? null,
+    weekdays: data.weekdays ?? null,
+    time_of_day: data.time_of_day ?? null,
+    starts_on: data.starts_on ?? null,
+    ends_on: data.ends_on ?? null,
+    occurrence_date: data.occurrence_date ?? null,
+    exception_kind: data.exception_kind ?? null,
+    series_scope: data.series_scope ?? null,
+    occurrence_key: data.occurrence_key ?? null,
+    estimate_patch: data.estimate_patch ?? null,
+    checklist_patch: data.checklist_patch ?? null,
+    ids: data.ids ?? null,
   };
 }
 
@@ -805,6 +896,24 @@ function successLine(result: Extract<ActionResult, { ok: true }>) {
       return `עדכנתי סימון תת־משימה${title}.`;
     case "task.subtask.remove":
       return `הסרתי תת־משימה${title}.`;
+    case "task.duplicate":
+      return `שכפלתי את המשימה${title}.`;
+    case "checklist.duplicate":
+      return `שכפלתי את הרשימה${title}.`;
+    case "checklist.reset":
+      return "איפסתי את הסימונים בביצוע הזה.";
+    case "checklist.archive":
+      return `העברתי את הרשימה${title} לארכיון.`;
+    case "checklist.item.reorder":
+      return "סידרתי מחדש את פריטי הרשימה.";
+    case "routine.create":
+      return "שמרתי את החזרה של המשימה.";
+    case "routine.update":
+      return "עדכנתי את החזרה.";
+    case "routine.stop":
+      return "הפסקתי את החזרה.";
+    case "routine.exception":
+      return "עדכנתי את המופע הזה.";
   }
 }
 

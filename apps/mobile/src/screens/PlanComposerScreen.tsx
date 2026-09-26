@@ -1,125 +1,50 @@
-import { useEffect, useState } from "react";
-import { BackHandler, StyleSheet, Text, View } from "react-native";
-import {
-  AppScreen,
-  PrimaryActionButton,
-  ScreenHeader,
-  SecondaryPillButton,
-} from "../components/ui";
-import { getDayPlan, jerusalemDateFromNow, replanDay, selectOpenTaskIdsForDate, todayJerusalemDate } from "../api/planning";
-import { listTasks } from "../api/tasks";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import { BackHandler, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { AppScreen, PrimaryActionButton, ScreenHeader } from "../components/ui";
+import { getDayPlan, jerusalemDateFromNow, replanDay, formatPlanTime, type MobileDayPlan } from "../api/planning";
+import { listTasks, type MobileTask } from "../api/tasks";
+import { sendChat } from "../api/chat";
 import { FREETIME_DEFAULT_MINUTES } from "../product/surfaceCommit";
-import { rtlText, space, type } from "../theme";
+import { colors as baseColors, rtlText, type as baseType } from "../theme";
 
-const DURATIONS = [15, 30, 45, 60, 90, 120];
-const DATE_CHIPS: Array<{ id: "today" | "tomorrow" | "later"; label: string; days: number }> = [
-  { id: "today", label: "היום", days: 0 },
-  { id: "tomorrow", label: "מחר", days: 1 },
-  { id: "later", label: "אחר", days: 2 },
-];
+const colors = { ...baseColors, muted: baseColors.textMuted, border: baseColors.line, accentDark: baseColors.accentDeep, successSoft: baseColors.sage };
+const type = { ...baseType, h2: baseType.title };
 
-export function PlanComposerScreen({
-  mode,
-  onBack,
-  onDone,
-}: {
-  mode: "plan" | "freetime";
-  onBack: () => void;
-  onDone: (payload: { kind: "success" | "schedule" | "freetime"; minutes: number; date: string }) => void;
-}) {
-  const [minutes, setMinutes] = useState(mode === "freetime" ? FREETIME_DEFAULT_MINUTES : 45);
-  const [dateChip, setDateChip] = useState<(typeof DATE_CHIPS)[number]["id"]>("today");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+const dateLabel = (date: string) => new Intl.DateTimeFormat("he-IL", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Asia/Jerusalem" }).format(new Date(`${date}T12:00:00+03:00`));
+const dateObject = (date: string) => new Date(`${date}T12:00:00+03:00`);
+const timeValue = (date: Date) => `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+const minutesBetween = (start: string, end: string) => { const [sh, sm] = start.split(":").map(Number); const [eh, em] = end.split(":").map(Number); return eh * 60 + em - sh * 60 - sm; };
 
+export function PlanComposerScreen({ mode, onBack, onDone }: { mode: "plan" | "freetime"; onBack: () => void; onDone: (payload: { kind: "success" | "schedule" | "freetime"; minutes: number; date: string }) => void; }) {
+  const [selectedDate, setSelectedDate] = useState(jerusalemDateFromNow());
+  const [plan, setPlan] = useState<MobileDayPlan | null>(null);
+  const [tasks, setTasks] = useState<MobileTask[]>([]);
+  const [start, setStart] = useState("14:00"); const [end, setEnd] = useState("17:30");
+  const [context, setContext] = useState(""); const [message, setMessage] = useState("");
+  const [panelOpen, setPanelOpen] = useState(false); const [sessionId, setSessionId] = useState<string>();
+  const [conversation, setConversation] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
+  const [picker, setPicker] = useState<"date" | "start" | "end" | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const planMode = mode === "plan";
-  const selectedDate = jerusalemDateFromNow(DATE_CHIPS.find((chip) => chip.id === dateChip)?.days ?? 0);
-
-  useEffect(() => {
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      onBack();
-      return true;
-    });
-    return () => sub.remove();
-  }, [onBack]);
-
-  async function submit() {
-    setBusy(true);
-    setError("");
-    try {
-      if (!planMode) {
-        onDone({ kind: "freetime", minutes, date: todayJerusalemDate() });
-        return;
-      }
-      const date = selectedDate;
-      const [tasks, current] = await Promise.all([listTasks(), getDayPlan(date)]);
-      const alreadyOnPlan = current.items.map((item) => item.task_id);
-      await replanDay(date, selectOpenTaskIdsForDate(tasks.tasks, date, alreadyOnPlan));
-      onDone({ kind: "success", minutes, date });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "תכנון נכשל");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <AppScreen
-      footer={
-        <View style={styles.footer}>
-          <PrimaryActionButton
-            label={busy ? "מתכנן…" : planMode ? "צור לי לו״ז" : "הצג משימות"}
-            onPress={() => void submit()}
-            disabled={busy}
-          />
-        </View>
-      }
-    >
-      <ScreenHeader
-        title={planMode ? "צור לי לו״ז" : "יש לי זמן פנוי"}
-        onBack={onBack}
-        icon={planMode ? "calendar-outline" : "time-outline"}
-      />
-      {planMode ? (
-        <>
-          <Text style={styles.sub}>לאיזה יום לתכנן?</Text>
-          <View style={styles.pills}>
-            {DATE_CHIPS.map((chip) => (
-              <SecondaryPillButton
-                key={chip.id}
-                label={chip.label}
-                selected={dateChip === chip.id}
-                onPress={() => setDateChip(chip.id)}
-              />
-            ))}
-          </View>
-        </>
-      ) : null}
-      <Text style={styles.sub}>
-        {planMode ? "באיזה זמן יש לך?" : "כמה זמן פנוי?"}
-      </Text>
-      <View style={styles.pills}>
-        {DURATIONS.map((value) => (
-          <SecondaryPillButton
-            key={value}
-            label={String(value)}
-            selected={minutes === value}
-            onPress={() => setMinutes(value)}
-          />
-        ))}
-      </View>
-      {planMode ? null : (
-        <Text style={styles.hint}>מציגים משימות שמתאימות לחלון של עד {minutes} דקות.</Text>
-      )}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-    </AppScreen>
-  );
+  const load = useCallback(async () => { try { const [nextPlan, nextTasks] = await Promise.all([getDayPlan(selectedDate), listTasks()]); setPlan(nextPlan); setTasks(nextTasks.tasks); } catch (e) { setError(e instanceof Error ? e.message : "לא הצלחנו לטעון את היום"); } }, [selectedDate]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const sub = BackHandler.addEventListener("hardwareBackPress", () => { onBack(); return true; }); return () => sub.remove(); }, [onBack]);
+  const taskMap = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  const available = Math.max(0, minutesBetween(start, end)); const candidateCount = tasks.filter((task) => task.status === "open" && !plan?.items.some((item) => item.task_id === task.id)).length;
+  const choosePicker = (event: DateTimePickerEvent, value?: Date) => { const kind = picker; setPicker(null); if (event.type !== "set" || !value) return; if (kind === "date") setSelectedDate(value.toISOString().slice(0, 10)); else if (kind === "start") setStart(timeValue(value)); else setEnd(timeValue(value)); };
+  async function sendAgent() { const text = message.trim(); if (!text) return; setMessage(""); setConversation((old) => [...old, { role: "user", text }]); try { const reply = await sendChat(text, sessionId, undefined, "schedule", { type: "schedule", date: selectedDate, day_start: start, day_end: end, planning_context: context }); setSessionId(reply.session_id); setConversation((old) => [...old, { role: "assistant", text: reply.reply }]); setContext((old) => old ? `${old}\n${text}` : text); } catch (e) { setError(e instanceof Error ? e.message : "הסוכן לא זמין כרגע"); } }
+  async function submit() { if (!planMode) { onDone({ kind: "freetime", minutes: FREETIME_DEFAULT_MINUTES, date: selectedDate }); return; } if (minutesBetween(start, end) <= 0) { setError("שעת ההתחלה חייבת להיות לפני שעת הסיום."); return; } setBusy(true); setError(""); try { await replanDay(selectedDate, { taskIds: tasks.filter((task) => task.status === "open").map((task) => task.id), windowStart: start, windowEnd: end, planningContext: context, planUpdatedAt: plan?.plan?.updated_at }); await load(); onDone({ kind: "success", minutes: available, date: selectedDate }); } catch (e) { setError(e instanceof Error ? e.message : "התכנון נכשל"); } finally { setBusy(false); } }
+  const chips = [{ label: "אתמול", date: jerusalemDateFromNow(-1) }, { label: "היום", date: jerusalemDateFromNow(0) }, { label: "מחר", date: jerusalemDateFromNow(1) }];
+  return <AppScreen footer={<View style={styles.footer}><PrimaryActionButton label={busy ? "מסדר לך את היום..." : plan?.items.length ? "שנה לי את הלו״ז" : "צור לי לו״ז"} onPress={() => void submit()} disabled={busy} /></View>}>
+    <ScreenHeader title={planMode ? (plan?.items.length ? "שנה לי את הלו״ז" : "צור לי לו״ז") : "יש לי זמן פנוי"} onBack={onBack} icon="calendar-outline" />
+    <Text style={styles.subtitle}>הלוז הבסיסי של היום כבר קיים. אני רק מארגנת ומשפרת אותו עבורך.</Text>
+    <View style={styles.dateRow}>{chips.map((chip) => <Pressable key={chip.date} style={[styles.dateCard, selectedDate === chip.date && styles.selected]} onPress={() => setSelectedDate(chip.date)}><Text style={styles.dateTitle}>{chip.label}</Text><Text style={styles.dateText}>{dateLabel(chip.date)}</Text></Pressable>)}<Pressable style={styles.dateCard} onPress={() => setPicker("date")}><Text style={styles.dateTitle}>▣</Text><Text style={styles.dateText}>בחר תאריך</Text></Pressable></View>
+    <Text style={styles.heading}>מה כבר קבוע ביום הזה?</Text><View style={styles.card}>{plan?.items.length ? plan.items.map((item) => <View key={item.id ?? item.task_id} style={styles.planRow}><Text style={styles.time}>{formatPlanTime(item.start_at)}</Text><Text style={styles.itemTitle}>{taskMap.get(item.task_id)?.title ?? "משימה"}</Text><Text style={styles.kind}>{item.kind === "fixed" || item.source === "calendar" ? "קבוע" : "גמיש"}</Text></View>) : <Text style={styles.empty}>אין עדיין דברים קבועים ביום הזה</Text>}</View>
+    <Text style={styles.heading}>מתי יש לי זמן?</Text><View style={styles.card}><View style={styles.timeRow}><Pressable style={styles.timeBox} onPress={() => setPicker("end")}><Text style={styles.label}>שעת סיום</Text><Text style={styles.timeValue}>{end}</Text></Pressable><Pressable style={styles.timeBox} onPress={() => setPicker("start")}><Text style={styles.label}>שעת התחלה</Text><Text style={styles.timeValue}>{start}</Text></Pressable></View><Text style={styles.duration}>◷  זמן פנוי לתכנון: {available > 0 ? `${(available / 60).toFixed(1)} שעות` : "טווח לא תקין"}</Text></View>
+    <Text style={styles.heading}>מה חשוב לך היום?</Text><TextInput style={styles.context} multiline value={context} onChangeText={setContext} placeholder="החוג בוטל, אני עייפה היום..." textAlign="right" textAlignVertical="top" />
+    <Text style={styles.heading}>תכנון עם הסוכן</Text><Pressable style={styles.agentBar} onPress={() => setPanelOpen((value) => !value)}><Text style={styles.agentIcon}>✦</Text><Text style={styles.agentText}>{panelOpen ? "מזערי את השיחה" : "ספרי לי מה חשוב לקחת בחשבון..."}</Text></Pressable>{panelOpen ? <View style={styles.agentPanel}><View style={styles.messages}>{conversation.map((item, index) => <Text key={index} style={[styles.message, item.role === "user" && styles.userMessage]}>{item.text}</Text>)}</View><View style={styles.sendRow}><TextInput style={styles.messageInput} value={message} onChangeText={setMessage} placeholder="כתבי לסוכן..." textAlign="right" /><Pressable style={styles.send} onPress={() => void sendAgent()}><Text style={styles.sendText}>שלחי</Text></Pressable></View></View> : null}
+    <Text style={styles.openTasks}>לסוכן יש {candidateCount} משימות פתוחות שהוא יכול לשלב</Text>{error ? <Text style={styles.error}>{error}</Text> : null}{picker ? <DateTimePicker value={picker === "date" ? dateObject(selectedDate) : new Date(2020, 0, 1, Number((picker === "start" ? start : end).split(":")[0]), Number((picker === "start" ? start : end).split(":")[1]))} mode={picker === "date" ? "date" : "time"} is24Hour onChange={choosePicker} /> : null}
+  </AppScreen>;
 }
 
-const styles = StyleSheet.create({
-  sub: { ...type.body, ...rtlText, marginBottom: space.lg },
-  hint: { ...type.caption, ...rtlText, marginTop: space.md },
-  pills: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 10, marginBottom: space.lg },
-  footer: { paddingHorizontal: 24, paddingBottom: 16 },
-  error: { ...rtlText, color: "#8B2E1F", marginTop: space.md },
-});
+const styles = StyleSheet.create({ subtitle: { ...type.body, ...rtlText, color: colors.muted, marginBottom: 16 }, dateRow: { flexDirection: "row-reverse", gap: 8, marginBottom: 18 }, dateCard: { flex: 1, minHeight: 72, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 8, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface }, selected: { backgroundColor: colors.accent }, dateTitle: { ...type.body, ...rtlText }, dateText: { ...type.caption, ...rtlText, color: colors.muted }, heading: { ...type.h2, ...rtlText, marginTop: 14, marginBottom: 8 }, card: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 14 }, planRow: { flexDirection: "row-reverse", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }, time: { width: 64, color: colors.muted }, itemTitle: { flex: 1, ...type.body, ...rtlText }, kind: { ...type.caption, color: colors.muted }, empty: { ...rtlText, color: colors.muted, paddingVertical: 10 }, timeRow: { flexDirection: "row-reverse", gap: 10 }, timeBox: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 12 }, label: { ...type.caption, ...rtlText, color: colors.muted }, timeValue: { ...type.h2, ...rtlText, marginTop: 6 }, duration: { ...rtlText, color: colors.accentDark, backgroundColor: colors.successSoft, padding: 12, borderRadius: 12, marginTop: 12, textAlign: "center" }, context: { minHeight: 96, borderWidth: 1, borderColor: colors.border, borderRadius: 18, backgroundColor: colors.surface, padding: 14, ...type.body }, agentBar: { flexDirection: "row-reverse", alignItems: "center", backgroundColor: colors.surface, borderRadius: 22, borderWidth: 1, borderColor: colors.border, padding: 14 }, agentIcon: { color: colors.accent, fontSize: 24, marginLeft: 10 }, agentText: { ...type.body, ...rtlText, color: colors.muted, flex: 1 }, agentPanel: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 12, marginTop: 8 }, messages: { maxHeight: 150 }, message: { ...rtlText, backgroundColor: colors.bg, borderRadius: 12, padding: 8, marginBottom: 6 }, userMessage: { backgroundColor: colors.successSoft }, sendRow: { flexDirection: "row-reverse", gap: 8 }, messageInput: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 14, paddingHorizontal: 10 }, send: { backgroundColor: colors.accent, borderRadius: 14, padding: 12, justifyContent: "center" }, sendText: { color: "#fff", fontWeight: "700" }, openTasks: { ...rtlText, ...type.caption, color: colors.muted, marginVertical: 16 }, footer: { paddingHorizontal: 24, paddingBottom: 12 }, error: { ...rtlText, color: "#8B2E1F", marginBottom: 12 } });

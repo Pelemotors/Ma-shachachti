@@ -1,5 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import {
+  STANDALONE_RUN_KEY,
+  loadRunChecks,
+  resetChecklistRun,
+  setChecklistRunItem,
+  withRunChecks,
+} from "./checklist-runs.ts";
 
 export const shoppingMutationSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("add"), title: z.string().trim().min(1).max(200), quantity: z.number().int().min(1).max(999).default(1) }).strict(),
@@ -10,14 +17,16 @@ export const shoppingMutationSchema = z.discriminatedUnion("action", [
 ]);
 
 export const checklistMutationSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("create"), title: z.string().trim().min(1).max(200) }).strict(),
+  z.object({ action: z.literal("create"), title: z.string().trim().min(1).max(200), items: z.array(z.string().trim().min(1).max(500)).max(100).optional() }).strict(),
   z.object({ action: z.literal("rename"), id: z.string().uuid(), title: z.string().trim().min(1).max(200) }).strict(),
   z.object({ action: z.literal("delete"), id: z.string().uuid() }).strict(),
-  z.object({ action: z.literal("reset"), id: z.string().uuid() }).strict(),
+  z.object({ action: z.literal("archive"), id: z.string().uuid() }).strict(),
+  z.object({ action: z.literal("duplicate"), id: z.string().uuid() }).strict(),
+  z.object({ action: z.literal("reset"), id: z.string().uuid(), occurrence_key: z.string().trim().min(1).max(200).optional() }).strict(),
   z.object({ action: z.literal("reorder"), ids: z.array(z.string().uuid()).min(1).max(200) }).strict(),
   z.object({ action: z.literal("item.add"), checklist_id: z.string().uuid(), text: z.string().trim().min(1).max(500) }).strict(),
   z.object({ action: z.literal("item.update"), checklist_id: z.string().uuid(), id: z.string().uuid(), text: z.string().trim().min(1).max(500) }).strict(),
-  z.object({ action: z.literal("item.toggle"), checklist_id: z.string().uuid(), id: z.string().uuid(), checked: z.boolean() }).strict(),
+  z.object({ action: z.literal("item.toggle"), checklist_id: z.string().uuid(), id: z.string().uuid(), checked: z.boolean(), occurrence_key: z.string().trim().min(1).max(200).optional() }).strict(),
   z.object({ action: z.literal("item.remove"), checklist_id: z.string().uuid(), id: z.string().uuid() }).strict(),
   z.object({ action: z.literal("item.reorder"), checklist_id: z.string().uuid(), ids: z.array(z.string().uuid()).min(1).max(500) }).strict(),
 ]);
@@ -68,15 +77,33 @@ export async function mutateShopping(db: Db, userId: string, input: z.infer<type
   return loadShopping(db, userId);
 }
 
-export async function loadChecklists(db: Db, userId: string): Promise<Checklist[]> {
+export async function loadChecklists(db: Db, userId: string, occurrenceKey = STANDALONE_RUN_KEY): Promise<Checklist[]> {
   const [{ data: lists, error }, { data: items, error: itemError }] = await Promise.all([
-    db.from("checklists").select("id,title,order_index,created_at,updated_at").eq("user_id", userId).order("order_index").order("created_at"),
+    db.from("checklists").select("id,title,order_index,created_at,updated_at").eq("user_id", userId).is("archived_at", null).order("order_index").order("created_at"),
     db.from("checklist_items").select("id,checklist_id,text,checked,order_index,created_at,updated_at").eq("user_id", userId).order("order_index").order("created_at"),
   ]);
   if (error || itemError) throw error ?? itemError;
+  const listIds = (lists ?? []).map((list) => String(list.id));
+  const checks = await loadRunChecks(db, userId, listIds, occurrenceKey);
+  if (occurrenceKey === STANDALONE_RUN_KEY) {
+    for (const list of lists ?? []) {
+      const listId = String(list.id);
+      if (checks.has(listId)) continue;
+      const seeded = (items ?? []).filter((item) => item.checklist_id === list.id && item.checked);
+      if (!seeded.length) continue;
+      for (const item of seeded) {
+        await setChecklistRunItem(db, userId, listId, String(item.id), true, occurrenceKey);
+      }
+      await db.from("checklist_items").update({ checked: false, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("checklist_id", listId);
+      checks.set(listId, new Set(seeded.map((item) => String(item.id))));
+    }
+  }
   return (lists ?? []).map((list) => ({
     ...list,
-    items: (items ?? []).filter((item) => item.checklist_id === list.id),
+    items: withRunChecks(
+      (items ?? []).filter((item) => item.checklist_id === list.id).map((item) => ({ ...item, checked: false })),
+      checks.get(String(list.id)) ?? new Set<string>(),
+    ),
   })) as Checklist[];
 }
 
@@ -105,19 +132,48 @@ async function applyOrder(db: Db, table: "checklists" | "checklist_items", userI
 export async function mutateChecklist(db: Db, userId: string, input: z.infer<typeof checklistMutationSchema>) {
   const now = new Date().toISOString();
   if (input.action === "create") {
-    const { data: last } = await db.from("checklists").select("order_index").eq("user_id", userId).order("order_index", { ascending: false }).limit(1).maybeSingle();
-    const { error } = await db.from("checklists").insert({ user_id: userId, title: input.title, order_index: Number(last?.order_index ?? -1) + 1 });
-    if (error) throw error;
+    const items = (input.items ?? []).map((text) => text.trim()).filter(Boolean);
+    const { error } = await db.rpc("create_checklist_with_items", {
+      p_title: input.title,
+      p_items: items,
+    });
+    if (error) {
+      const { data: last } = await db.from("checklists").select("order_index").eq("user_id", userId).order("order_index", { ascending: false }).limit(1).maybeSingle();
+      const { data: created, error: createError } = await db.from("checklists").insert({ user_id: userId, title: input.title, order_index: Number(last?.order_index ?? -1) + 1 }).select("id").single();
+      if (createError || !created) throw createError ?? new Error("checklist_not_found");
+      if (items.length) {
+        const { error: itemError } = await db.from("checklist_items").insert(items.map((text, order_index) => ({ user_id: userId, checklist_id: created.id, text, order_index })));
+        if (itemError) {
+          await db.from("checklists").delete().eq("user_id", userId).eq("id", created.id);
+          throw itemError;
+        }
+      }
+    }
   } else if (input.action === "rename") {
     const { data, error } = await db.from("checklists").update({ title: input.title, updated_at: now }).eq("user_id", userId).eq("id", input.id).select("id").maybeSingle();
     if (error || !data) throw error ?? new Error("checklist_not_found");
   } else if (input.action === "delete") {
     const { data, error } = await db.from("checklists").delete().eq("user_id", userId).eq("id", input.id).select("id").maybeSingle();
     if (error || !data) throw error ?? new Error("checklist_not_found");
+  } else if (input.action === "archive") {
+    const { data, error } = await db.from("checklists").update({ archived_at: now, updated_at: now }).eq("user_id", userId).eq("id", input.id).is("archived_at", null).select("id").maybeSingle();
+    if (error || !data) throw error ?? new Error("checklist_not_found");
+  } else if (input.action === "duplicate") {
+    await ownChecklist(db, userId, input.id);
+    const { data: source, error: sourceError } = await db.from("checklists").select("title").eq("user_id", userId).eq("id", input.id).maybeSingle();
+    if (sourceError || !source) throw sourceError ?? new Error("checklist_not_found");
+    const { data: sourceItems, error: itemsError } = await db.from("checklist_items").select("text,order_index").eq("user_id", userId).eq("checklist_id", input.id).order("order_index");
+    if (itemsError) throw itemsError;
+    const { data: last } = await db.from("checklists").select("order_index").eq("user_id", userId).order("order_index", { ascending: false }).limit(1).maybeSingle();
+    const { data: created, error } = await db.from("checklists").insert({ user_id: userId, title: `${source.title} (עותק)`, order_index: Number(last?.order_index ?? -1) + 1 }).select("id").single();
+    if (error || !created) throw error ?? new Error("checklist_not_found");
+    if (sourceItems?.length) {
+      const { error: copyError } = await db.from("checklist_items").insert(sourceItems.map((item) => ({ user_id: userId, checklist_id: created.id, text: item.text, order_index: item.order_index, checked: false })));
+      if (copyError) throw copyError;
+    }
   } else if (input.action === "reset") {
     await ownChecklist(db, userId, input.id);
-    const { error } = await db.from("checklist_items").update({ checked: false, updated_at: now }).eq("user_id", userId).eq("checklist_id", input.id);
-    if (error) throw error;
+    await resetChecklistRun(db, userId, input.id, input.occurrence_key ?? STANDALONE_RUN_KEY);
   } else if (input.action === "reorder") {
     await applyOrder(db, "checklists", userId, input.ids);
   } else {
@@ -132,10 +188,16 @@ export async function mutateChecklist(db: Db, userId: string, input: z.infer<typ
       const { data, error } = await db.from("checklist_items").delete().eq("user_id", userId).eq("checklist_id", input.checklist_id).eq("id", input.id).select("id").maybeSingle();
       if (error || !data) throw error ?? new Error("item_not_found");
     } else {
-      const patch = input.action === "item.toggle" ? { checked: input.checked, updated_at: now } : { text: input.text, updated_at: now };
-      const { data, error } = await db.from("checklist_items").update(patch).eq("user_id", userId).eq("checklist_id", input.checklist_id).eq("id", input.id).select("id").maybeSingle();
-      if (error || !data) throw error ?? new Error("item_not_found");
+      if (input.action === "item.toggle") {
+        const { data, error } = await db.from("checklist_items").select("id").eq("user_id", userId).eq("checklist_id", input.checklist_id).eq("id", input.id).maybeSingle();
+        if (error || !data) throw error ?? new Error("item_not_found");
+        await setChecklistRunItem(db, userId, input.checklist_id, input.id, input.checked, input.occurrence_key ?? STANDALONE_RUN_KEY);
+      } else {
+        const { data, error } = await db.from("checklist_items").update({ text: input.text, updated_at: now }).eq("user_id", userId).eq("checklist_id", input.checklist_id).eq("id", input.id).select("id").maybeSingle();
+        if (error || !data) throw error ?? new Error("item_not_found");
+      }
     }
   }
-  return loadChecklists(db, userId);
+  const occurrenceKey = "occurrence_key" in input && input.occurrence_key ? input.occurrence_key : STANDALONE_RUN_KEY;
+  return loadChecklists(db, userId, occurrenceKey);
 }

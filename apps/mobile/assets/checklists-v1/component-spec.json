@@ -1,0 +1,43 @@
+{
+  "screen": {
+    "contentHorizontalPadding": 20,
+    "headerTopGap": 12,
+    "bottomNavFixed": true,
+    "scrollContentBottomPadding": 120
+  },
+  "header": {
+    "title": "צ׳קליסטים",
+    "addButtonDiameter": 52
+  },
+  "search": {
+    "height": 52,
+    "radius": 26
+  },
+  "sectionCard": {
+    "radius": 28,
+    "padding": 14,
+    "gap": 10
+  },
+  "checklistRow": {
+    "minHeight": 72,
+    "radius": 22,
+    "paddingHorizontal": 14,
+    "progressHeight": 6
+  },
+  "activeRunRow": {
+    "showsProgress": true,
+    "showsCompletedCount": true
+  },
+  "templateRow": {
+    "showsProgress": false,
+    "overflowMenu": true
+  },
+  "bottomNav": {
+    "fixed": true
+  },
+  "rules": [
+    "Template and Run are separate entities",
+    "A recurring Task/Routine may instantiate a fresh Checklist Run",
+    "Completed run state never overwrites template defaults"
+  ]
+}

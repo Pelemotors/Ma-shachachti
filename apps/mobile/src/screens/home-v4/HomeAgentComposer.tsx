@@ -41,7 +41,7 @@ export function HomeAgentComposer({
           borderColor: focused ? V4.sageSoft : V4.border,
           backgroundColor: V4.composer,
           borderWidth: StyleSheet.hairlineWidth,
-          flexDirection: "row",
+          flexDirection: "row-reverse",
           alignItems: "center",
           paddingHorizontal: 6 * s,
           shadowColor: V4.shadow,
@@ -59,7 +59,7 @@ export function HomeAgentComposer({
             width: 36 * s,
             height: 36 * s,
             borderRadius: 18 * s,
-            backgroundColor: recording ? "#C45C4A" : V4.sage,
+            backgroundColor: recording ? "#C45C4A" : "#A9674F",
             alignItems: "center",
             justifyContent: "center",
           }}
@@ -79,6 +79,10 @@ export function HomeAgentComposer({
           onBlur={() => setFocused(false)}
           editable={!sending}
         />
+        <View style={{ width: StyleSheet.hairlineWidth, height: 26 * s, backgroundColor: V4.border }} />
+        <Pressable onPress={onSend} accessibilityRole="button" accessibilityLabel="שלח" style={{ paddingHorizontal: 8 * s }}>
+          <HomeV4Icon name="send" size={18 * s} color={V4.text} />
+        </Pressable>
         {sending ? <ActivityIndicator color={V4.sage} style={{ marginEnd: 8 * s }} /> : null}
       </View>
     </View>

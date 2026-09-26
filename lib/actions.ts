@@ -11,6 +11,13 @@ import type {
 } from "./types.ts";
 import { mutateChecklist, mutateShopping } from "./lists.ts";
 import { removeDayPlanItem, upsertDayPlanItem } from "./day-plan.ts";
+import {
+  applyRoutineException,
+  createRoutine,
+  findActiveRoutineByTask,
+  stopRoutine,
+  updateRoutine,
+} from "./routines.ts";
 import { mutateSubtask } from "./task-subtasks.ts";
 import {
   preferenceTopicKey,
@@ -205,6 +212,8 @@ export async function executeAction(
           reminder_enabled: reminderEnabled,
           reminder_opted_in_at: reminderEnabled ? now : null,
           reminder_offset_minutes: reminderOffset,
+          estimate_minutes: action.estimate_minutes ?? null,
+          checklist_id: action.checklist_id ?? null,
           status: "open",
           updated_at: now,
         })
@@ -301,6 +310,16 @@ export async function executeAction(
           }
         }
       }
+      if (action.estimate_patch === "clear") patch.estimate_minutes = null;
+      else if (action.estimate_patch === "set") {
+        if (!action.estimate_minutes) return fail(action.type, "משך המשימה אינו תקין.");
+        patch.estimate_minutes = action.estimate_minutes;
+      }
+      if (action.checklist_patch === "clear") patch.checklist_id = null;
+      else if (action.checklist_patch === "set") {
+        if (!action.checklist_id) return fail(action.type, "חסרה רשימה לקישור.");
+        patch.checklist_id = action.checklist_id;
+      }
       Object.assign(
         patch,
         reminderResetIfNeeded(
@@ -382,10 +401,56 @@ export async function executeAction(
         due_time: deadline.due_time,
       });
     }
+    case "task.duplicate": {
+      if (!action.id) return fail(action.type, "חסר מזהה משימה.");
+      const { data: source, error: sourceError } = await db
+        .from("tasks")
+        .select("title,notes,due_on,due_at,estimate_minutes,checklist_id")
+        .eq("user_id", userId)
+        .eq("id", action.id)
+        .neq("status", "cancelled")
+        .maybeSingle();
+      if (sourceError || !source) return fail(action.type, "המשימה לא נמצאה.");
+      const { data, error } = await db
+        .from("tasks")
+        .insert({
+          user_id: userId,
+          title: source.title,
+          notes: source.notes ?? "",
+          due_on: source.due_on,
+          due_at: source.due_at,
+          estimate_minutes: source.estimate_minutes,
+          checklist_id: source.checklist_id,
+          status: "open",
+          updated_at: now,
+        })
+        .select("id")
+        .single();
+      if (error || !data) return fail(action.type, "לא הצלחנו לשכפל את המשימה.");
+      return ok(action.type, { id: data.id as string, title: source.title as string });
+    }
     case "task.complete": {
       if (!action.id) return fail(action.type, "חסר מזהה משימה.");
       if (!(await ownTask(db, userId, action.id)))
         return fail(action.type, "המשימה לא נמצאה.");
+      if (action.occurrence_date) {
+        try {
+          const routine = await findActiveRoutineByTask(db, userId, action.id);
+          if (!routine) return fail(action.type, "אין חזרה פעילה למשימה.");
+          if (action.series_scope === "from_today") {
+            await stopRoutine(db, userId, routine.id, action.occurrence_date);
+          } else {
+            await applyRoutineException(db, userId, {
+              routineId: routine.id,
+              date: action.occurrence_date,
+              kind: "done",
+            });
+          }
+        } catch (error) {
+          return fail(action.type, error instanceof Error ? error.message : "לא הצלחנו לעדכן את המופע.");
+        }
+        return ok(action.type, { id: action.id, title: action.title });
+      }
       const { error } = await db
         .from("tasks")
         .update({ status: "done", completed_at: now, updated_at: now })
@@ -398,6 +463,20 @@ export async function executeAction(
       if (!action.id) return fail(action.type, "חסר מזהה משימה.");
       if (!(await ownTask(db, userId, action.id)))
         return fail(action.type, "המשימה לא נמצאה.");
+      if (action.occurrence_date) {
+        try {
+          const routine = await findActiveRoutineByTask(db, userId, action.id);
+          if (!routine) return fail(action.type, "אין חזרה פעילה למשימה.");
+          await applyRoutineException(db, userId, {
+            routineId: routine.id,
+            date: action.occurrence_date,
+            kind: "clear",
+          });
+        } catch (error) {
+          return fail(action.type, error instanceof Error ? error.message : "לא הצלחנו לפתוח את המופע.");
+        }
+        return ok(action.type, { id: action.id, title: action.title });
+      }
       const { error } = await db
         .from("tasks")
         .update({ status: "open", completed_at: null, updated_at: now })
@@ -410,12 +489,14 @@ export async function executeAction(
       if (!action.id) return fail(action.type, "חסר מזהה משימה.");
       if (!(await ownTask(db, userId, action.id)))
         return fail(action.type, "המשימה לא נמצאה.");
+      const routine = await findActiveRoutineByTask(db, userId, action.id).catch(() => null);
       const { error } = await db
         .from("tasks")
         .update({ status: "cancelled", updated_at: now })
         .eq("user_id", userId)
         .eq("id", action.id);
       if (error) return fail(action.type, "לא הצלחנו למחוק את המשימה.");
+      if (routine) await stopRoutine(db, userId, routine.id).catch(() => undefined);
       return ok(action.type, { id: action.id, title: action.title });
     }
     case "task.subtask.add": {
@@ -697,7 +778,13 @@ export async function executeAction(
     case "checklist.item.toggle": {
       if (!action.checklist_id || !action.id || action.checked == null) return fail(action.type, "חסר מצב סימון תקין.");
       try {
-        await mutateChecklist(db, userId, { action: "item.toggle", checklist_id: action.checklist_id, id: action.id, checked: action.checked });
+        await mutateChecklist(db, userId, {
+          action: "item.toggle",
+          checklist_id: action.checklist_id,
+          id: action.id,
+          checked: action.checked,
+          ...(action.occurrence_key ? { occurrence_key: action.occurrence_key } : {}),
+        });
       } catch {
         return fail(action.type, "לא הצלחנו לעדכן את הסימון.");
       }
@@ -711,6 +798,103 @@ export async function executeAction(
         return fail(action.type, "לא הצלחנו להסיר את הפריט.");
       }
       return ok(action.type, { id: action.id, title: action.title });
+    }
+    case "checklist.duplicate": {
+      if (!action.id) return fail(action.type, "חסר מזהה רשימה.");
+      try {
+        await mutateChecklist(db, userId, { action: "duplicate", id: action.id });
+      } catch {
+        return fail(action.type, "לא הצלחנו לשכפל את הרשימה.");
+      }
+      return ok(action.type, { id: action.id, title: action.title });
+    }
+    case "checklist.reset": {
+      if (!action.id) return fail(action.type, "חסר מזהה רשימה.");
+      try {
+        await mutateChecklist(db, userId, {
+          action: "reset",
+          id: action.id,
+          ...(action.occurrence_key ? { occurrence_key: action.occurrence_key } : {}),
+        });
+      } catch {
+        return fail(action.type, "לא הצלחנו לאפס את הרשימה.");
+      }
+      return ok(action.type, { id: action.id });
+    }
+    case "checklist.archive": {
+      if (!action.id) return fail(action.type, "חסר מזהה רשימה.");
+      try {
+        await mutateChecklist(db, userId, { action: "archive", id: action.id });
+      } catch {
+        return fail(action.type, "לא הצלחנו להעביר את הרשימה לארכיון.");
+      }
+      return ok(action.type, { id: action.id, title: action.title });
+    }
+    case "checklist.item.reorder": {
+      if (!action.checklist_id || !action.ids?.length) return fail(action.type, "חסר סדר פריטים.");
+      try {
+        await mutateChecklist(db, userId, { action: "item.reorder", checklist_id: action.checklist_id, ids: action.ids });
+      } catch {
+        return fail(action.type, "לא הצלחנו לסדר את הפריטים.");
+      }
+      return ok(action.type, { id: action.checklist_id });
+    }
+    case "routine.create": {
+      if (!action.task_id || !action.starts_on || !action.weekdays?.length) {
+        return fail(action.type, "חסרים פרטי החזרה.");
+      }
+      try {
+        await createRoutine(db, userId, {
+          taskId: action.task_id,
+          weekdays: action.weekdays,
+          timeOfDay: action.time_of_day ?? null,
+          startsOn: action.starts_on,
+          endsOn: action.ends_on,
+        });
+      } catch (error) {
+        return fail(action.type, error instanceof Error ? error.message : "לא הצלחנו ליצור חזרה.");
+      }
+      return ok(action.type, { id: action.task_id, title: action.title });
+    }
+    case "routine.update": {
+      if (!action.id) return fail(action.type, "חסרה משימה קבועה.");
+      try {
+        await updateRoutine(db, userId, {
+          id: action.id,
+          ...(action.weekdays?.length ? { weekdays: action.weekdays } : {}),
+          ...(action.time_of_day ? { timeOfDay: action.time_of_day } : {}),
+          seriesScope: action.series_scope,
+          occurrenceDate: action.occurrence_date,
+        });
+      } catch (error) {
+        return fail(action.type, error instanceof Error ? error.message : "לא הצלחנו לעדכן את החזרה.");
+      }
+      return ok(action.type, { id: action.id });
+    }
+    case "routine.stop": {
+      if (!action.id) return fail(action.type, "חסרה משימה קבועה.");
+      try {
+        await stopRoutine(db, userId, action.id, action.occurrence_date ?? undefined);
+      } catch (error) {
+        return fail(action.type, error instanceof Error ? error.message : "לא הצלחנו להפסיק את החזרה.");
+      }
+      return ok(action.type, { id: action.id });
+    }
+    case "routine.exception": {
+      if (!action.id || !action.occurrence_date || !action.exception_kind) {
+        return fail(action.type, "חסרים פרטי המופע.");
+      }
+      try {
+        await applyRoutineException(db, userId, {
+          routineId: action.id,
+          date: action.occurrence_date,
+          kind: action.exception_kind,
+          timeOfDay: action.time_of_day ?? null,
+        });
+      } catch (error) {
+        return fail(action.type, error instanceof Error ? error.message : "לא הצלחנו לעדכן את המופע.");
+      }
+      return ok(action.type, { id: action.id });
     }
     default:
       return fail(action.type, "הפעולה זמינה רק דרך מבצע הפעולות האטומי.");
@@ -751,7 +935,7 @@ export async function loadTasks(db: Db, userId: string): Promise<TaskRow[]> {
   const { data, error } = await db
     .from("tasks")
     .select(
-      "id,title,notes,status,due_on,due_at,reminder_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at,created_at,updated_at,completed_at",
+      "id,title,notes,status,due_on,due_at,reminder_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at,created_at,updated_at,completed_at,estimate_minutes,checklist_id",
     )
     .eq("user_id", userId)
     .neq("status", "cancelled")
@@ -774,7 +958,7 @@ export async function loadOpenTasksForAgent(
   const { data, error } = await db
     .from("tasks")
     .select(
-      "id,title,notes,status,due_on,due_at,reminder_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at,created_at,updated_at,completed_at",
+      "id,title,notes,status,due_on,due_at,reminder_at,reminder_offset_minutes,reminder_enabled,reminder_sent_at,reminder_claimed_at,planned_start_at,planned_end_at,reschedule_count,last_rescheduled_at,created_at,updated_at,completed_at,estimate_minutes,checklist_id",
     )
     .eq("user_id", userId)
     .eq("status", "open")

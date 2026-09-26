@@ -8,13 +8,14 @@ export const RUNTIME_CAPABILITIES = {
       "task.complete",
       "task.reopen",
       "task.delete",
+      "task.duplicate",
       "task.subtask.add",
       "task.subtask.update",
       "task.subtask.toggle",
       "task.subtask.remove",
     ],
     instructions:
-      "Task יכולה להיות ללא מועד, עם תאריך בלבד, עם due time קשיח, או עם planned time. Reminder כבויה כברירת מחדל; הפעלה מפורשת בלבד דורשת reminder_patch=set וגם reminder_enabled=true. reminder_at הוא זמן בסיס מפורש ונפרד מ-due_at. אין ליצור כפילות מדויקת. תתי־משימות (checklist של משימה): task.subtask.add דורש task_id+title; update/toggle/remove דורשים id של תת־המשימה; toggle דורש done.",
+      "Task יכולה להיות ללא מועד, עם תאריך בלבד, עם due time קשיח, או עם planned time. דדליין אינו שיבוץ בלוז. Reminder כבויה כברירת מחדל; הפעלה מפורשת בלבד דורשת reminder_patch=set וגם reminder_enabled=true. reminder_at הוא זמן בסיס מפורש ונפרד מ-due_at. estimate_minutes דורש estimate_patch=set; ניתוק checklist דורש checklist_patch=clear וקישור checklist_patch=set עם checklist_id. task.duplicate דורש id. אין ליצור כפילות מדויקת. תתי־משימות: task.subtask.add דורש task_id+title; update/toggle/remove דורשים id; toggle דורש done.",
   },
   memory: {
     kind: "action",
@@ -43,9 +44,24 @@ export const RUNTIME_CAPABILITIES = {
       "checklist.item.update",
       "checklist.item.toggle",
       "checklist.item.remove",
+      "checklist.item.reorder",
+      "checklist.duplicate",
+      "checklist.reset",
+      "checklist.archive",
     ],
     instructions:
-      "רשימות אישיות. פעולות item דורשות checklist_id; עדכון/toggle/remove דורשים id של פריט מאותה רשימה. toggle דורש checked.",
+      "Checklist הוא תבנית. סימון checkbox הוא ביצוע (run) ולא משנה את התבנית. פעולות item דורשות checklist_id; עדכון/toggle/remove דורשים id של פריט. toggle דורש checked. occurrence_key מפריד בין ביצועים של אותה תבנית. reset מאפס את הביצוע, לא את התבנית. שכפול מעתיק טקסטים בלי סימונים.",
+  },
+  routines: {
+    kind: "action",
+    operations: [
+      "routine.create",
+      "routine.update",
+      "routine.stop",
+      "routine.exception",
+    ],
+    instructions:
+      "Routine אומרת מתי Task חוזרת. routine.create דורש task_id, starts_on ו-weekdays (0=ראשון … 6=שבת). time_of_day אופציונלי; בלי שעה אין שיבוץ בלוז. routine.update עם series_scope=once משנה רק את המופע (occurrence_date + time_of_day). series_scope=from_today משנה מהתאריך והלאה. routine.stop מפסיק מהיום או מ-occurrence_date. routine.exception: id של ה-routine, occurrence_date, exception_kind skip|override|done|clear. done מסמן רק את המופע ולא סוגר את ה-Task. אל תדווח הצלחה אם הפעולה נכשלה.",
   },
   presentations: {
     kind: "presentation",

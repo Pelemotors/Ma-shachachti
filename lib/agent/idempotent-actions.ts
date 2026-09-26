@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult, AgentAction } from "../types.ts";
-import { mutateSubtask } from "../task-subtasks.ts";
+import { executeAction } from "../actions.ts";
 
 export type ActionExecutionScope = "turn" | "proposal";
 
@@ -14,69 +14,42 @@ function isActionResult(value: unknown): value is ActionResult {
   );
 }
 
-function isTsBackedAction(type: string) {
-  return type.startsWith("task.subtask.");
-}
-
-async function executeSubtaskAction(
-  db: SupabaseClient,
-  userId: string,
-  action: AgentAction,
-): Promise<ActionResult> {
-  try {
-    if (action.type === "task.subtask.add") {
-      if (!action.task_id || !action.title) {
-        return { ok: false, type: action.type, error: "חסרים פרטי תת־משימה." };
-      }
-      await mutateSubtask(db, userId, {
-        action: "add",
-        task_id: action.task_id,
-        title: action.title,
-      });
-      return { ok: true, type: action.type, title: action.title };
-    }
-    if (action.type === "task.subtask.update") {
-      if (!action.id || !action.title) {
-        return { ok: false, type: action.type, error: "חסרים פרטי תת־משימה." };
-      }
-      await mutateSubtask(db, userId, {
-        action: "update",
-        id: action.id,
-        title: action.title,
-      });
-      return { ok: true, type: action.type, id: action.id, title: action.title };
-    }
-    if (action.type === "task.subtask.toggle") {
-      if (!action.id || action.done == null) {
-        return {
-          ok: false,
-          type: action.type,
-          error: "חסר מצב סימון לתת־משימה.",
-        };
-      }
-      await mutateSubtask(db, userId, {
-        action: "toggle",
-        id: action.id,
-        done: action.done === true,
-      });
-      return { ok: true, type: action.type, id: action.id, title: action.title };
-    }
-    if (action.type === "task.subtask.remove") {
-      if (!action.id) {
-        return { ok: false, type: action.type, error: "חסר מזהה תת־משימה." };
-      }
-      await mutateSubtask(db, userId, { action: "remove", id: action.id });
-      return { ok: true, type: action.type, id: action.id, title: action.title };
-    }
-    return { ok: false, type: "invalid", error: "סוג הפעולה אינו נתמך." };
-  } catch (error) {
-    return {
-      ok: false,
-      type: action.type,
-      error:
-        error instanceof Error ? error.message : "ביצוע תת־משימה נכשל.",
-    };
+function isTsBackedAction(action: AgentAction) {
+  if (action.type.startsWith("task.subtask.")) return true;
+  if (action.type.startsWith("routine.")) return true;
+  if (action.type.startsWith("checklist.")) return true;
+  if (
+    action.type === "task.duplicate" ||
+    action.type === "checklist.duplicate" ||
+    action.type === "checklist.reset" ||
+    action.type === "checklist.archive" ||
+    action.type === "checklist.item.reorder" ||
+    action.type === "checklist.item.toggle"
+  ) {
+    return true;
   }
+  if (
+    action.type === "task.create" &&
+    (action.estimate_minutes != null || action.checklist_id != null)
+  ) {
+    return true;
+  }
+  if (
+    action.type === "task.update" &&
+    (action.estimate_patch === "set" ||
+      action.estimate_patch === "clear" ||
+      action.checklist_patch === "set" ||
+      action.checklist_patch === "clear")
+  ) {
+    return true;
+  }
+  if (
+    (action.type === "task.complete" || action.type === "task.reopen") &&
+    action.occurrence_date
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export async function executeIdempotentActions(
@@ -91,7 +64,7 @@ export async function executeIdempotentActions(
 ) {
   const results: ActionResult[] = [];
   for (const [index, action] of input.actions.entries()) {
-    if (isTsBackedAction(action.type)) {
+    if (isTsBackedAction(action)) {
       if (!input.userId) {
         results.push({
           ok: false,
@@ -111,7 +84,7 @@ export async function executeIdempotentActions(
         results.push(prior.result);
         continue;
       }
-      const receipt = await executeSubtaskAction(db, input.userId, action);
+      const receipt = await executeAction(db, input.userId, action);
       await db.from("agent_action_executions").insert({
         user_id: input.userId,
         scope: input.scope,

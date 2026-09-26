@@ -37,7 +37,9 @@ export function HomeBottomNavigation({
         const color = on ? V4.sageDeep : V4.navMuted;
         return (
           <Pressable key={tab.id} onPress={() => onChange(tab.id)} style={styles.item} accessibilityLabel={tab.label}>
-            <HomeV4Icon name={on && tab.id === "home" ? "home-active" : tab.icon} size={22 * s} color={color} />
+            <View style={[styles.iconSlot, on && styles.selectedIcon]}>
+              <HomeV4Icon name={on && tab.id === "home" ? "home-active" : tab.icon} size={22 * s} color={on ? "#A9674F" : color} />
+            </View>
             <Text
               style={{
                 fontFamily: heebo(on ? "700" : "500"),
@@ -63,4 +65,6 @@ const styles = StyleSheet.create({
     borderTopColor: V4.border,
   },
   item: { flex: 1, alignItems: "center", justifyContent: "center", minHeight: 44 },
+  iconSlot: { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 16 },
+  selectedIcon: { backgroundColor: "#F2DFD4" },
 });

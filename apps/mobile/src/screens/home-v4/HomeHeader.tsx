@@ -1,70 +1,24 @@
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { HomeV4Icon } from "./homeV4Icons";
+import { Image, StyleSheet, Text, View } from "react-native";
 import { heebo, V4 } from "./homeV4Theme";
 
-const FALLBACK = require("../../../assets/home-v4/avatar-fallback.png");
-const TAGLINE_SPRIG = require("../../../assets/home-master/decor/tagline-sprig.png");
+const TAGLINE_SPRIG = require("../../../assets/home-master-v2/header-sprig-master-v2.png");
 
 export function HomeHeader({
   scale,
   greeting,
-  avatarUrl,
-  unread,
-  onBell,
-  onAvatar,
 }: {
   scale: number;
   greeting: string;
-  avatarUrl: string | null;
-  unread: boolean;
-  onBell: () => void;
-  onAvatar: () => void;
 }) {
   const s = scale;
   return (
-    <View style={[styles.row, { paddingHorizontal: 16 * s, minHeight: 80 * s }]}>
-      <Pressable
-        onPress={onBell}
-        accessibilityLabel="התראות"
-        style={[
-          styles.bell,
-          {
-            width: 40 * s,
-            height: 40 * s,
-            borderRadius: 20 * s,
-            borderWidth: StyleSheet.hairlineWidth,
-          },
-        ]}
-      >
-        <HomeV4Icon name="bell" size={20 * s} color={V4.text} />
-        {unread ? (
-          <View
-            style={[
-              styles.dot,
-              {
-                width: 8 * s,
-                height: 8 * s,
-                borderRadius: 4 * s,
-                top: 6 * s,
-                right: 8 * s,
-              },
-            ]}
-          />
-        ) : null}
-      </Pressable>
+    <View style={[styles.row, { paddingHorizontal: 16 * s, minHeight: 80 * s }]}> 
+      <View style={styles.side} />
       <View style={styles.center}>
-        <Text
-          style={{
-            fontFamily: heebo("400"),
-            fontSize: 14 * s,
-            lineHeight: 18 * s,
-            color: V4.muted,
-            textAlign: "center",
-          }}
-        >
-          הבית שלך, בקצב שלך
+        <Text style={{ fontFamily: heebo("400"), fontSize: 16 * s, lineHeight: 24 * s, color: V4.muted, textAlign: "center", marginTop: 8 * s }}>
+          הבית שלך בקצב שלך
         </Text>
-        <Image source={TAGLINE_SPRIG} resizeMode="contain" style={{ width: 76 * s, height: 30 * s, alignSelf: "center" }} />
+        <Image source={TAGLINE_SPRIG} resizeMode="contain" style={{ width: 80 * s, height: 37 * s, alignSelf: "center", marginTop: 2 * s }} />
         <Text
           style={{
             fontFamily: heebo("700"),
@@ -76,31 +30,8 @@ export function HomeHeader({
         >
           {greeting}
         </Text>
-        <Text
-          style={{
-            fontFamily: heebo("400"),
-            fontSize: 13 * s,
-            lineHeight: 18 * s,
-            color: V4.muted,
-            textAlign: "center",
-            marginTop: 0,
-          }}
-        >
-          בואי נעשה סדר בראש
-        </Text>
       </View>
-      <Pressable onPress={onAvatar} accessibilityLabel="הגדרות ופרופיל">
-        <Image
-          source={avatarUrl ? { uri: avatarUrl } : FALLBACK}
-          style={{
-            width: Math.max(40 * s, 44),
-            height: Math.max(40 * s, 44),
-            borderRadius: Math.max(40 * s, 44) / 2,
-            backgroundColor: "#E8E4DC",
-            overflow: "hidden",
-          }}
-        />
-      </Pressable>
+      <View style={styles.side} />
     </View>
   );
 }
@@ -111,12 +42,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  bell: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: V4.card,
-    borderColor: V4.border,
-  },
+  side: { width: 40 },
   center: { flex: 1, paddingHorizontal: 8 },
-  dot: { position: "absolute", backgroundColor: V4.dot },
 });

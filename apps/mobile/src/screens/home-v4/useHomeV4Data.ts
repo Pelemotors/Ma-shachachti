@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
 import { getProfile } from "../../api/profile";
 import { listNotifications, type MobileNotification } from "../../api/notifications";
-import { formatPlanTime, getDayPlan, todayJerusalemDate, type MobileDayPlan } from "../../api/planning";
+import { formatDisplayDate, formatPlanTime, getDayPlan, todayJerusalemDate, type MobileDayPlan } from "../../api/planning";
 import { listTasks, type MobileTask } from "../../api/tasks";
 import { getSupabase } from "../../api/supabase";
 import { greetingName, timeGreeting } from "../../product/greeting";
 import { buildHomeNow, type HomeNowRow } from "../../product/canonicalHome";
 import { productNowMs, syncProductClock } from "../../product/productClock";
+import { HOME_V4_VISUAL_QA, homeV4Fixture } from "./homeV4Fixture";
 
 export type { HomeNowRow };
 
@@ -37,7 +38,7 @@ function pickReminder(tasks: MobileTask[], today: string): HomeReminderCandidate
     : task.due_on === today
       ? "היום"
       : task.due_on
-        ? task.due_on.slice(5).replace("-", "/")
+        ? formatDisplayDate(task.due_on)
         : "בלי מועד";
   return { id: task.id, title: task.title, dueLabel };
 }
@@ -122,6 +123,13 @@ export function useHomeV4Data() {
     nowMs: productNowMs(),
     formatTime: formatPlanTime,
   });
+  const qaNow = __DEV__ && HOME_V4_VISUAL_QA ? {
+    hasPlan: true,
+    done: homeV4Fixture.done,
+    total: homeV4Fixture.total,
+    rows: homeV4Fixture.rows.map((row) => ({ ...row, taskId: null })),
+    allRows: homeV4Fixture.rows.map((row) => ({ ...row, taskId: null })),
+  } : now;
   const reminder = pickReminder(tasks, today);
   const unread = notifications.some((item) => !item.opened_at);
 
@@ -134,10 +142,11 @@ export function useHomeV4Data() {
     avatarUrl,
     notifications,
     unread,
-    hasPlan: now.hasPlan,
-    rows: now.rows,
-    progressDone: now.done,
-    progressTotal: now.total,
+    hasPlan: qaNow.hasPlan,
+    rows: qaNow.rows,
+    allRows: qaNow.allRows,
+    progressDone: qaNow.done,
+    progressTotal: qaNow.total,
     reminder,
     hasLiveReminder: Boolean(reminder),
     businessDate: today,

@@ -1,4 +1,4 @@
-export type HomeNowIcon = "cart" | "calendar" | "package" | "clock";
+export type HomeNowIcon = "cart" | "calendar" | "package" | "clock" | "people";
 
 export type HomeNowRow = {
   id: string;
@@ -50,6 +50,7 @@ export function buildHomeNow(input: {
   done: number;
   total: number;
   rows: HomeNowRow[];
+  allRows: HomeNowRow[];
 } {
   const items = input.plan?.items ?? [];
   const hasPlan = Boolean(input.plan?.plan) && items.length > 0;
@@ -59,14 +60,13 @@ export function buildHomeNow(input: {
     return !task || task.status !== "cancelled";
   });
   const done = actionable.filter((item) => byId.get(item.task_id)?.status === "done").length;
-  const upcoming = items
+  const allRows = items
     .filter((item) => {
       const task = byId.get(item.task_id);
       if (!task || task.status !== "open") return false;
       return new Date(item.start_at).getTime() >= input.nowMs - 15 * 60 * 1000;
     })
     .sort((a, b) => a.start_at.localeCompare(b.start_at))
-    .slice(0, 2)
     .map((item) => {
       const task = byId.get(item.task_id);
       const title = task?.title ?? "פריט בלו״ז";
@@ -84,6 +84,7 @@ export function buildHomeNow(input: {
     hasPlan,
     done,
     total: actionable.length,
-    rows: hasPlan ? upcoming : [],
+    rows: hasPlan ? allRows.slice(0, 2) : [],
+    allRows: hasPlan ? allRows : [],
   };
 }

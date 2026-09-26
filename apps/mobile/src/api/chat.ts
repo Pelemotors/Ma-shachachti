@@ -37,7 +37,13 @@ export async function createChatSession() {
   });
 }
 
-export async function sendChat(message: string, sessionId?: string | null, turnId?: string) {
+export async function sendChat(
+  message: string,
+  sessionId?: string | null,
+  turnId?: string,
+  surface?: "schedule",
+  surfaceContext?: Record<string, unknown>,
+) {
   return apiRequest<{
     reply: string;
     id?: string;
@@ -51,6 +57,8 @@ export async function sendChat(message: string, sessionId?: string | null, turnI
       message,
       session_id: sessionId ?? undefined,
       turn_id: turnId,
+      surface,
+      surface_context: surfaceContext,
     }),
   });
 }

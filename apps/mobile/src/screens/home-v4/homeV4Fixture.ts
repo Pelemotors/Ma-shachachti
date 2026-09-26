@@ -10,8 +10,8 @@ export const homeV4Fixture = {
   done: 3,
   total: 8,
   rows: [
-    { id: "v4-qa-1", time: "11:00", title: "רופא ילדים", icon: "calendar" as const },
-    { id: "v4-qa-2", time: "13:30", title: "לקנות טיטולים וחלב", icon: "cart" as const },
+    { id: "v4-qa-1", time: "16:30", title: "להכין ארוחת ערב", icon: "package" as const },
+    { id: "v4-qa-2", time: "17:15", title: "איסוף הילדים מהגן", icon: "people" as const },
   ],
   reminderTitle: "החזרת החבילה עד 18:00",
 };

@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { Dimensions, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { BackHandler, Dimensions, View } from "react-native";
 import { AppScreen, BottomNavBar, SuccessState, type ProductTab } from "../components/ui";
 import { markNotificationOpened } from "../api/notifications";
 import { BankScreen } from "../screens/BankScreen";
@@ -62,6 +62,7 @@ export function ProductShell() {
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [fromSettings, setFromSettings] = useState(false);
   const [checklistId, setChecklistId] = useState<string | null>(null);
+  const [checklistOccurrence, setChecklistOccurrence] = useState<string | undefined>(undefined);
   const [freetimeMinutes, setFreetimeMinutes] = useState(FREETIME_DEFAULT_MINUTES);
   const width = Dimensions.get("window").width;
 
@@ -80,6 +81,24 @@ export function ProductShell() {
     setOverlay(null);
     setTab("home");
   }, []);
+
+  useEffect(() => {
+    if (!overlay) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (overlay === "checklist") {
+        setOverlay("checklists");
+        return true;
+      }
+      if (fromSettings && overlay !== "settings") {
+        setFromSettings(false);
+        setOverlay("settings");
+        return true;
+      }
+      setOverlay(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [overlay, fromSettings]);
 
   function openFromSettings(screen: string) {
     const map: Record<string, Overlay> = {
@@ -238,6 +257,7 @@ export function ProductShell() {
         onBack={() => setOverlay(null)}
         onOpen={(id) => {
           setChecklistId(id);
+          setChecklistOccurrence(undefined);
           setOverlay("checklist");
         }}
       />
@@ -247,6 +267,7 @@ export function ProductShell() {
     return (
       <ChecklistDetailScreen
         listId={checklistId}
+        occurrenceKey={checklistOccurrence}
         onBack={() => setOverlay("checklists")}
       />
     );
@@ -295,7 +316,15 @@ export function ProductShell() {
     );
   }
 
-  const page = tab === "tasks" ? <TasksScreen /> : <ShoppingScreen />;
+  const page = tab === "tasks" ? (
+    <TasksScreen
+      onOpenChecklist={(id, occurrenceKey) => {
+        setChecklistId(id);
+        setChecklistOccurrence(occurrenceKey);
+        setOverlay("checklist");
+      }}
+    />
+  ) : <ShoppingScreen />;
 
   return (
     <View style={{ flex: 1 }}>
