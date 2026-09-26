@@ -7,7 +7,6 @@ import {
   EmptyState,
   PackActionIcon,
   PackStateIcon,
-  ScreenHeader,
 } from "../components/ui";
 import { listChecklists, type MobileChecklist } from "../api/checklists";
 import { formatDisplayDate, jerusalemDateFromNow, sortByDeadline } from "../api/planning";
@@ -322,14 +321,21 @@ export function TasksScreen({
     <AppScreen scroll={false} padded={false} decor={false}>
       <BotanicalBackdrop />
       <View style={styles.page}>
-        <ScreenHeader title="משימות" onBack={onBack} />
-        <View style={styles.titleRow}>
+        <View style={styles.topBar}>
           <Pressable accessibilityRole="button" accessibilityLabel="משימה חדשה" onPress={openCreate} style={styles.add}>
             <Text style={styles.addPlus}>＋</Text>
           </Pressable>
-          <Text style={styles.sub}>כל הדברים שחשוב לזכור במקום אחד</Text>
+          <Text style={styles.screenTitle}>משימות</Text>
+          {onBack ? (
+            <Pressable onPress={onBack} hitSlop={12} style={styles.hit} accessibilityLabel="חזרה">
+              <Text style={styles.hitGlyph}>‹</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.hit} />
+          )}
         </View>
-        <ScrollView horizontal contentContainerStyle={styles.chips} showsHorizontalScrollIndicator={false}>
+        <Text style={styles.sub}>כל הדברים שחשוב לזכור במקום אחד</Text>
+        <View style={styles.chips}>
           {([
             ["all", "הכל"],
             ["undated", "ללא דדליין"],
@@ -340,7 +346,7 @@ export function TasksScreen({
               <Text style={[styles.filterText, filter === id && styles.filterTextOn]}>{label}</Text>
             </Pressable>
           ))}
-        </ScrollView>
+        </View>
         <ScrollView contentContainerStyle={styles.list}>
           {showUndated ? section("ללא דדליין", undated, dated.length ? `${dated.length} עם דדליין למטה` : undefined) : null}
           {showDated ? section("עם דדליין", dated) : null}
@@ -458,14 +464,26 @@ export function TasksScreen({
 
 const styles = StyleSheet.create({
   page: { flex: 1, paddingHorizontal: 20 },
-  titleRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  sub: { fontFamily: heebo("400"), fontSize: 14, color: CL.secondary, textAlign: "right", flex: 1 },
+  topBar: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", minHeight: 56, marginBottom: 4, zIndex: 2 },
+  screenTitle: { fontFamily: heebo("700"), fontSize: 28, color: CL.text, textAlign: "center", flex: 1 },
+  hit: { width: 52, height: 52, alignItems: "center", justifyContent: "center" },
+  hitGlyph: { fontFamily: heebo("500"), fontSize: 28, color: CL.text, lineHeight: 32 },
+  sub: { fontFamily: heebo("400"), fontSize: 14, color: CL.secondary, textAlign: "right", marginBottom: 14, zIndex: 2 },
   add: { width: 52, height: 52, borderRadius: 26, backgroundColor: CL.terracotta, alignItems: "center", justifyContent: "center" },
   addPlus: { color: "#FFFDF9", fontSize: 28, lineHeight: 30 },
-  chips: { flexDirection: "row-reverse", gap: 8, marginBottom: 12 },
-  filter: { borderRadius: 999, borderWidth: 1, borderColor: CL.border, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: CL.surface },
+  chips: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginBottom: 16, zIndex: 2 },
+  filter: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: CL.border,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 40,
+    backgroundColor: CL.surface,
+    flexShrink: 0,
+  },
   filterOn: { backgroundColor: CL.terracotta, borderColor: CL.terracotta },
-  filterText: { fontFamily: heebo("500"), fontSize: 13, color: CL.text },
+  filterText: { fontFamily: heebo("600"), fontSize: 14, color: CL.text, writingDirection: "rtl" },
   filterTextOn: { color: "#FFFDF9" },
   list: { gap: 16, paddingBottom: 32 },
   section: { gap: 8 },
