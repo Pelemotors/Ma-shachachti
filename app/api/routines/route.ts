@@ -3,6 +3,8 @@ import { DATE_RE } from "@/lib/time";
 import {
   applyRoutineException,
   createRoutine,
+  jerusalemToday,
+  loadRoutineExceptionsForDate,
   loadRoutines,
   stopRoutine,
   updateRoutine,
@@ -20,7 +22,13 @@ function fail(error: unknown) {
 export async function GET(req: Request) {
   try {
     const { db, userId } = await authorize(req);
-    return Response.json({ routines: await loadRoutines(db, userId) });
+    const dateParam = new URL(req.url).searchParams.get("date");
+    const date = dateParam && DATE_RE.test(dateParam) ? dateParam : jerusalemToday();
+    const [routines, exceptions] = await Promise.all([
+      loadRoutines(db, userId),
+      loadRoutineExceptionsForDate(db, userId, date),
+    ]);
+    return Response.json({ routines, exceptions, date });
   } catch (error) {
     return fail(error);
   }

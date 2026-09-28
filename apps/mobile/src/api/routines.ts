@@ -10,19 +10,35 @@ export type MobileRoutine = {
   active: boolean;
 };
 
+export type MobileRoutineException = {
+  id: string;
+  routine_id: string;
+  occurrence_date: string;
+  kind: "skip" | "override" | "done";
+  time_of_day: string | null;
+};
+
 export function routineOccurrenceKey(routineId: string, date: string) {
   return `${routineId}:${date}`;
 }
 
 async function post(body: Record<string, unknown>) {
-  return apiRequest<{ routines: MobileRoutine[] }>("/api/routines", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  return apiRequest<{ routines: MobileRoutine[]; exceptions?: MobileRoutineException[] }>(
+    "/api/routines",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
 }
 
-export async function listRoutines() {
-  return apiRequest<{ routines: MobileRoutine[] }>("/api/routines");
+export async function listRoutines(date?: string) {
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
+  return apiRequest<{
+    routines: MobileRoutine[];
+    exceptions: MobileRoutineException[];
+    date: string;
+  }>(`/api/routines${query}`);
 }
 
 export async function createRoutine(input: {

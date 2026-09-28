@@ -8,46 +8,58 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD (pre-M2):** `356c326b62d7e2974c5a1cc6ffd471eda4be95ad` (M1) — after M2 commit this file matches the new SHA
-- **Last completed milestone:** **M2 — Task Domain**
+- **HEAD (pre-M3):** `1fc2b5fc3bfb2e919cc0cca90e014dadb2e2aa18` (M2) — after M3 commit this file matches the new SHA
+- **Last completed milestone:** **M3 — Recurring Tasks + Task Checklist**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** LAN Next for emulator (gitignored)
-- **Stop gate:** Do **not** start M3 until human approval
+- **Stop gate:** Do **not** start M4 until human approval
 
 ---
 
 ## Last completed milestone
 
-### M2 — Task Domain ✅
+### M3 — Recurring Tasks + Task Checklist ✅
 
-**Scope:** reliable Task lifecycle only — Create / Read / Update, Deadline vs Scheduled/execution time, Complete, Undo Complete, Delete, persistence after reload/restart. No recurring, Task Checklist, Day Plan UI, Planner, Home planning, Free Time, „מה שכחתי?”, Agent, or Tasks redesign.
+**Scope:** Recurring Tasks lifecycle + Task↔Checklist binding only. No Day Plan, Planner, Home planning, Free Time, „מה שכחתי?”, Shopping redesign, Agent, or Notifications.
 
 ### Root cause
 
-1. **`plan_patch=set` did not persist schedule on the Task row** — `planned_start_at` / `planned_end_at` stayed null; schedule lived only in `day_plan` (legacy contract). Task was not a single reliable entity for scheduled time.
-2. **Mobile Tasks UI mixed open + done** and lacked a clear „בוצעו” section / weak complete error handling.
-3. **Deadline edit could strip `due_at` clock** when only the date was re-saved.
-4. Soft-delete (`cancelled`) and non-routine complete/reopen were already mostly sound on the server; the gap was schedule persistence + UI lifecycle clarity.
+1. **Recurring backend already existed** (`routines` + `routine_occurrence_exceptions`) and create/update/stop worked — but the mobile „קבועות” checkbox treated a routine Task like a normal Task complete, and **did not load today’s exceptions**, so occurrence-done did not show / round-trip correctly.
+2. **Task editor could link an existing checklist** but had **no „חדש” path** to create a real checklist from the Task; opening checklist from Tasks returned to the global Checklists overlay instead of Tasks.
+3. Save button in the Task modal was easy to miss at the bottom edge (padding) — fixed as part of editor UX reliability.
 
-**Invariant enforced:** `due_on` / `due_at` = Deadline; `planned_start_at` / `planned_end_at` (+ day_plan mirror) = Scheduled/execution. A task without deadline is not auto-today.
+**Model kept (no new architecture):** Task template stays open; occurrence done/skip/override lives in `routine_occurrence_exceptions`. Checklist Template ≠ Run (`checklist_runs` / `checklist_run_items`).
 
 ---
 
 ## Changes made
 
-### M2 files
+### M3 files
 | Path | Change |
 | --- | --- |
-| `lib/actions.ts` | `task.create` / `task.update` with `plan_patch` write `planned_*` on Task; clear day_plan by prior planned date (not due); `saveTaskPlans` writes `planned_*` for flexible items |
-| `apps/mobile/src/api/tasks.ts` | `createTask` accepts planned date/time separately from due |
-| `apps/mobile/src/api/planning.ts` | `jerusalemDateTimeParts` for editor round-trip |
-| `apps/mobile/src/screens/TasksScreen.tsx` | open vs „בוצעו”; deadline vs שיבוץ fields; preserve due clock; complete/reopen errors; labels |
-| `tests/task-lifecycle-m2.test.ts` | M2 lifecycle unit tests (4) |
-| `tests/schedule-semantics.test.ts` | Expect `planned_*` when schedule is set; due stays null for planned-only |
+| `lib/routines.ts` | `loadRoutineExceptionsForDate` |
+| `app/api/routines/route.ts` | GET returns `exceptions` + `date` (Jerusalem today default) |
+| `apps/mobile/src/api/routines.ts` | types + `listRoutines(date?)` |
+| `apps/mobile/src/screens/TasksScreen.tsx` | exceptions → occurrence checkbox / „בוצע היום”; create checklist „חדש”; open after save; modal bottom padding; routine complete uses occurrence_date only |
+| `apps/mobile/src/navigation/ProductShell.tsx` | `checklistReturnTo` tasks vs checklists |
+| `tests/task-recurring-checklist-m3.test.ts` | M3 unit tests (3) |
 | `docs/AI_HANDOFF.md` | This update |
 
+### Recurring implementation
+- Persist via existing `routines` row (`weekdays`, `time_of_day`, `active`).
+- Edit = `updateRoutine`; cancel recurrence = `stopRoutine` → `active=false`, Task remains `open`.
+- „קבועות” = active routines only.
+- Complete on a recurring Task marks **today’s occurrence** (`done` exception), does **not** close the template Task.
+
+### Task checklist implementation
+- Link via `tasks.checklist_id` (existing).
+- „חדש” calls `createChecklist` and optionally opens detail after save.
+- Items/toggles use existing checklist APIs; checked state on **run** (`occurrence_key=standalone` for general run), template texts unchanged.
+- Back from checklist opened from Tasks returns to Tasks tab.
+
 ### Prior milestones (archive)
+- **M2** — Task lifecycle + deadline≠schedule (commit `1fc2b5f…`)
 - **M1** — layout / keyboard / nav (commit `356c326…`)
 - **M0** — baseline + 7 known test failures
 
@@ -58,10 +70,10 @@
 | Check | Result |
 | --- | --- |
 | `apps/mobile` `npm run typecheck` | **PASS** |
-| `npm test` (root) | **442 pass / 7 fail** — same 7 baseline failures; +4 M2 tests pass; no new fails |
-| Android Emulator M2 Task checklist | **PASS** (see below) |
-| Persistence vs Supabase `tasks` | **PASS** — create/update/complete/reopen/delete verified by service-role reads |
-| M1 regression (tabs + keyboard lift/nav hide) | **PASS** |
+| `npm test` (root) | **445 pass / 7 fail** — same 7 baseline failures; +3 M3 tests pass; no new fails |
+| Android Emulator M3 recurring + checklist | **PASS** |
+| Persistence vs Supabase | **PASS** — routines / checklist_id / items / run_items |
+| M1/M2 regression (create/complete/undo/delete, tabs, keyboard) | **PASS** |
 
 ---
 
@@ -69,31 +81,52 @@
 
 **AVD:** `Pixel_8_Pro` · **device:** `emulator-5554` · portrait · API via LAN Next `:3000`.
 
+### Recurring
 | Scenario | Result |
 | --- | --- |
-| Create without Deadline → UI + DB | PASS (`due_*` null, status open) |
-| Reload / app restart — still present | PASS |
-| Create with Deadline → DB keeps `due_on` | PASS |
-| Restart — deadline persists | PASS |
-| Edit: set Scheduled time — `planned_*` set, `due_on` unchanged | PASS |
-| Edit notes — persistence; plan+deadline kept | PASS |
-| Complete → UI „בוצעו” + DB `status=done` | PASS |
-| Restart — still Completed | PASS |
-| Undo Complete → same id, open; deadline/notes/plan kept | PASS |
-| Delete → UI gone; DB `cancelled`; restart does not restore | PASS |
+| Create recurring Task → DB routine | PASS |
+| Reload / restart — recurrence kept | PASS |
+| Appears in „קבועות” while active | PASS |
+| Edit weekdays → DB updated | PASS |
+| Cancel recurrence → `active=false`, Task stays open | PASS |
+| After cancel — not in „קבועות” | PASS |
+| No duplicate Tasks | PASS |
+
+### Task Checklist
+| Scenario | Result |
+| --- | --- |
+| Task linked to checklist (`checklist_id`) | PASS |
+| Add 2 items → DB template items | PASS |
+| Toggle item → run_items checked | PASS |
+| Restart — checked persists on run | PASS |
+| Undo toggle | PASS |
+| Delete item → persists after restart | PASS |
+
+### Regression
+| Scenario | Result |
+| --- | --- |
+| Complete / Undo / Delete Task | PASS |
 | Home / Tasks / Chat / Shopping + bottom nav | PASS |
 | Keyboard Shopping + tab bar hidden (M1) | PASS |
 
 ---
 
+## Persistence verification
+
+- `routines`: `M3rec…` → weekdays `[0..4]`, later `active=false`; task row still `open`.
+- `tasks.checklist_id`: `M3cl…` → `fc9449c2-…`.
+- `checklist_items` + `checklist_runs` / `checklist_run_items` (`occurrence_key=standalone`) for toggle/undo/delete.
+
+---
+
 ## Known issues
 
-- Same **7 baseline** unit test failures (unchanged from M0/M1), including HomeHeader `onAvatar`, product-clock frozen-date drift, local-android-notifications, memory selector, HOME fixture flags, turn_flags.
+- Same **7 baseline** unit test failures (unchanged from M0–M2), including HomeHeader `onAvatar`, product-clock frozen-date drift, local-android-notifications, memory selector, HOME fixture flags, turn_flags.
 - Root Next `typecheck` validator noise in `.next/types` (unrelated).
-- Recurring / Task Checklist / Day Plan planner UX still deferred (M3+).
+- Day Plan / Planner / Home planning / Free Time / „מה שכחתי?” / Agent still deferred (M4+).
 - Two bottom-nav implementations remain (M1 KEEP).
 
-### Baseline failing tests (do not treat as M2 regressions)
+### Baseline failing tests (do not treat as M3 regressions)
 1. memory selector prefers user source and keyword overlap  
 2. HOME fixture flags are off and live Home does not overlay demo rows  
 3. tests/local-android-notifications.test.ts  
@@ -109,32 +142,32 @@
 ### KEEP
 - Deadline (`due_*`) ≠ Scheduled (`planned_*` / day_plan flexible).
 - Soft delete = `status=cancelled` (not hard delete).
+- Recurring: Task template stays open; occurrence state in `routine_occurrence_exceptions`.
+- Checklist Template ≠ Run (`checklist_runs` + `occurrence_key`).
 - Non-routine complete/reopen flips Task status without fabricating occurrence.
-- Canonical product rules (Task↔Routine, occurrence_key, checklist Template≠Run).
 - M1 keyboard/safe-area/`adjustResize` behavior.
 - Upload keystore v2 / Play SHA1 `9D:0C:…:B5:01`.
 
 ### DO NOT TOUCH until a later milestone allows
-- Recurring tasks / routine series UX (M3).
-- Task Checklist binding flows (M3).
 - Day Plan / „צור לי לו״ז” / Home planning / Free Time / „מה שכחתי?” / Agent.
 - Production deploy / Play upload.
 - Home V4 flower geometry redesign.
 - Unrelated lockfile / Gradle churn.
+- Global Checklists screen redesign (only shared open/return wiring was touched).
 
 ---
 
 ## Next milestone
 
-**M3 — Recurring Tasks + Task Checklist.** Do not start until explicitly approved.
+**M4 — Day Plan Core / Single Source of Truth.** Do not start until explicitly approved.
 
 ---
 
 ## Next first action
 
-1. Wait for human approval of M2.
-2. On approval, read this handoff and the M3 brief before any code change.
-3. First M3 action: inventory how routines + checklist_id attach to Task today (mobile + `lib/actions` + schema) and fix lifecycle gaps only — no Day Plan/Agent.
+1. Wait for human approval of M3.
+2. On approval, read this handoff and the M4 brief before any code change.
+3. First M4 action: inventory how Day Plan / `day_plan` / Home „צור לי לו״ז” currently diverge from Task `planned_*`, and define the single source of truth — no Free Time / What Did I Forget / Agent yet.
 
 ---
 
@@ -142,14 +175,16 @@
 
 1. **Bottom safe area belongs to bottom chrome** (M1).
 2. **Android:** Manifest `adjustResize` + keyboard inset / hide tab bar while IME open (M1).
-3. **Task schedule SoT on row:** `planned_start_at` / `planned_end_at` must be written when `plan_patch=set` (and for flexible `saveTaskPlans`); day_plan remains the day-board mirror, not a substitute for Task fields.
-4. **Fixed vs flexible in saveTaskPlans:** fixed → `due_*` only; flexible → `planned_*` only (deadline ≠ schedule).
-5. **No Push/Deploy** during the fix program unless requested.
-6. **Handoff-before-commit** is mandatory.
+3. **Task schedule SoT on row:** `planned_start_at` / `planned_end_at` when `plan_patch=set` (M2).
+4. **Recurring SoT:** one active `routines` row per Task; occurrence via exceptions (M3).
+5. **Checklist SoT:** template items on checklist; checked state on run (M3).
+6. **No Push/Deploy** during the fix program unless requested.
+7. **Handoff-before-commit** is mandatory.
 
 ---
 
-## M1 / M0 archive (summary)
+## M2 / M1 / M0 archive (summary)
 
+- M2 commit: `1fc2b5f…` — Task lifecycle, deadline≠schedule.
 - M1 commit: `356c326…` — layout, keyboard, nav.
-- M0: clean baseline; 7 failing tests pre-existing; smoke tabs PASS with layout debt → M1.
+- M0: clean baseline; 7 failing tests pre-existing.

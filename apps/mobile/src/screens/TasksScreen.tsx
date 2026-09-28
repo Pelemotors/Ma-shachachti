@@ -8,7 +8,11 @@ import {
   PackActionIcon,
   PackStateIcon,
 } from "../components/ui";
-import { listChecklists, type MobileChecklist } from "../api/checklists";
+import {
+  createChecklist,
+  listChecklists,
+  type MobileChecklist,
+} from "../api/checklists";
 import { formatDisplayDate, formatPlanTime, jerusalemDateFromNow, jerusalemDateTimeParts, sortByDeadline } from "../api/planning";
 import {
   createRoutine,
@@ -18,6 +22,7 @@ import {
   stopRoutine,
   updateRoutine,
   type MobileRoutine,
+  type MobileRoutineException,
 } from "../api/routines";
 import {
   completeTask,
@@ -73,6 +78,7 @@ export function TasksScreen({
 }) {
   const [tasks, setTasks] = useState<MobileTask[]>([]);
   const [routines, setRoutines] = useState<MobileRoutine[]>([]);
+  const [exceptions, setExceptions] = useState<MobileRoutineException[]>([]);
   const [checklists, setChecklists] = useState<MobileChecklist[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [editorOpen, setEditorOpen] = useState(false);
@@ -85,6 +91,7 @@ export function TasksScreen({
   const [plannedTime, setPlannedTime] = useState("");
   const [estimate, setEstimate] = useState<number | null>(null);
   const [checklistId, setChecklistId] = useState<string | null>(null);
+  const [openChecklistAfterSave, setOpenChecklistAfterSave] = useState(false);
   const [recurring, setRecurring] = useState(false);
   const [weekdays, setWeekdays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [timeOfDay, setTimeOfDay] = useState("");
@@ -96,13 +103,18 @@ export function TasksScreen({
   const reload = useCallback(async () => {
     const [nextTasks, nextRoutines, nextLists] = await Promise.all([
       listTasks(),
-      listRoutines().catch(() => ({ routines: [] as MobileRoutine[] })),
+      listRoutines(today).catch(() => ({
+        routines: [] as MobileRoutine[],
+        exceptions: [] as MobileRoutineException[],
+        date: today,
+      })),
       listChecklists(),
     ]);
     setTasks(nextTasks.tasks.filter((task) => task.status !== "cancelled"));
     setRoutines(nextRoutines.routines.filter((routine) => routine.active));
+    setExceptions(nextRoutines.exceptions ?? []);
     setChecklists(nextLists.checklists);
-  }, []);
+  }, [today]);
 
   useEffect(() => {
     void reload().catch(() => undefined);
@@ -113,6 +125,14 @@ export function TasksScreen({
     for (const routine of routines) map.set(routine.task_id, routine);
     return map;
   }, [routines]);
+
+  const occurrenceDoneByRoutine = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of exceptions) {
+      if (row.kind === "done" && row.occurrence_date === today) set.add(row.routine_id);
+    }
+    return set;
+  }, [exceptions, today]);
 
   const openTasks = tasks.filter((task) => task.status === "open");
   const doneTasks = tasks.filter((task) => task.status === "done");
@@ -136,6 +156,7 @@ export function TasksScreen({
     setPlannedTime("");
     setEstimate(null);
     setChecklistId(null);
+    setOpenChecklistAfterSave(false);
     setRecurring(false);
     setWeekdays([0, 1, 2, 3, 4]);
     setTimeOfDay("");
@@ -156,6 +177,7 @@ export function TasksScreen({
     setPlannedTime(planned?.time ?? "");
     setEstimate(task.estimate_minutes ?? null);
     setChecklistId(task.checklist_id ?? null);
+    setOpenChecklistAfterSave(false);
     setRecurring(Boolean(routine));
     setWeekdays(routine?.weekdays ?? [0, 1, 2, 3, 4]);
     setTimeOfDay(routine?.time_of_day?.slice(0, 5) ?? "");
@@ -256,6 +278,10 @@ export function TasksScreen({
       }
       setEditorOpen(false);
       await reload();
+      if (openChecklistAfterSave && checklistId) {
+        setOpenChecklistAfterSave(false);
+        onOpenChecklist?.(checklistId, undefined);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "השמירה נכשלה.");
     }
@@ -296,16 +322,36 @@ export function TasksScreen({
     );
   }
 
+  async function createLinkedChecklist() {
+    const name = title.trim() || "צ׳קליסט";
+    setError("");
+    try {
+      const before = new Set(checklists.map((item) => item.id));
+      const data = await createChecklist(name);
+      setChecklists(data.checklists);
+      const created = data.checklists.find((item) => !before.has(item.id));
+      if (!created) throw new Error("לא נוצר צ׳קליסט.");
+      setChecklistId(created.id);
+      setOpenChecklistAfterSave(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "יצירת הצ׳קליסט נכשלה.");
+    }
+  }
+
   async function toggleDone(task: MobileTask) {
-    const done = task.status === "done";
-    // M2: non-routine complete/reopen must flip task.status — never send occurrence_date.
     const routine = routineByTask.get(task.id);
+    const occurrenceDone = Boolean(routine && occurrenceDoneByRoutine.has(routine.id));
+    const done = task.status === "done" || occurrenceDone;
+    // Non-routine: flip task.status. Routine: mark/clear today's occurrence only (template stays open).
     setError("");
     try {
       if (done) {
-        await reopenTask(task.id, routine ? today : undefined);
+        if (task.status === "done") await reopenTask(task.id);
+        else await reopenTask(task.id, today);
+      } else if (routine) {
+        await completeTask(task.id, today);
       } else {
-        await completeTask(task.id, routine ? today : undefined);
+        await completeTask(task.id);
       }
       await reload();
     } catch (cause) {
@@ -315,7 +361,8 @@ export function TasksScreen({
 
   function taskCard(task: MobileTask) {
     const routine = routineByTask.get(task.id);
-    const done = task.status === "done";
+    const occurrenceDone = Boolean(routine && occurrenceDoneByRoutine.has(routine.id));
+    const done = task.status === "done" || occurrenceDone;
     return (
       <View key={task.id} style={styles.card}>
         <Pressable
@@ -347,6 +394,7 @@ export function TasksScreen({
                 <PackActionIcon name="repeat" size={14} />
                 <Text style={styles.metaText}>
                   {weekdayLabel(routine.weekdays)} · {clockLabel(routine.time_of_day)}
+                  {occurrenceDone ? " · בוצע היום" : ""}
                 </Text>
               </View>
             ) : null}
@@ -430,7 +478,7 @@ export function TasksScreen({
 
       <Modal visible={editorOpen} transparent animationType="slide" onRequestClose={() => setEditorOpen(false)}>
         <View style={styles.backdrop}>
-          <ScrollView style={styles.modal} keyboardShouldPersistTaps="handled">
+          <ScrollView style={styles.modal} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
             <Text style={styles.modalTitle}>{editing ? "עריכת משימה" : "משימה חדשה"}</Text>
             <TextInput value={title} onChangeText={setTitle} placeholder="מה צריך לעשות?" placeholderTextColor={CL.secondary} style={styles.input} textAlign="right" />
             <TextInput value={notes} onChangeText={setNotes} placeholder="הערה" placeholderTextColor={CL.secondary} style={[styles.input, styles.multiline]} multiline textAlign="right" />
@@ -462,15 +510,34 @@ export function TasksScreen({
             </View>
             <Text style={styles.fieldLabel}>צ׳קליסט</Text>
             <View style={styles.wrap}>
-              <Pressable onPress={() => setChecklistId(null)} style={[styles.chip, !checklistId && styles.chipOn]}>
+              <Pressable
+                onPress={() => {
+                  setChecklistId(null);
+                  setOpenChecklistAfterSave(false);
+                }}
+                style={[styles.chip, !checklistId && styles.chipOn]}
+              >
                 <Text style={styles.chipText}>בלי</Text>
               </Pressable>
+              <Pressable onPress={() => void createLinkedChecklist()} style={styles.chip}>
+                <Text style={styles.chipText}>חדש</Text>
+              </Pressable>
               {checklists.map((list) => (
-                <Pressable key={list.id} onPress={() => setChecklistId(list.id)} style={[styles.chip, checklistId === list.id && styles.chipOn]}>
+                <Pressable
+                  key={list.id}
+                  onPress={() => {
+                    setChecklistId(list.id);
+                    setOpenChecklistAfterSave(false);
+                  }}
+                  style={[styles.chip, checklistId === list.id && styles.chipOn]}
+                >
                   <Text style={styles.chipText}>{list.title}</Text>
                 </Pressable>
               ))}
             </View>
+            {checklistId && openChecklistAfterSave ? (
+              <Text style={styles.metaMuted}>אחרי שמירה ייפתח הצ׳קליסט לעריכת פריטים.</Text>
+            ) : null}
             <Pressable onPress={() => setRecurring((value) => !value)} style={styles.recurRow}>
               <Text style={styles.fieldLabel}>חזרה</Text>
               <Text style={styles.metaText}>{recurring ? "פעילה" : "כבויה"}</Text>
@@ -602,7 +669,7 @@ const styles = StyleSheet.create({
   previewItem: { fontFamily: heebo("400"), fontSize: 12, color: CL.secondary, textAlign: "right" },
   more: { paddingHorizontal: 6, paddingTop: 4 },
   backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(58,47,40,0.28)" },
-  modal: { maxHeight: "88%", backgroundColor: CL.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22 },
+  modal: { maxHeight: "88%", backgroundColor: CL.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 48 },
   modalTitle: { fontFamily: heebo("700"), fontSize: 24, color: CL.text, textAlign: "right", marginBottom: 12 },
   input: { minHeight: 52, borderRadius: 24, borderWidth: 1, borderColor: CL.border, paddingHorizontal: 16, color: CL.text, backgroundColor: CL.surface, marginBottom: 10, fontFamily: heebo("400"), fontSize: 15 },
   multiline: { minHeight: 80, textAlignVertical: "top", paddingTop: 12 },
@@ -612,7 +679,7 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: CL.peach, borderColor: CL.terracotta },
   chipText: { fontFamily: heebo("500"), fontSize: 12, color: CL.text },
   recurRow: { flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center" },
-  actions: { flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center", marginVertical: 12 },
+  actions: { flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center", marginTop: 12, marginBottom: 28 },
   cancel: { fontFamily: heebo("500"), color: CL.secondary, fontSize: 15 },
   save: { backgroundColor: CL.terracotta, paddingHorizontal: 22, paddingVertical: 14, borderRadius: 18 },
   saveText: { fontFamily: heebo("700"), color: "#FFFDF9", fontSize: 15 },

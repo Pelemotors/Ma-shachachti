@@ -63,6 +63,7 @@ export function ProductShell() {
   const [fromSettings, setFromSettings] = useState(false);
   const [checklistId, setChecklistId] = useState<string | null>(null);
   const [checklistOccurrence, setChecklistOccurrence] = useState<string | undefined>(undefined);
+  const [checklistReturnTo, setChecklistReturnTo] = useState<"tasks" | "checklists">("checklists");
   const [freetimeMinutes, setFreetimeMinutes] = useState(FREETIME_DEFAULT_MINUTES);
   const width = Dimensions.get("window").width;
 
@@ -258,6 +259,7 @@ export function ProductShell() {
         onOpen={(id) => {
           setChecklistId(id);
           setChecklistOccurrence(undefined);
+          setChecklistReturnTo("checklists");
           setOverlay("checklist");
         }}
       />
@@ -268,7 +270,14 @@ export function ProductShell() {
       <ChecklistDetailScreen
         listId={checklistId}
         occurrenceKey={checklistOccurrence}
-        onBack={() => setOverlay("checklists")}
+        onBack={() => {
+          if (checklistReturnTo === "tasks") {
+            setOverlay(null);
+            setTab("tasks");
+            return;
+          }
+          setOverlay("checklists");
+        }}
       />
     );
   }
@@ -321,6 +330,7 @@ export function ProductShell() {
       onOpenChecklist={(id, occurrenceKey) => {
         setChecklistId(id);
         setChecklistOccurrence(occurrenceKey);
+        setChecklistReturnTo("tasks");
         setOverlay("checklist");
       }}
     />

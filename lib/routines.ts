@@ -45,6 +45,22 @@ export async function loadRoutines(db: SupabaseClient, userId: string) {
   return data ?? [];
 }
 
+/** Occurrence exceptions for a civil Jerusalem date (done/skip/override). */
+export async function loadRoutineExceptionsForDate(
+  db: SupabaseClient,
+  userId: string,
+  date: string,
+) {
+  if (!DATE_RE.test(date)) throw new HttpError(400, "תאריך המופע אינו תקין.");
+  const { data, error } = await db
+    .from("routine_occurrence_exceptions")
+    .select("id,routine_id,occurrence_date,kind,time_of_day")
+    .eq("user_id", userId)
+    .eq("occurrence_date", date);
+  if (error) throw new HttpError(503, "לא הצלחנו לטעון חריגי מופע.");
+  return data ?? [];
+}
+
 async function ownRoutine(db: SupabaseClient, userId: string, id: string) {
   const { data, error } = await db
     .from("routines")
