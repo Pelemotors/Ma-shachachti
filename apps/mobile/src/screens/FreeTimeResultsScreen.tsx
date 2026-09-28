@@ -37,6 +37,7 @@ export function FreeTimeResultsScreen({
 
   return (
     <AppScreen
+      footerOwnsBottomInset
       footer={
         <View style={styles.footer}>
           <Pressable

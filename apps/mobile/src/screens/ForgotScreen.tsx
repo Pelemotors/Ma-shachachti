@@ -23,6 +23,7 @@ export function ForgotScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <AppScreen
+      footerOwnsBottomInset
       footer={
         <View style={styles.footer}>
           <PrimaryActionButton label="הוספת תזכורת" onPress={onBack} disabled />

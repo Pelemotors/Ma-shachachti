@@ -23,6 +23,7 @@ import { createTask, listTasks } from "../../api/tasks";
 import { transcribeRecording } from "../../api/transcribe";
 import type { ProductTab } from "../../components/ui";
 import { useKeyboardHeight } from "../../layout/keyboard";
+import { SystemBottomInset } from "../../layout/systemBottomInset";
 import {
   claimSendLock,
   newChatTurnId,
@@ -295,7 +296,7 @@ export function ChatV4Screen({
           {chatBody(showChips, 0)}
         </View>
       )}
-      {keyboardOpen ? null : <HomeBottomNavigation scale={s} active="chat" onChange={onTab} />}
+      {keyboardOpen ? <SystemBottomInset /> : <HomeBottomNavigation scale={s} active="chat" onChange={onTab} />}
 
       <Modal visible={addingTask} transparent animationType="fade">
         <Pressable style={styles.backdrop} onPress={() => setAddingTask(false)}>

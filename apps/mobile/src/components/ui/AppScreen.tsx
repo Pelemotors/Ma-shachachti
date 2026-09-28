@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useRef } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
-import { SafeAreaView, type Edge } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets, type Edge } from "react-native-safe-area-context";
 import { SCROLL_END_GAP, useKeyboardHeight } from "../../layout/keyboard";
 import { colors, space } from "../../theme";
 import { LeafDecor } from "./LeafDecor";
@@ -18,6 +18,12 @@ export function AppScreen({
    * Default false: bottom chrome (tab bar / screen footer) owns the bottom inset.
    */
   includeBottomSafeArea = false,
+  /**
+   * When true, the footer slot adds the system bottom inset.
+   * Use for overlays / full-screen footers that are not above a tab bar.
+   * Leave false inside TabShell (the tab bar owns the inset).
+   */
+  footerOwnsBottomInset = false,
 }: {
   children: ReactNode;
   footer?: ReactNode;
@@ -26,9 +32,11 @@ export function AppScreen({
   stickToBottom?: boolean;
   decor?: boolean;
   includeBottomSafeArea?: boolean;
+  footerOwnsBottomInset?: boolean;
 }) {
   const scrollRef = useRef<ScrollView>(null);
   const keyboardHeight = useKeyboardHeight();
+  const insets = useSafeAreaInsets();
   const edges: Edge[] = includeBottomSafeArea
     ? ["top", "left", "right", "bottom"]
     : ["top", "left", "right"];
@@ -58,12 +66,21 @@ export function AppScreen({
   // Android Manifest uses adjustResize. Avoid fighting it with behavior="height".
   // Still lift the footer by keyboard inset when resize does not move absolute/footer chrome.
   const androidLift = Platform.OS === "android" && keyboardHeight > 0 ? keyboardHeight : 0;
+  // Avoid double-counting: SafeAreaView bottom edge already pads when includeBottomSafeArea.
+  const footerInset =
+    footer && footerOwnsBottomInset && !includeBottomSafeArea ? Math.max(insets.bottom, 0) : 0;
 
   const frame = (
     <>
       {body}
       {footer ? (
-        <View style={[styles.footerSlot, androidLift ? { marginBottom: androidLift } : null]}>
+        <View
+          style={[
+            styles.footerSlot,
+            footerInset ? { paddingBottom: footerInset } : null,
+            androidLift ? { marginBottom: androidLift } : null,
+          ]}
+        >
           {footer}
         </View>
       ) : null}

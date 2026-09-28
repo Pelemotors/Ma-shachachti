@@ -8,6 +8,7 @@ import {
   useAudioRecorderState,
 } from "expo-audio";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SystemBottomInset } from "../../layout/systemBottomInset";
 import { sendChat } from "../../api/chat";
 import { completeTask } from "../../api/tasks";
 import { transcribeRecording } from "../../api/transcribe";
@@ -115,7 +116,8 @@ export function HomeV4Screen({
   const secondaryError = data.errors.plan || data.errors.tasks || data.errors.notifications;
   const keyboardHeight = useKeyboardHeight();
   const keyboardOpen = keyboardHeight > 0;
-  const composerBottom = keyboardOpen ? Math.max(12 * s, 8) : 76 * s;
+  // When the tab bar is hidden, clear the system nav inset; otherwise sit above the tab chrome.
+  const composerBottom = keyboardOpen ? Math.max(12 * s, insets.bottom) : 76 * s;
   const bankBottom = keyboardOpen ? composerBottom + 54 * s : 130 * s;
 
   return (
@@ -205,7 +207,7 @@ export function HomeV4Screen({
           error={sendError}
         />
       </View>
-      {keyboardOpen ? null : <HomeBottomNavigation scale={s} active="home" onChange={onTab} />}
+      {keyboardOpen ? <SystemBottomInset /> : <HomeBottomNavigation scale={s} active="home" onChange={onTab} />}
     </View>
   );
 }

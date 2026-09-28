@@ -86,6 +86,7 @@ export function ChecklistDetailScreen({
     <AppScreen
       padded={false}
       decor={false}
+      footerOwnsBottomInset
       footer={
         <View style={styles.footer}>
           <View style={styles.addRow}>

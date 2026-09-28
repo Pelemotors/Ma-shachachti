@@ -34,6 +34,7 @@ import {
   updateTask,
   type MobileTask,
 } from "../api/tasks";
+import { useBottomChromePadding } from "../layout/systemBottomInset";
 import { CL } from "../product/checklistTokens";
 import { heebo } from "./home-v4/homeV4Theme";
 
@@ -76,6 +77,7 @@ export function TasksScreen({
   onBack?: () => void;
   onOpenChecklist?: (id: string, occurrenceKey?: string) => void;
 }) {
+  const bottomChromePad = useBottomChromePadding(12);
   const [tasks, setTasks] = useState<MobileTask[]>([]);
   const [routines, setRoutines] = useState<MobileRoutine[]>([]);
   const [exceptions, setExceptions] = useState<MobileRoutineException[]>([]);
@@ -478,7 +480,11 @@ export function TasksScreen({
 
       <Modal visible={editorOpen} transparent animationType="slide" onRequestClose={() => setEditorOpen(false)}>
         <View style={styles.backdrop}>
-          <ScrollView style={styles.modal} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={[styles.modal, { paddingBottom: bottomChromePad }]}
+            contentContainerStyle={{ paddingBottom: 12 }}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.modalTitle}>{editing ? "עריכת משימה" : "משימה חדשה"}</Text>
             <TextInput value={title} onChangeText={setTitle} placeholder="מה צריך לעשות?" placeholderTextColor={CL.secondary} style={styles.input} textAlign="right" />
             <TextInput value={notes} onChangeText={setNotes} placeholder="הערה" placeholderTextColor={CL.secondary} style={[styles.input, styles.multiline]} multiline textAlign="right" />
@@ -590,7 +596,7 @@ export function TasksScreen({
 
       <Modal visible={Boolean(menuTask)} transparent animationType="fade" onRequestClose={() => setMenuTask(null)}>
         <Pressable style={styles.backdrop} onPress={() => setMenuTask(null)}>
-          <View style={styles.menu}>
+          <View style={[styles.menu, { paddingBottom: bottomChromePad }]}>
             <Pressable onPress={() => menuTask && openEdit(menuTask)}><Text style={styles.menuItem}>עריכה</Text></Pressable>
             <Pressable onPress={() => menuTask && void runMenu(() => duplicateTask(menuTask.id))}><Text style={styles.menuItem}>שכפול</Text></Pressable>
             {menuRoutine ? (
@@ -669,7 +675,7 @@ const styles = StyleSheet.create({
   previewItem: { fontFamily: heebo("400"), fontSize: 12, color: CL.secondary, textAlign: "right" },
   more: { paddingHorizontal: 6, paddingTop: 4 },
   backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(58,47,40,0.28)" },
-  modal: { maxHeight: "88%", backgroundColor: CL.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 48 },
+  modal: { maxHeight: "88%", backgroundColor: CL.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22 },
   modalTitle: { fontFamily: heebo("700"), fontSize: 24, color: CL.text, textAlign: "right", marginBottom: 12 },
   input: { minHeight: 52, borderRadius: 24, borderWidth: 1, borderColor: CL.border, paddingHorizontal: 16, color: CL.text, backgroundColor: CL.surface, marginBottom: 10, fontFamily: heebo("400"), fontSize: 15 },
   multiline: { minHeight: 80, textAlignVertical: "top", paddingTop: 12 },
@@ -679,7 +685,7 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: CL.peach, borderColor: CL.terracotta },
   chipText: { fontFamily: heebo("500"), fontSize: 12, color: CL.text },
   recurRow: { flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center" },
-  actions: { flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center", marginTop: 12, marginBottom: 28 },
+  actions: { flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center", marginTop: 12, marginBottom: 8 },
   cancel: { fontFamily: heebo("500"), color: CL.secondary, fontSize: 15 },
   save: { backgroundColor: CL.terracotta, paddingHorizontal: 22, paddingVertical: 14, borderRadius: 18 },
   saveText: { fontFamily: heebo("700"), color: "#FFFDF9", fontSize: 15 },

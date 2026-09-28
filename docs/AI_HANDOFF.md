@@ -8,8 +8,8 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD (pre-M3):** `1fc2b5fc3bfb2e919cc0cca90e014dadb2e2aa18` (M2) — after M3 commit this file matches the new SHA
-- **Last completed milestone:** **M3 — Recurring Tasks + Task Checklist**
+- **HEAD (pre-M1.1):** `95b1a28c6bd6a1a994285a0f9a540cb11f810135` (M3) — after M1.1 commit this file matches the new SHA
+- **Last completed milestone:** **M1.1 — Android System Insets Verification**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** LAN Next for emulator (gitignored)
@@ -19,49 +19,38 @@
 
 ## Last completed milestone
 
-### M3 — Recurring Tasks + Task Checklist ✅
+### M1.1 — Android System Insets Verification ✅
 
-**Scope:** Recurring Tasks lifecycle + Task↔Checklist binding only. No Day Plan, Planner, Home planning, Free Time, „מה שכחתי?”, Shopping redesign, Agent, or Notifications.
+**Scope:** Verify / fix Android system navigation inset handling at shared layout level. No Task/recurring/checklist business logic, Day Plan, Planner, Home data, or Agent changes.
 
-### Root cause
+### What was found
 
-1. **Recurring backend already existed** (`routines` + `routine_occurrence_exceptions`) and create/update/stop worked — but the mobile „קבועות” checkbox treated a routine Task like a normal Task complete, and **did not load today’s exceptions**, so occurrence-done did not show / round-trip correctly.
-2. **Task editor could link an existing checklist** but had **no „חדש” path** to create a real checklist from the Task; opening checklist from Tasks returned to the global Checklists overlay instead of Tasks.
-3. Save button in the Task modal was easy to miss at the bottom edge (padding) — fixed as part of editor UX reliability.
+1. **Architecture (M1 KEEP):** `AppScreen` excludes bottom SafeArea by default; **bottom chrome owns the inset** (`BottomNavBar` / `HomeBottomNavigation` use `paddingBottom: Math.max(insets.bottom, …)`).
+2. **Gap:** when the keyboard opens, tab chrome is **hidden** and nothing reserved the system inset → footers/composers could sit under the gesture/3-button bar.
+3. **Gap:** overlay screens with `AppScreen` footers (Checklist detail, Plan/Forgot/FreeTime footers) did **not** own the bottom inset (no tab bar underneath).
+4. **M3 Save padding** (`modal paddingBottom: 48` + `actions marginBottom: 28`) was a **local workaround** for the Task editor `Modal` (portaled outside tab chrome) lacking system inset — not legitimate design spacing.
 
-**Model kept (no new architecture):** Task template stays open; occurrence done/skip/override lives in `routine_occurrence_exceptions`. Checklist Template ≠ Run (`checklist_runs` / `checklist_run_items`).
+**System inset on emulator:** gesture nav ≈ **72px**; 3-button ≈ **144px**.
 
----
+### Changes
 
-## Changes made
-
-### M3 files
 | Path | Change |
 | --- | --- |
-| `lib/routines.ts` | `loadRoutineExceptionsForDate` |
-| `app/api/routines/route.ts` | GET returns `exceptions` + `date` (Jerusalem today default) |
-| `apps/mobile/src/api/routines.ts` | types + `listRoutines(date?)` |
-| `apps/mobile/src/screens/TasksScreen.tsx` | exceptions → occurrence checkbox / „בוצע היום”; create checklist „חדש”; open after save; modal bottom padding; routine complete uses occurrence_date only |
-| `apps/mobile/src/navigation/ProductShell.tsx` | `checklistReturnTo` tasks vs checklists |
-| `tests/task-recurring-checklist-m3.test.ts` | M3 unit tests (3) |
+| `apps/mobile/src/layout/systemBottomInset.tsx` | `SystemBottomInset` + `useBottomChromePadding` |
+| `apps/mobile/src/components/ui/TabShell.tsx` | Reserve system inset when keyboard hides tab bar |
+| `apps/mobile/src/components/ui/AppScreen.tsx` | `footerOwnsBottomInset` (no double-pad with `includeBottomSafeArea`) |
+| `apps/mobile/src/screens/home-v4/HomeV4Screen.tsx` | `SystemBottomInset` + composer clears inset when kb open |
+| `apps/mobile/src/screens/chat-v4/ChatV4Screen.tsx` | `SystemBottomInset` when kb open |
+| `apps/mobile/src/screens/ChecklistDetailScreen.tsx` (+ Forgot / FreeTimeResults / PlanComposer) | `footerOwnsBottomInset` |
+| `apps/mobile/src/screens/TasksScreen.tsx` | Modal/menu use `useBottomChromePadding`; **removed M3 fixed 48/28 workaround** |
+| `tests/android-system-insets-m11.test.ts` | Source-level invariants (3) |
 | `docs/AI_HANDOFF.md` | This update |
 
-### Recurring implementation
-- Persist via existing `routines` row (`weekdays`, `time_of_day`, `active`).
-- Edit = `updateRoutine`; cancel recurrence = `stopRoutine` → `active=false`, Task remains `open`.
-- „קבועות” = active routines only.
-- Complete on a recurring Task marks **today’s occurrence** (`done` exception), does **not** close the template Task.
+### M3 padding verdict
 
-### Task checklist implementation
-- Link via `tasks.checklist_id` (existing).
-- „חדש” calls `createChecklist` and optionally opens detail after save.
-- Items/toggles use existing checklist APIs; checked state on **run** (`occurrence_key=standalone` for general run), template texts unchanged.
-- Back from checklist opened from Tasks returns to Tasks tab.
-
-### Prior milestones (archive)
-- **M2** — Task lifecycle + deadline≠schedule (commit `1fc2b5f…`)
-- **M1** — layout / keyboard / nav (commit `356c326…`)
-- **M0** — baseline + 7 known test failures
+- **Removed** the fixed modal `paddingBottom: 48` / `actions marginBottom: 28`.
+- **Replaced** with shared `useBottomChromePadding(12)` = `insets.bottom + 12` design pad.
+- List `paddingBottom: 48` on the Tasks scroll list **kept** (tab-clearance scroll end, not Save workaround).
 
 ---
 
@@ -70,63 +59,36 @@
 | Check | Result |
 | --- | --- |
 | `apps/mobile` `npm run typecheck` | **PASS** |
-| `npm test` (root) | **445 pass / 7 fail** — same 7 baseline failures; +3 M3 tests pass; no new fails |
-| Android Emulator M3 recurring + checklist | **PASS** |
-| Persistence vs Supabase | **PASS** — routines / checklist_id / items / run_items |
-| M1/M2 regression (create/complete/undo/delete, tabs, keyboard) | **PASS** |
+| `npm test` (root) | **448 pass / 7 fail** — same 7 baseline; +3 M1.1 tests; no new fails |
+| Android Emulator gesture + 3-button | **PASS** |
+| M1–M3 regression (tabs, Save, kb hide nav, Home/Chat/Shopping/Tasks) | **PASS** |
 
 ---
 
 ## Android Emulator verification
 
-**AVD:** `Pixel_8_Pro` · **device:** `emulator-5554` · portrait · API via LAN Next `:3000`.
+**AVD:** `Pixel_8_Pro` · `emulator-5554`
 
-### Recurring
-| Scenario | Result |
-| --- | --- |
-| Create recurring Task → DB routine | PASS |
-| Reload / restart — recurrence kept | PASS |
-| Appears in „קבועות” while active | PASS |
-| Edit weekdays → DB updated | PASS |
-| Cancel recurrence → `active=false`, Task stays open | PASS |
-| After cancel — not in „קבועות” | PASS |
-| No duplicate Tasks | PASS |
-
-### Task Checklist
-| Scenario | Result |
-| --- | --- |
-| Task linked to checklist (`checklist_id`) | PASS |
-| Add 2 items → DB template items | PASS |
-| Toggle item → run_items checked | PASS |
-| Restart — checked persists on run | PASS |
-| Undo toggle | PASS |
-| Delete item → persists after restart | PASS |
-
-### Regression
-| Scenario | Result |
-| --- | --- |
-| Complete / Undo / Delete Task | PASS |
-| Home / Tasks / Chat / Shopping + bottom nav | PASS |
-| Keyboard Shopping + tab bar hidden (M1) | PASS |
-
----
-
-## Persistence verification
-
-- `routines`: `M3rec…` → weekdays `[0..4]`, later `active=false`; task row still `open`.
-- `tasks.checklist_id`: `M3cl…` → `fc9449c2-…`.
-- `checklist_items` + `checklist_runs` / `checklist_run_items` (`occurrence_key=standalone`) for toggle/undo/delete.
+| Scenario | Gesture (inset 72) | 3-button (inset 144) |
+| --- | --- | --- |
+| Bottom nav labels clear of system bar | PASS (gap=72) | PASS (gap=144) |
+| Task editor Save visible / tappable | PASS | PASS |
+| Shopping footer above system bar | PASS | PASS |
+| Keyboard open + app nav hidden | PASS | PASS |
+| Checklist detail „הוספה” footer | PASS | PASS |
+| Chat composer | PASS | PASS |
+| Home / Tasks reachable | PASS | PASS |
 
 ---
 
 ## Known issues
 
-- Same **7 baseline** unit test failures (unchanged from M0–M2), including HomeHeader `onAvatar`, product-clock frozen-date drift, local-android-notifications, memory selector, HOME fixture flags, turn_flags.
+- Same **7 baseline** unit test failures (unchanged from M0–M3).
 - Root Next `typecheck` validator noise in `.next/types` (unrelated).
-- Day Plan / Planner / Home planning / Free Time / „מה שכחתי?” / Agent still deferred (M4+).
-- Two bottom-nav implementations remain (M1 KEEP).
+- Two bottom-nav implementations remain (M1 KEEP): `BottomNavBar` + `HomeBottomNavigation` — both pad `insets.bottom`; both now use `SystemBottomInset` when hidden for keyboard.
+- Day Plan / Planner / Free Time / „מה שכחתי?” / Agent still deferred (M4+).
 
-### Baseline failing tests (do not treat as M3 regressions)
+### Baseline failing tests (do not treat as M1.1 regressions)
 1. memory selector prefers user source and keyword overlap  
 2. HOME fixture flags are off and live Home does not overlay demo rows  
 3. tests/local-android-notifications.test.ts  
@@ -140,12 +102,11 @@
 ## KEEP / DO NOT TOUCH
 
 ### KEEP
-- Deadline (`due_*`) ≠ Scheduled (`planned_*` / day_plan flexible).
-- Soft delete = `status=cancelled` (not hard delete).
-- Recurring: Task template stays open; occurrence state in `routine_occurrence_exceptions`.
-- Checklist Template ≠ Run (`checklist_runs` + `occurrence_key`).
-- Non-routine complete/reopen flips Task status without fabricating occurrence.
-- M1 keyboard/safe-area/`adjustResize` behavior.
+- Bottom safe area owned by bottom chrome (tab bar or `footerOwnsBottomInset` footer / modal `useBottomChromePadding`).
+- `AppScreen` default **excludes** bottom SafeArea edge (avoids double-pad above tab bar).
+- Deadline ≠ Scheduled (M2); recurring template≠occurrence (M3); checklist Template≠Run (M3).
+- Soft delete = `cancelled`.
+- M1 keyboard/`adjustResize` / hide tab bar while IME open.
 - Upload keystore v2 / Play SHA1 `9D:0C:…:B5:01`.
 
 ### DO NOT TOUCH until a later milestone allows
@@ -153,7 +114,6 @@
 - Production deploy / Play upload.
 - Home V4 flower geometry redesign.
 - Unrelated lockfile / Gradle churn.
-- Global Checklists screen redesign (only shared open/return wiring was touched).
 
 ---
 
@@ -165,26 +125,26 @@
 
 ## Next first action
 
-1. Wait for human approval of M3.
+1. Wait for human approval of M1.1.
 2. On approval, read this handoff and the M4 brief before any code change.
-3. First M4 action: inventory how Day Plan / `day_plan` / Home „צור לי לו״ז” currently diverge from Task `planned_*`, and define the single source of truth — no Free Time / What Did I Forget / Agent yet.
+3. First M4 action: inventory how Day Plan / `day_plan` / Home „צור לי לו״ז” diverge from Task `planned_*`, and define the single source of truth — no Free Time / What Did I Forget / Agent yet.
 
 ---
 
 ## Important architectural decisions
 
-1. **Bottom safe area belongs to bottom chrome** (M1).
-2. **Android:** Manifest `adjustResize` + keyboard inset / hide tab bar while IME open (M1).
-3. **Task schedule SoT on row:** `planned_start_at` / `planned_end_at` when `plan_patch=set` (M2).
-4. **Recurring SoT:** one active `routines` row per Task; occurrence via exceptions (M3).
-5. **Checklist SoT:** template items on checklist; checked state on run (M3).
-6. **No Push/Deploy** during the fix program unless requested.
-7. **Handoff-before-commit** is mandatory.
+1. **Bottom safe area belongs to bottom chrome** (M1 / M1.1).
+2. **When tab chrome is hidden (keyboard), still reserve `SystemBottomInset`.**
+3. **Overlay footers** set `footerOwnsBottomInset`; tab screens leave it false.
+4. **Modals/sheets** use `useBottomChromePadding`, not one-off magic numbers.
+5. **No Push/Deploy** during the fix program unless requested.
+6. **Handoff-before-commit** is mandatory.
 
 ---
 
-## M2 / M1 / M0 archive (summary)
+## Prior milestones (archive)
 
-- M2 commit: `1fc2b5f…` — Task lifecycle, deadline≠schedule.
-- M1 commit: `356c326…` — layout, keyboard, nav.
-- M0: clean baseline; 7 failing tests pre-existing.
+- **M3** `95b1a28…` — Recurring Tasks + Task Checklist.
+- **M2** `1fc2b5f…` — Task lifecycle, deadline≠schedule.
+- **M1** `356c326…` — layout, keyboard, nav.
+- **M0** — baseline; 7 failing tests pre-existing.
