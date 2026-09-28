@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { BackHandler, Dimensions, View } from "react-native";
-import { AppScreen, BottomNavBar, SuccessState, type ProductTab } from "../components/ui";
+import { AppScreen, SuccessState, TabShell, type ProductTab } from "../components/ui";
 import { markNotificationOpened } from "../api/notifications";
 import { BankScreen } from "../screens/BankScreen";
 import { CalendarScreen } from "../screens/CalendarScreen";
@@ -327,15 +327,14 @@ export function ProductShell() {
   ) : <ShoppingScreen />;
 
   return (
-    <View style={{ flex: 1 }}>
-      <View style={{ flex: 1 }}>{page}</View>
-      <BottomNavBar
-        active={tab}
-        onChange={(next) => {
-          setOverlay(null);
-          setTab(next);
-        }}
-      />
-    </View>
+    <TabShell
+      active={tab}
+      onChange={(next) => {
+        setOverlay(null);
+        setTab(next);
+      }}
+    >
+      {page}
+    </TabShell>
   );
 }

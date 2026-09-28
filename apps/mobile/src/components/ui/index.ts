@@ -1,4 +1,5 @@
 export { AppScreen } from "./AppScreen";
+export { TabShell } from "./TabShell";
 export { BotanicalBackdrop } from "./BotanicalBackdrop";
 export { BottomNavBar, type ProductTab } from "./BottomNavBar";
 export { DateTimeField } from "./DateTimeField";

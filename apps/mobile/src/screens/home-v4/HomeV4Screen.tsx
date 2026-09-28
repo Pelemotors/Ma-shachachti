@@ -12,6 +12,7 @@ import { sendChat } from "../../api/chat";
 import { completeTask } from "../../api/tasks";
 import { transcribeRecording } from "../../api/transcribe";
 import type { ProductTab } from "../../components/ui";
+import { useKeyboardHeight } from "../../layout/keyboard";
 import { claimSendLock, homeSendResult, newChatTurnId } from "../../product/surfaceCommit";
 import { useMicDisclosureGate } from "../../privacy/micDisclosure";
 import { HomeBottomNavigation } from "./HomeBottomNavigation";
@@ -112,6 +113,10 @@ export function HomeV4Screen({
   }
 
   const secondaryError = data.errors.plan || data.errors.tasks || data.errors.notifications;
+  const keyboardHeight = useKeyboardHeight();
+  const keyboardOpen = keyboardHeight > 0;
+  const composerBottom = keyboardOpen ? Math.max(12 * s, 8) : 76 * s;
+  const bankBottom = keyboardOpen ? composerBottom + 54 * s : 130 * s;
 
   return (
     <View style={[styles.root, { backgroundColor: "#FBF7F0" }]}> 
@@ -124,9 +129,10 @@ export function HomeV4Screen({
       />
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={{ paddingBottom: 12 * s, gap: 12 * s }}
+        contentContainerStyle={{ paddingBottom: (keyboardOpen ? 120 : 160) * s, gap: 12 * s }}
         refreshControl={<RefreshControl refreshing={data.loading} onRefresh={() => void data.reload()} />}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         <View style={{ alignItems: "center" }}>
           <HomeFlowerActions
@@ -166,10 +172,28 @@ export function HomeV4Screen({
           </Pressable>
         ) : null}
       </ScrollView>
-      <View style={[styles.floatingBank, { left: 0, right: 0, bottom: 130 * s }]}>
+      <View
+        style={[
+          styles.floatingBank,
+          {
+            left: 0,
+            right: 0,
+            bottom: bankBottom + keyboardHeight,
+          },
+        ]}
+      >
         <HomeBankButton scale={s} onPress={() => onOpen("bank")} />
       </View>
-      <View style={[styles.floatingComposer, { left: 16 * s, right: 16 * s, bottom: 76 * s }]}> 
+      <View
+        style={[
+          styles.floatingComposer,
+          {
+            left: 16 * s,
+            right: 16 * s,
+            bottom: composerBottom + keyboardHeight,
+          },
+        ]}
+      > 
         <HomeAgentComposer
           scale={s}
           value={draft}
@@ -181,7 +205,7 @@ export function HomeV4Screen({
           error={sendError}
         />
       </View>
-      <HomeBottomNavigation scale={s} active="home" onChange={onTab} />
+      {keyboardOpen ? null : <HomeBottomNavigation scale={s} active="home" onChange={onTab} />}
     </View>
   );
 }

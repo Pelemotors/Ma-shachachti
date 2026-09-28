@@ -16,7 +16,14 @@ export function ChecklistRow({
   trailing?: string;
 }) {
   return (
-    <Pressable onPress={onToggle} disabled={!onToggle} style={styles.row}>
+    <Pressable
+      onPress={onToggle}
+      disabled={!onToggle}
+      style={styles.row}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: Boolean(checked), disabled: !onToggle }}
+      accessibilityLabel={label}
+    >
       <View style={[styles.box, checked ? styles.boxOn : null]}>
         {checked ? <Ionicons name="checkmark" size={14} color={colors.onAccent} /> : null}
       </View>

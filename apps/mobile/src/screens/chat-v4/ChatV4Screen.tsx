@@ -22,6 +22,7 @@ import { createChatSession, loadChat, sendChat } from "../../api/chat";
 import { createTask, listTasks } from "../../api/tasks";
 import { transcribeRecording } from "../../api/transcribe";
 import type { ProductTab } from "../../components/ui";
+import { useKeyboardHeight } from "../../layout/keyboard";
 import {
   claimSendLock,
   newChatTurnId,
@@ -262,6 +263,9 @@ export function ChatV4Screen({
 
   const last = messages[messages.length - 1];
   const showChips = !sending && (messages.length === 0 || last?.role === "assistant");
+  const keyboardHeight = useKeyboardHeight();
+  const keyboardOpen = keyboardHeight > 0;
+  const androidLift = Platform.OS === "android" ? keyboardHeight : 0;
 
   return (
     <View style={[styles.root, { backgroundColor: CHAT.page }]}>
@@ -282,11 +286,74 @@ export function ChatV4Screen({
         onOpenSession={(id) => void openSession(id)}
         onNewSession={() => void startNewChat()}
       />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
-      >
+      {Platform.OS === "ios" ? (
+        <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={0}>
+          {chatBody(showChips, androidLift)}
+        </KeyboardAvoidingView>
+      ) : (
+        <View style={[styles.flex, androidLift ? { paddingBottom: androidLift } : null]}>
+          {chatBody(showChips, 0)}
+        </View>
+      )}
+      {keyboardOpen ? null : <HomeBottomNavigation scale={s} active="chat" onChange={onTab} />}
+
+      <Modal visible={addingTask} transparent animationType="fade">
+        <Pressable style={styles.backdrop} onPress={() => setAddingTask(false)}>
+          <Pressable
+            style={[styles.sheet, { padding: 20 * s, borderRadius: 20 * s }]}
+            onPress={() => undefined}
+          >
+            <Text style={{ fontFamily: heebo("700"), fontSize: 16 * s, color: CHAT.text, textAlign: "right" }}>
+              הוסף משימה
+            </Text>
+            <TextInput
+              value={taskDraft}
+              onChangeText={setTaskDraft}
+              placeholder="מה צריך לעשות?"
+              placeholderTextColor={CHAT.muted}
+              style={{
+                marginTop: 12 * s,
+                borderRadius: 16 * s,
+                backgroundColor: CHAT.page,
+                paddingHorizontal: 12 * s,
+                paddingVertical: 10 * s,
+                fontFamily: heebo("400"),
+                fontSize: 14 * s,
+                color: CHAT.text,
+                textAlign: "right",
+              }}
+            />
+            <Pressable
+              onPress={() => void addTask()}
+              disabled={taskBusy}
+              accessibilityLabel="שמור משימה"
+              style={{
+                marginTop: 12 * s,
+                backgroundColor: CHAT.sage,
+                borderRadius: 16 * s,
+                paddingVertical: 12 * s,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: heebo("600"),
+                  fontSize: 14 * s,
+                  color: "#FFFFFF",
+                  textAlign: "center",
+                }}
+              >
+                שמירה
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+
+  function chatBody(chips: boolean, lift: number) {
+    return (
+      <>
         <FlatList
           ref={listRef}
           style={styles.flex}
@@ -387,8 +454,8 @@ export function ChatV4Screen({
             </View>
           )}
         />
-        <View>
-          {showChips ? <ChatQuickChips scale={s} onChip={onChip} /> : null}
+        <View style={lift ? { marginBottom: lift } : null}>
+          {chips ? <ChatQuickChips scale={s} onChip={onChip} /> : null}
           <ChatV4Composer
             scale={s}
             value={draft}
@@ -399,62 +466,9 @@ export function ChatV4Screen({
             recording={recorderState.isRecording}
           />
         </View>
-      </KeyboardAvoidingView>
-      <HomeBottomNavigation scale={s} active="chat" onChange={onTab} />
-
-      <Modal visible={addingTask} transparent animationType="fade">
-        <Pressable style={styles.backdrop} onPress={() => setAddingTask(false)}>
-          <Pressable
-            style={[styles.sheet, { padding: 20 * s, borderRadius: 20 * s }]}
-            onPress={() => undefined}
-          >
-            <Text style={{ fontFamily: heebo("700"), fontSize: 16 * s, color: CHAT.text, textAlign: "right" }}>
-              הוסף משימה
-            </Text>
-            <TextInput
-              value={taskDraft}
-              onChangeText={setTaskDraft}
-              placeholder="מה צריך לעשות?"
-              placeholderTextColor={CHAT.muted}
-              style={{
-                marginTop: 12 * s,
-                borderRadius: 16 * s,
-                backgroundColor: CHAT.page,
-                paddingHorizontal: 12 * s,
-                paddingVertical: 10 * s,
-                fontFamily: heebo("400"),
-                fontSize: 14 * s,
-                color: CHAT.text,
-                textAlign: "right",
-              }}
-            />
-            <Pressable
-              onPress={() => void addTask()}
-              disabled={taskBusy}
-              accessibilityLabel="שמור משימה"
-              style={{
-                marginTop: 12 * s,
-                backgroundColor: CHAT.sage,
-                borderRadius: 16 * s,
-                paddingVertical: 12 * s,
-              }}
-            >
-              <Text
-                style={{
-                  fontFamily: heebo("600"),
-                  fontSize: 14 * s,
-                  color: "#FFFFFF",
-                  textAlign: "center",
-                }}
-              >
-                שמירה
-              </Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </View>
-  );
+      </>
+    );
+  }
 }
 
 const styles = StyleSheet.create({

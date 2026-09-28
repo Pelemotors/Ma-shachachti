@@ -485,7 +485,7 @@ const styles = StyleSheet.create({
   filterOn: { backgroundColor: CL.terracotta, borderColor: CL.terracotta },
   filterText: { fontFamily: heebo("600"), fontSize: 14, color: CL.text, writingDirection: "rtl" },
   filterTextOn: { color: "#FFFDF9" },
-  list: { gap: 16, paddingBottom: 32 },
+  list: { gap: 16, paddingBottom: 48 },
   section: { gap: 8 },
   sectionHead: { flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center" },
   sectionTitle: { fontFamily: heebo("700"), fontSize: 16, color: CL.text, textAlign: "right" },
