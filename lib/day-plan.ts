@@ -50,9 +50,10 @@ export async function getOrCreateDayPlan(
 ) {
   if (!DATE_RE.test(date)) throw new HttpError(400, "תאריך אינו תקין.");
   const scope = await resolveUserScope(db, userId, household);
+  const selectCols = "id,scope_type,scope_id,plan_date,updated_at";
   const { data: existing } = await db
     .from("day_plans")
-    .select("id,scope_type,scope_id,plan_date,updated_at")
+    .select(selectCols)
     .eq("scope_type", scope.scope_type)
     .eq("scope_id", scope.scope_id)
     .eq("plan_date", date)
@@ -65,9 +66,21 @@ export async function getOrCreateDayPlan(
       plan_date: date,
       created_by: userId,
     })
-    .select("id,scope_type,scope_id,plan_date,updated_at")
+    .select(selectCols)
     .single();
-  if (error || !data) throw new HttpError(503, "לא הצלחנו ליצור לוז.");
+  // Unique (scope_type, scope_id, plan_date) — concurrent create: re-read winner.
+  if (error) {
+    const { data: raced } = await db
+      .from("day_plans")
+      .select(selectCols)
+      .eq("scope_type", scope.scope_type)
+      .eq("scope_id", scope.scope_id)
+      .eq("plan_date", date)
+      .maybeSingle();
+    if (raced) return raced;
+    throw new HttpError(503, "לא הצלחנו ליצור לוז.");
+  }
+  if (!data) throw new HttpError(503, "לא הצלחנו ליצור לוז.");
   return data;
 }
 
@@ -239,7 +252,68 @@ export async function removeDayPlanItem(
   return updateDayPlan(db, userId, date, rest, household);
 }
 
-/** Point mutation — does not replan the rest of the day. */
+/**
+ * Flexible task-linked day_plan slots (no occurrence_key) mirror onto tasks.planned_*.
+ * Fixed day_plan slots may use due_* for deadline; routine occurrences never overwrite planned_*.
+ * day_plan_items remain the schedule SoT; planned_* is a denormalized mirror for Tasks UI.
+ */
+async function syncTaskPlannedMirror(
+  db: SupabaseClient,
+  userId: string,
+  date: string,
+  previous: DayPlanItemInput[],
+  next: DayPlanItemInput[],
+) {
+  const now = new Date().toISOString();
+  const prevFlexibleIds = new Set(
+    previous
+      .filter((item) => !item.occurrence_key && item.kind === "flexible")
+      .map((item) => item.task_id),
+  );
+  const nextFlexible = new Map<string, DayPlanItemInput>();
+  for (const item of next) {
+    if (item.occurrence_key || item.kind !== "flexible") continue;
+    nextFlexible.set(item.task_id, item);
+  }
+  for (const [taskId, item] of nextFlexible) {
+    await db
+      .from("tasks")
+      .update({
+        planned_start_at: item.start_at,
+        planned_end_at: item.end_at ?? null,
+        updated_at: now,
+      })
+      .eq("user_id", userId)
+      .eq("id", taskId);
+  }
+  for (const taskId of prevFlexibleIds) {
+    if (nextFlexible.has(taskId)) continue;
+    const { data: task } = await db
+      .from("tasks")
+      .select("id,planned_start_at")
+      .eq("user_id", userId)
+      .eq("id", taskId)
+      .maybeSingle();
+    if (!task?.planned_start_at) continue;
+    if (jerusalemParts(String(task.planned_start_at)).date !== date) continue;
+    await db
+      .from("tasks")
+      .update({
+        planned_start_at: null,
+        planned_end_at: null,
+        updated_at: now,
+      })
+      .eq("user_id", userId)
+      .eq("id", taskId);
+  }
+}
+
+/**
+ * Point mutation of the canonical day_plan for one date.
+ * Replaces the item list for that plan only — does not invent a new day algorithm.
+ * Prefer upsertDayPlanItem / removeDayPlanItem for single-slot edits.
+ * Explicit full rebuilds belong in replanDay.
+ */
 export async function updateDayPlan(
   db: SupabaseClient,
   userId: string,
@@ -248,27 +322,42 @@ export async function updateDayPlan(
   household = false,
 ) {
   const plan = await getOrCreateDayPlan(db, userId, date, household);
+  const previous = planItemsFromRows(
+    (
+      await db
+        .from("day_plan_items")
+        .select("id,task_id,start_at,end_at,kind,source,routine_id,occurrence_key")
+        .eq("day_plan_id", plan.id)
+    ).data ?? [],
+  );
   const now = new Date().toISOString();
   const { error: clearError } = await db
     .from("day_plan_items")
     .delete()
     .eq("day_plan_id", plan.id);
   if (clearError) throw new HttpError(503, "עדכון הלוז נכשל.");
-  if (!items.length) return loadDayPlan(db, userId, date, household);
-  const { error } = await db.from("day_plan_items").insert(
-    items.map((item) => ({
-      day_plan_id: plan.id,
-      task_id: item.task_id,
-      start_at: item.start_at,
-      end_at: item.end_at ?? null,
-      kind: item.kind,
-      source: item.source,
-      updated_at: now,
-      routine_id: item.routine_id ?? null,
-      occurrence_key: item.occurrence_key ?? null,
-    })),
-  );
-  if (error) throw new HttpError(503, "שמירת פריטי הלוז נכשלה.");
+  if (items.length) {
+    const { error } = await db.from("day_plan_items").insert(
+      items.map((item) => ({
+        day_plan_id: plan.id,
+        task_id: item.task_id,
+        start_at: item.start_at,
+        end_at: item.end_at ?? null,
+        kind: item.kind,
+        source: item.source,
+        updated_at: now,
+        routine_id: item.routine_id ?? null,
+        occurrence_key: item.occurrence_key ?? null,
+      })),
+    );
+    if (error) throw new HttpError(503, "שמירת פריטי הלוז נכשלה.");
+  }
+  const { error: touchError } = await db
+    .from("day_plans")
+    .update({ updated_at: now })
+    .eq("id", plan.id);
+  if (touchError) throw new HttpError(503, "עדכון הלוז נכשל.");
+  await syncTaskPlannedMirror(db, userId, date, previous, items);
   return loadDayPlan(db, userId, date, household);
 }
 
@@ -356,8 +445,9 @@ export function mergeDayPlanItems(
 }
 
 /**
- * Re-plan only when explicitly invoked. Preserves existing items (fixed and flexible).
- * Only appends newly requested, date-relevant task ids. Never dumps the full open list.
+ * Explicit rebuild intent only (e.g. „צור לי לו״ז”).
+ * Preserves existing fixed/flexible/routine items; appends newly allowed task ids.
+ * Never called from Home/Schedule open — only from an explicit replan action.
  */
 export async function replanDay(
   db: SupabaseClient,

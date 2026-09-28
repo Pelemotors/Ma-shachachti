@@ -1057,7 +1057,7 @@ export async function saveTaskPlans(
   }>,
 ) {
   if (!DATE_RE.test(date)) throw new Error("invalid_date");
-  const { updateDayPlan } = await import("./day-plan.ts");
+  const { loadDayPlan, updateDayPlan, dayPlanItemFromRow } = await import("./day-plan.ts");
   const blank: AgentAction = {
     type: "task.create",
     id: null,
@@ -1080,7 +1080,7 @@ export async function saveTaskPlans(
     confidence: null,
     silent: null,
   };
-  const planItems: Array<{
+  const incoming: Array<{
     task_id: string;
     start_at: string;
     end_at: string | null;
@@ -1113,7 +1113,7 @@ export async function saveTaskPlans(
       item.planned_end,
     );
     if (!planned.ok) throw new Error(planned.error);
-    planItems.push({
+    incoming.push({
       task_id: taskId,
       start_at: planned.start,
       end_at: planned.end,
@@ -1121,20 +1121,25 @@ export async function saveTaskPlans(
       source: "manual",
     });
   }
-  await updateDayPlan(db, userId, date, planItems);
-  const now = new Date().toISOString();
-  for (const item of planItems) {
-    if (item.kind === "fixed") continue;
-    // Flexible schedule lives on Task.planned_* separately from due_*.
-    await db
-      .from("tasks")
-      .update({
-        planned_start_at: item.start_at,
-        planned_end_at: item.end_at,
-        updated_at: now,
-      })
-      .eq("user_id", userId)
-      .eq("id", item.task_id);
+  // Merge into canonical day_plan — never wipe routine/calendar slots.
+  const current = await loadDayPlan(db, userId, date, false);
+  const existing = (current.items as Record<string, unknown>[]).flatMap((raw) => {
+    const item = dayPlanItemFromRow(raw);
+    return item ? [item] : [];
+  });
+  const incomingIds = new Set(incoming.map((item) => item.task_id));
+  const finalItems = [];
+  const seen = new Set<string>();
+  for (const item of [
+    ...existing.filter((row) => Boolean(row.occurrence_key)),
+    ...incoming,
+    ...existing.filter((row) => !row.occurrence_key && !incomingIds.has(row.task_id)),
+  ]) {
+    const key = item.occurrence_key ?? `task:${item.task_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    finalItems.push(item);
   }
+  await updateDayPlan(db, userId, date, finalItems);
   return loadTasks(db, userId);
 }

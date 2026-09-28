@@ -1,6 +1,6 @@
 import { authorize, HttpError } from "@/lib/server-auth";
 import { loadScheduleTasks } from "@/lib/actions";
-import { loadDayPlan } from "@/lib/day-plan";
+import { ensureRoutineOccurrences } from "@/lib/day-plan";
 import { jerusalemParts } from "@/lib/time";
 import { DATE_RE, todayContext } from "@/lib/time";
 
@@ -12,7 +12,8 @@ export async function GET(req: Request) {
     const requested = new URL(req.url).searchParams.get("date");
     const date =
       requested && DATE_RE.test(requested) ? requested : todayContext().date;
-    const { items } = await loadDayPlan(db, userId, date);
+    // Same initialization path as /api/day-plan: materialize routine slots, never replan.
+    const { items } = await ensureRoutineOccurrences(db, userId, date);
     const tasks = await loadScheduleTasks(db, userId);
     const byId = new Map(tasks.map((task) => [task.id, task]));
     const timed = items

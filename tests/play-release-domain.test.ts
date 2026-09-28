@@ -122,13 +122,20 @@ test("tasks RLS keeps own-row SELECT after household overlay", () => {
   assert.match(sql, /create policy tasks_household_select on public\.tasks/);
 });
 
-test("day_plan is SoT; tasks.planned_* is not written by saveTaskPlans", () => {
+test("day_plan is SoT; saveTaskPlans merges into updateDayPlan", () => {
   const actions = read("lib/actions.ts");
-  assert.match(actions, /updateDayPlan/);
-  assert.doesNotMatch(
-    actions.slice(actions.indexOf("export async function saveTaskPlans")),
-    /planned_start_at: planned.start/,
-  );
+  const slice = actions.slice(actions.indexOf("export async function saveTaskPlans"));
+  assert.match(slice, /updateDayPlan/);
+  assert.match(slice, /occurrence_key/);
+  assert.match(slice, /Merge into canonical day_plan/);
+  // Mirror of flexible planned_* lives in updateDayPlan, not a wipe-only path here.
+  assert.doesNotMatch(slice, /planned_start_at: planned\.start/);
+});
+
+test("schedule GET materializes routines like day-plan GET", () => {
+  const schedule = read("app/api/schedule/route.ts");
+  assert.match(schedule, /ensureRoutineOccurrences/);
+  assert.doesNotMatch(schedule, /replanDay/);
 });
 
 test("privacy and contract docs exist for 2026-09-20", () => {

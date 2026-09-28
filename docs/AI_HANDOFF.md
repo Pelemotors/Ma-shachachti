@@ -8,49 +8,67 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD (pre-M1.1):** `95b1a28c6bd6a1a994285a0f9a540cb11f810135` (M3) — after M1.1 commit this file matches the new SHA
-- **Last completed milestone:** **M1.1 — Android System Insets Verification**
+- **HEAD (pre-M4):** `7ba50e107c817f20e615fbb506bad0f43a83ca4d` (M1.1) — after M4 commit this file matches the new SHA
+- **Last completed milestone:** **M4 — Day Plan Core / Single Source of Truth**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** LAN Next for emulator (gitignored)
-- **Stop gate:** Do **not** start M4 until human approval
+- **Stop gate:** Do **not** start M5 until human approval
 
 ---
 
 ## Last completed milestone
 
-### M1.1 — Android System Insets Verification ✅
+### M4 — Day Plan Core / Single Source of Truth ✅
 
-**Scope:** Verify / fix Android system navigation inset handling at shared layout level. No Task/recurring/checklist business logic, Day Plan, Planner, Home data, or Agent changes.
+**Scope:** Canonical day plan per user-scope + date; clear `updateDayPlan` vs `replanDay`; sync flexible `tasks.planned_*` with day_plan; no Create Schedule UI / Free Time / What Did I Forget / Agent rebuild.
 
-### What was found
+### Root cause
 
-1. **Architecture (M1 KEEP):** `AppScreen` excludes bottom SafeArea by default; **bottom chrome owns the inset** (`BottomNavBar` / `HomeBottomNavigation` use `paddingBottom: Math.max(insets.bottom, …)`).
-2. **Gap:** when the keyboard opens, tab chrome is **hidden** and nothing reserved the system inset → footers/composers could sit under the gesture/3-button bar.
-3. **Gap:** overlay screens with `AppScreen` footers (Checklist detail, Plan/Forgot/FreeTime footers) did **not** own the bottom inset (no tab bar underneath).
-4. **M3 Save padding** (`modal paddingBottom: 48` + `actions marginBottom: 28`) was a **local workaround** for the Task editor `Modal` (portaled outside tab chrome) lacking system inset — not legitimate design spacing.
+1. **Declared SoT was `day_plans` / `day_plan_items`**, with DB unique `(scope_type, scope_id, plan_date)` — already one plan per scope+date.
+2. **Gaps:** `updateDayPlan` did not bump `day_plans.updated_at` (replan optimistic lock ineffective); `saveTaskPlans` **wiped** the day (dropping routine slots); `/api/schedule` skipped `ensureRoutineOccurrences` while `/api/day-plan` ran it; flexible `planned_*` could drift from day_plan after path-only day_plan writes.
+3. **Not a gap:** Home/Schedule open never called `replanDay` (only explicit POST `action=replan`). Unscheduled tasks without `due_on` are not auto-added (`taskIdsForPlanDate`).
 
-**System inset on emulator:** gesture nav ≈ **72px**; 3-button ≈ **144px**.
+### Architecture / source of truth
+
+| Layer | Role |
+| --- | --- |
+| **`day_plans` + `day_plan_items`** | Canonical schedule for `(scope_type, scope_id, plan_date)` |
+| **`tasks.planned_*`** | Denormalized **mirror for flexible** non-occurrence slots only (Tasks UI). Routine occurrences do not overwrite template `planned_*`. |
+| **`tasks.due_*`** | Deadline only (M2 KEEP) |
+| **GET `/api/day-plan` / `/api/schedule`** | `ensureRoutineOccurrences` — materialize timed routines; **never** replan |
+| **`updateDayPlan` / upsert / remove** | Point mutations of that date’s item list |
+| **`replanDay`** | Explicit rebuild only (preserves existing; appends allowed ids) |
+
+### Synchronization rules
+
+1. After every `updateDayPlan`, flexible items without `occurrence_key` → write `tasks.planned_*`; removed flexible slots for that date → clear `planned_*` when it pointed at that date.
+2. `saveTaskPlans` **merges** into existing plan (keeps `occurrence_key` / other slots); mirror via `updateDayPlan`.
+3. `plan_patch` on task create/update still upserts day_plan + task fields (unchanged contract).
+
+### updateDayPlan vs replanDay
+
+- **`updateDayPlan`:** replace item list for one canonical plan; bump `updated_at`; sync flexible mirror. Used by upsert/remove/routine sync/saveTaskPlans merge.
+- **`replanDay`:** explicit rebuild; preserves existing; appends date-relevant ids; requires POST `action=replan`. Not triggered by Home/Schedule open.
 
 ### Changes
 
 | Path | Change |
 | --- | --- |
-| `apps/mobile/src/layout/systemBottomInset.tsx` | `SystemBottomInset` + `useBottomChromePadding` |
-| `apps/mobile/src/components/ui/TabShell.tsx` | Reserve system inset when keyboard hides tab bar |
-| `apps/mobile/src/components/ui/AppScreen.tsx` | `footerOwnsBottomInset` (no double-pad with `includeBottomSafeArea`) |
-| `apps/mobile/src/screens/home-v4/HomeV4Screen.tsx` | `SystemBottomInset` + composer clears inset when kb open |
-| `apps/mobile/src/screens/chat-v4/ChatV4Screen.tsx` | `SystemBottomInset` when kb open |
-| `apps/mobile/src/screens/ChecklistDetailScreen.tsx` (+ Forgot / FreeTimeResults / PlanComposer) | `footerOwnsBottomInset` |
-| `apps/mobile/src/screens/TasksScreen.tsx` | Modal/menu use `useBottomChromePadding`; **removed M3 fixed 48/28 workaround** |
-| `tests/android-system-insets-m11.test.ts` | Source-level invariants (3) |
+| `lib/day-plan.ts` | race-safe getOrCreate; `syncTaskPlannedMirror`; bump `updated_at`; docs |
+| `lib/actions.ts` | `saveTaskPlans` merge (no wipe) |
+| `app/api/schedule/route.ts` | `ensureRoutineOccurrences` |
+| `app/api/day-plan/route.ts` | comment: GET ≠ replan |
+| `tests/day-plan-sot-m4.test.ts` | M4 unit tests |
+| `tests/play-release-domain.test.ts` | SoT assertions updated |
 | `docs/AI_HANDOFF.md` | This update |
 
-### M3 padding verdict
-
-- **Removed** the fixed modal `paddingBottom: 48` / `actions marginBottom: 28`.
-- **Replaced** with shared `useBottomChromePadding(12)` = `insets.bottom + 12` design pad.
-- List `paddingBottom: 48` on the Tasks scroll list **kept** (tab-clearance scroll end, not Save workaround).
+### Prior milestones
+- **M1.1** `7ba50e1…` — Android system insets  
+- **M3** `95b1a28…` — Recurring + Task Checklist  
+- **M2** `1fc2b5f…` — Task lifecycle  
+- **M1** `356c326…` — layout/keyboard/nav  
+- **M0** — baseline + 7 failures  
 
 ---
 
@@ -59,36 +77,41 @@
 | Check | Result |
 | --- | --- |
 | `apps/mobile` `npm run typecheck` | **PASS** |
-| `npm test` (root) | **448 pass / 7 fail** — same 7 baseline; +3 M1.1 tests; no new fails |
-| Android Emulator gesture + 3-button | **PASS** |
-| M1–M3 regression (tabs, Save, kb hide nav, Home/Chat/Shopping/Tasks) | **PASS** |
+| `npm test` | **456 pass / 7 fail** — same 7 baseline; +M4 tests; no new fails |
+| Android Emulator Home/Tasks consistency | **PASS** |
+| Point update → day_plan + `planned_*` sync | **PASS** |
+| reload/restart | **PASS** |
+| Duplicate plan per date | **PASS** (count=1) |
+| Unscheduled / tomorrow not on today’s plan | **PASS** |
+| Routine materialized on today | **PASS** |
+| M1–M3 regression (tabs, keyboard, nav hide) | **PASS** |
 
 ---
 
-## Android Emulator verification
+## Android Emulator + DB
 
-**AVD:** `Pixel_8_Pro` · `emulator-5554`
+**AVD:** `Pixel_8_Pro` · seeded Ira tasks `M4fix*` / `M4flex*` / `M4unsched*` / `M4tom*` / `M4rec*`.
 
-| Scenario | Gesture (inset 72) | 3-button (inset 144) |
-| --- | --- | --- |
-| Bottom nav labels clear of system bar | PASS (gap=72) | PASS (gap=144) |
-| Task editor Save visible / tappable | PASS | PASS |
-| Shopping footer above system bar | PASS | PASS |
-| Keyboard open + app nav hidden | PASS | PASS |
-| Checklist detail „הוספה” footer | PASS | PASS |
-| Chat composer | PASS | PASS |
-| Home / Tasks reachable | PASS | PASS |
+| Scenario | Result |
+| --- | --- |
+| Today Home shows fixed+flex; not unsched/tom | PASS |
+| Tasks lists unsched; flex shows שיבוץ after sync | PASS |
+| `upsertDayPlanItem` → item + `planned_*` same instant | PASS |
+| One `day_plans` row for user+today | PASS |
+| Routine `occurrence_key` on today | PASS |
+| Tomorrow item only on tomorrow plan | PASS |
 
 ---
 
 ## Known issues
 
-- Same **7 baseline** unit test failures (unchanged from M0–M3).
-- Root Next `typecheck` validator noise in `.next/types` (unrelated).
-- Two bottom-nav implementations remain (M1 KEEP): `BottomNavBar` + `HomeBottomNavigation` — both pad `insets.bottom`; both now use `SystemBottomInset` when hidden for keyboard.
-- Day Plan / Planner / Free Time / „מה שכחתי?” / Agent still deferred (M4+).
+- Same **7 baseline** unit test failures (unchanged).
+- Root Next `typecheck` noise in `.next/types` (unrelated).
+- User-scope vs household-scope can both exist for the same calendar date (by design of `scope_*`).
+- `classifyScheduleDay` / web `buildHomeDisplay` still task-based for some legacy web surfaces — mobile Home/Schedule use day_plan.
+- Create Schedule UI / planning algorithm / Free Time / What Did I Forget / Agent deferred to M5+.
 
-### Baseline failing tests (do not treat as M1.1 regressions)
+### Baseline failing tests
 1. memory selector prefers user source and keyword overlap  
 2. HOME fixture flags are off and live Home does not overlay demo rows  
 3. tests/local-android-notifications.test.ts  
@@ -102,49 +125,39 @@
 ## KEEP / DO NOT TOUCH
 
 ### KEEP
-- Bottom safe area owned by bottom chrome (tab bar or `footerOwnsBottomInset` footer / modal `useBottomChromePadding`).
-- `AppScreen` default **excludes** bottom SafeArea edge (avoids double-pad above tab bar).
-- Deadline ≠ Scheduled (M2); recurring template≠occurrence (M3); checklist Template≠Run (M3).
-- Soft delete = `cancelled`.
-- M1 keyboard/`adjustResize` / hide tab bar while IME open.
-- Upload keystore v2 / Play SHA1 `9D:0C:…:B5:01`.
+- One canonical `day_plans` row per `(scope_type, scope_id, plan_date)`.
+- GET day-plan/schedule = routine materialize only; no auto-replan.
+- `due_*` ≠ `planned_*` (M2).
+- Flexible `planned_*` mirror from day_plan; routines use `occurrence_key` (M3).
+- Soft delete `cancelled`; M1 insets/keyboard; upload keystore v2.
 
-### DO NOT TOUCH until a later milestone allows
-- Day Plan / „צור לי לו״ז” / Home planning / Free Time / „מה שכחתי?” / Agent.
+### DO NOT TOUCH until later milestone
+- „צור לי לו״ז” UI / „מה שונה היום” / full planning algorithm (M5).
+- Free Time / What Did I Forget / Agent / Notifications.
 - Production deploy / Play upload.
 - Home V4 flower geometry redesign.
-- Unrelated lockfile / Gradle churn.
 
 ---
 
 ## Next milestone
 
-**M4 — Day Plan Core / Single Source of Truth.** Do not start until explicitly approved.
+**M5 — Create / Change Schedule.** Do not start until explicitly approved.
 
 ---
 
 ## Next first action
 
-1. Wait for human approval of M1.1.
-2. On approval, read this handoff and the M4 brief before any code change.
-3. First M4 action: inventory how Day Plan / `day_plan` / Home „צור לי לו״ז” diverge from Task `planned_*`, and define the single source of truth — no Free Time / What Did I Forget / Agent yet.
+1. Wait for human approval of M4.
+2. On approval, read this handoff and the M5 brief.
+3. First M5 action: wire Create/Change Schedule UI to explicit `replanDay` + context field — without breaking the M4 SoT invariants.
 
 ---
 
 ## Important architectural decisions
 
-1. **Bottom safe area belongs to bottom chrome** (M1 / M1.1).
-2. **When tab chrome is hidden (keyboard), still reserve `SystemBottomInset`.**
-3. **Overlay footers** set `footerOwnsBottomInset`; tab screens leave it false.
-4. **Modals/sheets** use `useBottomChromePadding`, not one-off magic numbers.
-5. **No Push/Deploy** during the fix program unless requested.
-6. **Handoff-before-commit** is mandatory.
-
----
-
-## Prior milestones (archive)
-
-- **M3** `95b1a28…` — Recurring Tasks + Task Checklist.
-- **M2** `1fc2b5f…` — Task lifecycle, deadline≠schedule.
-- **M1** `356c326…` — layout, keyboard, nav.
-- **M0** — baseline; 7 failing tests pre-existing.
+1. Bottom chrome owns system inset (M1 / M1.1).
+2. Task schedule SoT on row for Tasks UX mirror; day_plan is schedule SoT (M2 / M4).
+3. Recurring: template Task + occurrence exceptions (M3).
+4. Checklist Template ≠ Run (M3).
+5. **Day plan: one scope+date → one plan; update ≠ replan (M4).**
+6. Handoff-before-commit mandatory; no Push/Deploy unless requested.

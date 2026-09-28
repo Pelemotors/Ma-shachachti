@@ -29,6 +29,8 @@ export async function GET(req: Request) {
     const date = url.searchParams.get("date") || "";
     if (!DATE_RE.test(date)) throw new HttpError(400, "תאריך אינו תקין.");
     const household = url.searchParams.get("scope") === "household";
+    // Initialize/read canonical day_plan for the date. Materializes timed routines only —
+    // never runs replanDay (that requires explicit POST action=replan).
     const plan = await ensureRoutineOccurrences(db, userId, date, household);
     const range = jerusalemDayRange(date);
     const constraints = await loadCalendarConstraints(
