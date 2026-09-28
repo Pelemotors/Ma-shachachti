@@ -37,7 +37,22 @@ export async function listTasks() {
   return data;
 }
 
-export async function createTask(title: string, extra?: { reminderAt?: string; notes?: string; dueOn?: string; dueTime?: string; estimateMinutes?: number; checklistId?: string }) {
+export async function createTask(
+  title: string,
+  extra?: {
+    reminderAt?: string;
+    notes?: string;
+    dueOn?: string;
+    dueTime?: string;
+    estimateMinutes?: number;
+    checklistId?: string;
+    /** Scheduled/execution date — independent of deadline. */
+    plannedDate?: string;
+    plannedStartTime?: string;
+    plannedEndTime?: string;
+  },
+) {
+  const hasPlan = Boolean(extra?.plannedDate && extra?.plannedStartTime);
   return persistAndSync({
     type: "task.create",
     title,
@@ -46,6 +61,14 @@ export async function createTask(title: string, extra?: { reminderAt?: string; n
     ...(extra?.dueTime ? { due_time: extra.dueTime, due_patch: "set" } : {}),
     ...(extra?.estimateMinutes ? { estimate_minutes: extra.estimateMinutes } : {}),
     ...(extra?.checklistId ? { checklist_id: extra.checklistId } : {}),
+    ...(hasPlan
+      ? {
+          plan_patch: "set",
+          planned_date: extra!.plannedDate,
+          planned_start_time: extra!.plannedStartTime,
+          ...(extra?.plannedEndTime ? { planned_end_time: extra.plannedEndTime } : {}),
+        }
+      : {}),
     ...(extra?.reminderAt
       ? {
           reminder_patch: "set",

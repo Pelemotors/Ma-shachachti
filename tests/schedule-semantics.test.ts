@@ -215,8 +215,14 @@ test("proposed morning slot stays planned and does not become due_at", async () 
   assert.equal(result.ok, true);
   assert.equal(rows[0]?.due_at, null);
   assert.equal(rows[0]?.due_on, null);
-  assert.equal(rows[0]?.planned_start_at, null);
-  assert.equal(rows[0]?.planned_end_at, null);
+  assert.equal(
+    rows[0]?.planned_start_at,
+    jerusalemDateTimeToUtc("2026-09-11", "08:00").toISOString(),
+  );
+  assert.equal(
+    rows[0]?.planned_end_at,
+    jerusalemDateTimeToUtc("2026-09-11", "08:30").toISOString(),
+  );
 });
 
 test("parents evening is a real due_at", async () => {
@@ -252,7 +258,10 @@ test("laundry as part of a plan is planned time, not a deadline", async () => {
     }),
   );
   assert.equal(rows[0]?.due_at, null);
-  assert.equal(rows[0]?.planned_start_at, null);
+  assert.equal(
+    rows[0]?.planned_start_at,
+    jerusalemDateTimeToUtc("2026-09-11", "11:00").toISOString(),
+  );
 });
 
 test("schedule proposal does not write before save", () => {
@@ -299,8 +308,12 @@ test("saving a schedule writes planned time for proposed items", async () => {
   const cleaning = rows.find((row) => row.title === "ניקיון סלון");
   const exit = rows.find((row) => row.title === "יציאה לארוחת חג");
   assert.equal(cleaning?.due_at, null);
-  assert.equal(cleaning?.planned_start_at, null);
+  assert.equal(
+    cleaning?.planned_start_at,
+    jerusalemDateTimeToUtc("2026-09-11", "08:00").toISOString(),
+  );
   assert.equal(exit?.due_at, jerusalemDateTimeToUtc("2026-09-11", "18:00").toISOString());
+  // Fixed deadline is not also mirrored into planned_* (deadline ≠ schedule).
   assert.equal(exit?.planned_start_at, null);
 });
 

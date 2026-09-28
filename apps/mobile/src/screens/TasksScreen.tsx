@@ -9,7 +9,7 @@ import {
   PackStateIcon,
 } from "../components/ui";
 import { listChecklists, type MobileChecklist } from "../api/checklists";
-import { formatDisplayDate, jerusalemDateFromNow, sortByDeadline } from "../api/planning";
+import { formatDisplayDate, formatPlanTime, jerusalemDateFromNow, jerusalemDateTimeParts, sortByDeadline } from "../api/planning";
 import {
   createRoutine,
   listRoutines,
@@ -81,6 +81,8 @@ export function TasksScreen({
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [dueOn, setDueOn] = useState("");
+  const [plannedOn, setPlannedOn] = useState("");
+  const [plannedTime, setPlannedTime] = useState("");
   const [estimate, setEstimate] = useState<number | null>(null);
   const [checklistId, setChecklistId] = useState<string | null>(null);
   const [recurring, setRecurring] = useState(false);
@@ -112,15 +114,26 @@ export function TasksScreen({
     return map;
   }, [routines]);
 
-  const undated = tasks.filter((task) => !routineByTask.has(task.id) && !task.due_on && !task.due_at);
-  const dated = sortByDeadline(tasks.filter((task) => !routineByTask.has(task.id) && Boolean(task.due_on || task.due_at)));
-  const recurringTasks = tasks.filter((task) => routineByTask.has(task.id));
+  const openTasks = tasks.filter((task) => task.status === "open");
+  const doneTasks = tasks.filter((task) => task.status === "done");
+
+  const undated = openTasks.filter((task) => !routineByTask.has(task.id) && !task.due_on && !task.due_at);
+  const dated = sortByDeadline(openTasks.filter((task) => !routineByTask.has(task.id) && Boolean(task.due_on || task.due_at)));
+  const recurringTasks = openTasks.filter((task) => routineByTask.has(task.id));
+  const doneVisible = doneTasks.filter((task) => {
+    if (filter === "routine") return routineByTask.has(task.id);
+    if (filter === "undated") return !routineByTask.has(task.id) && !task.due_on && !task.due_at;
+    if (filter === "dated") return !routineByTask.has(task.id) && Boolean(task.due_on || task.due_at);
+    return true;
+  });
 
   function openCreate() {
     setEditing(null);
     setTitle("");
     setNotes("");
     setDueOn("");
+    setPlannedOn("");
+    setPlannedTime("");
     setEstimate(null);
     setChecklistId(null);
     setRecurring(false);
@@ -134,10 +147,13 @@ export function TasksScreen({
 
   function openEdit(task: MobileTask) {
     const routine = routineByTask.get(task.id);
+    const planned = task.planned_start_at ? jerusalemDateTimeParts(task.planned_start_at) : null;
     setEditing(task);
     setTitle(task.title);
     setNotes(task.notes ?? "");
     setDueOn(task.due_on ?? "");
+    setPlannedOn(planned?.date ?? "");
+    setPlannedTime(planned?.time ?? "");
     setEstimate(task.estimate_minutes ?? null);
     setChecklistId(task.checklist_id ?? null);
     setRecurring(Boolean(routine));
@@ -166,13 +182,29 @@ export function TasksScreen({
     }
     setError("");
     try {
+      const hasPlan = Boolean(plannedOn && plannedTime);
+      if (plannedOn && !plannedTime) {
+        setError("לשיבוץ צריך גם שעה — זה לא דדליין.");
+        return;
+      }
+      if (plannedTime && !plannedOn) {
+        setError("לשיבוץ צריך גם תאריך — זה לא דדליין.");
+        return;
+      }
       let taskId = editing?.id;
+      // Preserve existing due_at clock when the deadline date is unchanged.
+      const preserveDueTime =
+        editing?.due_at && dueOn && dueOn === (editing.due_on ?? "")
+          ? jerusalemDateTimeParts(editing.due_at).time
+          : undefined;
       if (!editing) {
         const created = await createTask(clean, {
           notes: notes.trim() || undefined,
           dueOn: dueOn || undefined,
           estimateMinutes: estimate ?? undefined,
           checklistId: checklistId ?? undefined,
+          plannedDate: hasPlan ? plannedOn : undefined,
+          plannedStartTime: hasPlan ? plannedTime : undefined,
         });
         taskId = created.results?.find((result) => result.ok && result.id)?.id;
       } else {
@@ -180,7 +212,19 @@ export function TasksScreen({
           title: clean,
           notes: notes.trim(),
           due_patch: dueOn ? "set" : "clear",
-          ...(dueOn ? { due_on: dueOn } : {}),
+          ...(dueOn
+            ? {
+                due_on: dueOn,
+                ...(preserveDueTime ? { due_time: preserveDueTime } : {}),
+              }
+            : {}),
+          plan_patch: hasPlan ? "set" : "clear",
+          ...(hasPlan
+            ? {
+                planned_date: plannedOn,
+                planned_start_time: plannedTime,
+              }
+            : {}),
           estimate_patch: estimate ? "set" : "clear",
           ...(estimate ? { estimate_minutes: estimate } : {}),
           checklist_patch: checklistId ? "set" : "clear",
@@ -252,6 +296,23 @@ export function TasksScreen({
     );
   }
 
+  async function toggleDone(task: MobileTask) {
+    const done = task.status === "done";
+    // M2: non-routine complete/reopen must flip task.status — never send occurrence_date.
+    const routine = routineByTask.get(task.id);
+    setError("");
+    try {
+      if (done) {
+        await reopenTask(task.id, routine ? today : undefined);
+      } else {
+        await completeTask(task.id, routine ? today : undefined);
+      }
+      await reload();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "עדכון הסטטוס נכשל.");
+    }
+  }
+
   function taskCard(task: MobileTask) {
     const routine = routineByTask.get(task.id);
     const done = task.status === "done";
@@ -260,18 +321,26 @@ export function TasksScreen({
         <Pressable
           accessibilityRole="checkbox"
           accessibilityState={{ checked: done }}
-          onPress={() => {
-            const occurrence = routine ? today : undefined;
-            void (done ? reopenTask(task.id, occurrence) : completeTask(task.id, occurrence)).then(reload);
-          }}
+          accessibilityLabel={done ? "בטלי ביצוע" : "סמני כבוצע"}
+          onPress={() => void toggleDone(task)}
         >
           <PackStateIcon checked={done} size={24} />
         </Pressable>
         <View style={styles.cardBody}>
-          <Text style={styles.taskTitle}>{task.title}</Text>
+          <Text style={[styles.taskTitle, done ? styles.taskTitleDone : null]}>{task.title}</Text>
           {task.notes ? <Text style={styles.note}>{task.notes}</Text> : null}
           <View style={styles.meta}>
-            {task.due_on ? <Text style={styles.metaText}>עד {formatDisplayDate(task.due_on)}</Text> : <Text style={styles.metaMuted}>ללא דדליין</Text>}
+            {task.due_on ? (
+              <Text style={styles.metaText}>דדליין {formatDisplayDate(task.due_on)}</Text>
+            ) : (
+              <Text style={styles.metaMuted}>ללא דדליין</Text>
+            )}
+            {task.planned_start_at ? (
+              <Text style={styles.metaText}>
+                שיבוץ {formatDisplayDate(jerusalemDateTimeParts(task.planned_start_at).date)}{" "}
+                {formatPlanTime(task.planned_start_at)}
+              </Text>
+            ) : null}
             {task.estimate_minutes ? <Text style={styles.metaText}>{task.estimate_minutes} דק׳</Text> : null}
             {routine ? (
               <View style={styles.recurBadge}>
@@ -351,7 +420,8 @@ export function TasksScreen({
           {showUndated ? section("ללא דדליין", undated, dated.length ? `${dated.length} עם דדליין למטה` : undefined) : null}
           {showDated ? section("עם דדליין", dated) : null}
           {showRoutine ? section("משימות קבועות", recurringTasks) : null}
-          {showUndated && showDated && showRoutine && tasks.length === 0 ? (
+          {doneVisible.length ? section("בוצעו", doneVisible) : null}
+          {showUndated && showDated && showRoutine && openTasks.length === 0 && doneTasks.length === 0 ? (
             <EmptyState title="אין עדיין משימות" body="לחצי על + כדי להוסיף משימה." />
           ) : null}
           {error && !editorOpen ? <Text style={styles.error}>{error}</Text> : null}
@@ -365,6 +435,23 @@ export function TasksScreen({
             <TextInput value={title} onChangeText={setTitle} placeholder="מה צריך לעשות?" placeholderTextColor={CL.secondary} style={styles.input} textAlign="right" />
             <TextInput value={notes} onChangeText={setNotes} placeholder="הערה" placeholderTextColor={CL.secondary} style={[styles.input, styles.multiline]} multiline textAlign="right" />
             <DateTimeField label="דדליין — לא שעה בלוז" mode="date" value={dueOn} emptyLabel="בלי דדליין" onChange={setDueOn} />
+            <DateTimeField
+              label="שיבוץ לביצוע — לא דדליין"
+              mode="date"
+              value={plannedOn}
+              emptyLabel="בלי שיבוץ"
+              onChange={(value) => {
+                setPlannedOn(value);
+                if (!value) setPlannedTime("");
+              }}
+            />
+            <DateTimeField
+              label="שעת שיבוץ"
+              mode="time"
+              value={plannedTime}
+              emptyLabel="בלי שעה"
+              onChange={setPlannedTime}
+            />
             <Text style={styles.fieldLabel}>משך משוער</Text>
             <View style={styles.wrap}>
               {ESTIMATES.map((minutes) => (
@@ -505,6 +592,7 @@ const styles = StyleSheet.create({
   },
   cardBody: { flex: 1 },
   taskTitle: { fontFamily: heebo("700"), fontSize: 15, color: CL.text, textAlign: "right" },
+  taskTitleDone: { color: CL.secondary },
   note: { fontFamily: heebo("400"), fontSize: 12, color: CL.secondary, textAlign: "right", marginTop: 4 },
   meta: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginTop: 8, alignItems: "center" },
   metaText: { fontFamily: heebo("500"), fontSize: 12, color: CL.terracotta },

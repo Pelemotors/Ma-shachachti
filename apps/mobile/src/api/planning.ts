@@ -86,6 +86,23 @@ export function formatPlanTime(iso: string) {
   }).format(new Date(iso));
 }
 
+/** Split an ISO instant into Jerusalem calendar date + HH:mm for Task editors. */
+export function jerusalemDateTimeParts(iso: string): { date: string; time: string } {
+  const date = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jerusalem",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jerusalem",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(iso));
+  return { date, time };
+}
+
 /** Presentation-only. Storage and API stay YYYY-MM-DD. */
 export function formatDisplayDate(ymd: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;

@@ -8,44 +8,48 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD (pre-M1 commit):** `83b05e335d649bfeccf9dc5831a90b6cba5f5bdf` — after M1 commit this file will match the new SHA
-- **Last completed milestone:** **M1 — Mobile Shell / Layout Infrastructure**
+- **HEAD (pre-M2):** `356c326b62d7e2974c5a1cc6ffd471eda4be95ad` (M1) — after M2 commit this file matches the new SHA
+- **Last completed milestone:** **M2 — Task Domain**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** LAN Next for emulator (gitignored)
-- **Stop gate:** Do **not** start M2 until human approval
+- **Stop gate:** Do **not** start M3 until human approval
 
 ---
 
 ## Last completed milestone
 
-### M0 — Baseline
-Documented below (kept for history). Clean git at start; 438/445 tests pass; 7 pre-existing fails; Android smoke Home/Tasks/Chat/Shopping/nav PASS with known keyboard/safe-area layout debt.
+### M2 — Task Domain ✅
 
-### M1 — Mobile Shell / Layout Infrastructure ✅
+**Scope:** reliable Task lifecycle only — Create / Read / Update, Deadline vs Scheduled/execution time, Complete, Undo Complete, Delete, persistence after reload/restart. No recurring, Task Checklist, Day Plan UI, Planner, Home planning, Free Time, „מה שכחתי?”, Agent, or Tasks redesign.
 
-**Scope:** shared layout only — Safe Area, Bottom Nav, Keyboard avoidance, scroll end clearance, RTL-preserving chrome, ChecklistRow a11y. No Tasks/Day Plan/Planner/Agent business logic. No redesign.
+### Root cause
+
+1. **`plan_patch=set` did not persist schedule on the Task row** — `planned_start_at` / `planned_end_at` stayed null; schedule lived only in `day_plan` (legacy contract). Task was not a single reliable entity for scheduled time.
+2. **Mobile Tasks UI mixed open + done** and lacked a clear „בוצעו” section / weak complete error handling.
+3. **Deadline edit could strip `due_at` clock** when only the date was re-saved.
+4. Soft-delete (`cancelled`) and non-routine complete/reopen were already mostly sound on the server; the gap was schedule persistence + UI lifecycle clarity.
+
+**Invariant enforced:** `due_on` / `due_at` = Deadline; `planned_start_at` / `planned_end_at` (+ day_plan mirror) = Scheduled/execution. A task without deadline is not auto-today.
 
 ---
 
 ## Changes made
 
-### M1 files
+### M2 files
 | Path | Change |
 | --- | --- |
-| `apps/mobile/src/layout/keyboard.ts` | Shared `useKeyboardHeight` / `useKeyboardOpen` / tab scroll metrics (+ emulator IME height fallback) |
-| `apps/mobile/src/components/ui/AppScreen.tsx` | Bottom safe-area **off by default**; iOS-only KAV; Android footer lift via keyboard inset |
-| `apps/mobile/src/components/ui/TabShell.tsx` | Shared Tasks/Shopping shell; **hides tab bar while keyboard open** |
-| `apps/mobile/src/components/ui/ChecklistRow.tsx` | `accessibilityRole="checkbox"` + checked state |
-| `apps/mobile/src/components/ui/index.ts` | Export `TabShell` |
-| `apps/mobile/src/navigation/ProductShell.tsx` | Tasks/Shopping use `TabShell` |
-| `apps/mobile/src/screens/home-v4/HomeV4Screen.tsx` | Lift absolute composer/bank with keyboard; hide bottom nav while open; more scroll end pad |
-| `apps/mobile/src/screens/chat-v4/ChatV4Screen.tsx` | Same keyboard/nav pattern; drop Android `behavior="height"` fight with `adjustResize` |
-| `apps/mobile/src/screens/TasksScreen.tsx` | `paddingBottom` 32→48 for scroll-end comfort only |
-| `docs/AI_HANDOFF.md` | Created + updated (this file) |
+| `lib/actions.ts` | `task.create` / `task.update` with `plan_patch` write `planned_*` on Task; clear day_plan by prior planned date (not due); `saveTaskPlans` writes `planned_*` for flexible items |
+| `apps/mobile/src/api/tasks.ts` | `createTask` accepts planned date/time separately from due |
+| `apps/mobile/src/api/planning.ts` | `jerusalemDateTimeParts` for editor round-trip |
+| `apps/mobile/src/screens/TasksScreen.tsx` | open vs „בוצעו”; deadline vs שיבוץ fields; preserve due clock; complete/reopen errors; labels |
+| `tests/task-lifecycle-m2.test.ts` | M2 lifecycle unit tests (4) |
+| `tests/schedule-semantics.test.ts` | Expect `planned_*` when schedule is set; due stays null for planned-only |
+| `docs/AI_HANDOFF.md` | This update |
 
-### M0
-- No product code; handoff created; local `.env` host aligned for smoke only.
+### Prior milestones (archive)
+- **M1** — layout / keyboard / nav (commit `356c326…`)
+- **M0** — baseline + 7 known test failures
 
 ---
 
@@ -54,52 +58,66 @@ Documented below (kept for history). Clean git at start; 438/445 tests pass; 7 p
 | Check | Result |
 | --- | --- |
 | `apps/mobile` `npm run typecheck` | **PASS** |
-| `npm test` (root) | **438 pass / 7 fail** — same baseline failures, no new fails |
-| Android Emulator M1 checklist | **PASS** (see below) |
+| `npm test` (root) | **442 pass / 7 fail** — same 7 baseline failures; +4 M2 tests pass; no new fails |
+| Android Emulator M2 Task checklist | **PASS** (see below) |
+| Persistence vs Supabase `tasks` | **PASS** — create/update/complete/reopen/delete verified by service-role reads |
+| M1 regression (tabs + keyboard lift/nav hide) | **PASS** |
 
 ---
 
 ## Android Emulator verification
 
-**AVD:** `Pixel_8_Pro` · **device:** `emulator-5554` · portrait only.
+**AVD:** `Pixel_8_Pro` · **device:** `emulator-5554` · portrait · API via LAN Next `:3000`.
 
-| Check | Result |
+| Scenario | Result |
 | --- | --- |
-| Open app / session | PASS |
-| Home / Tasks / Chat / Shopping | PASS |
-| All bottom tabs | PASS |
-| Keyboard open — Shopping | PASS — input lifted (~711px), tab bar hidden |
-| Keyboard open — Home | PASS — composer lifted (~740px), tab bar hidden |
-| Keyboard open — Chat | PASS — composer lifted (~687px), tab bar hidden |
-| Keyboard dismiss + nav restore | PASS |
-| Scroll Tasks to end | PASS — nav remains usable |
-| Long content (Tasks list) / short (empty areas) | PASS enough for M1 |
-| Hardware back from Checklists overlay → Home | PASS |
-| Rotation | Skipped — app is portrait-locked |
+| Create without Deadline → UI + DB | PASS (`due_*` null, status open) |
+| Reload / app restart — still present | PASS |
+| Create with Deadline → DB keeps `due_on` | PASS |
+| Restart — deadline persists | PASS |
+| Edit: set Scheduled time — `planned_*` set, `due_on` unchanged | PASS |
+| Edit notes — persistence; plan+deadline kept | PASS |
+| Complete → UI „בוצעו” + DB `status=done` | PASS |
+| Restart — still Completed | PASS |
+| Undo Complete → same id, open; deadline/notes/plan kept | PASS |
+| Delete → UI gone; DB `cancelled`; restart does not restore | PASS |
+| Home / Tasks / Chat / Shopping + bottom nav | PASS |
+| Keyboard Shopping + tab bar hidden (M1) | PASS |
 
 ---
 
 ## Known issues
 
-- Same 7 pre-existing unit test failures as M0 (including HomeHeader `onAvatar` expectation).
+- Same **7 baseline** unit test failures (unchanged from M0/M1), including HomeHeader `onAvatar`, product-clock frozen-date drift, local-android-notifications, memory selector, HOME fixture flags, turn_flags.
 - Root Next `typecheck` validator noise in `.next/types` (unrelated).
-- Tasks Pack icons / Home `TodayTaskRow` checkbox visuals remain product-specific (intentional; only `ChecklistRow` unified for a11y).
-- Two bottom-nav implementations remain (`BottomNavBar` vs `HomeBottomNavigation`) with shared keyboard hide behavior.
+- Recurring / Task Checklist / Day Plan planner UX still deferred (M3+).
+- Two bottom-nav implementations remain (M1 KEEP).
+
+### Baseline failing tests (do not treat as M2 regressions)
+1. memory selector prefers user source and keyword overlap  
+2. HOME fixture flags are off and live Home does not overlay demo rows  
+3. tests/local-android-notifications.test.ts  
+4. turn_flags suppress follow-ups without keyword regex  
+5. todayContext default follows the frozen QA clock across midnight  
+6. agent prompt Current date uses ProductClock, not wall time  
+7. Home avatar is pressable and opens Settings (geometry preserved)
 
 ---
 
 ## KEEP / DO NOT TOUCH
 
 ### KEEP
-- Canonical product rules (Task↔Routine, occurrence_key, deadline ≠ schedule, day_plan entry rules, checklist Template≠Run).
+- Deadline (`due_*`) ≠ Scheduled (`planned_*` / day_plan flexible).
+- Soft delete = `status=cancelled` (not hard delete).
+- Non-routine complete/reopen flips Task status without fabricating occurrence.
+- Canonical product rules (Task↔Routine, occurrence_key, checklist Template≠Run).
+- M1 keyboard/safe-area/`adjustResize` behavior.
 - Upload keystore v2 / Play SHA1 `9D:0C:…:B5:01`.
-- Home V4 / Chat V4 visual language.
-- ProductShell overlay navigation model.
-- `windowSoftInputMode=adjustResize` + Android keyboard lift via inset (do not reintroduce `behavior="height"` on Android).
 
 ### DO NOT TOUCH until a later milestone allows
-- Tasks / routines / checklist-runs domain logic.
-- Day Plan / Planner / Agent runtime.
+- Recurring tasks / routine series UX (M3).
+- Task Checklist binding flows (M3).
+- Day Plan / „צור לי לו״ז” / Home planning / Free Time / „מה שכחתי?” / Agent.
 - Production deploy / Play upload.
 - Home V4 flower geometry redesign.
 - Unrelated lockfile / Gradle churn.
@@ -108,32 +126,30 @@ Documented below (kept for history). Clean git at start; 438/445 tests pass; 7 p
 
 ## Next milestone
 
-**M2 — awaiting human approval.** Do not start until explicitly approved.
-
-Likely candidates (not started): Settings entry from Home, remaining baseline test debt, product surfaces beyond shell.
+**M3 — Recurring Tasks + Task Checklist.** Do not start until explicitly approved.
 
 ---
 
 ## Next first action
 
-1. Wait for human approval of M1.
-2. On approval, read this handoff and the M2 brief before any code change.
+1. Wait for human approval of M2.
+2. On approval, read this handoff and the M3 brief before any code change.
+3. First M3 action: inventory how routines + checklist_id attach to Task today (mobile + `lib/actions` + schema) and fix lifecycle gaps only — no Day Plan/Agent.
 
 ---
 
 ## Important architectural decisions
 
-1. **Bottom safe area belongs to bottom chrome** (tab bar / screen footer), not to every `AppScreen` (`includeBottomSafeArea` opt-in only).
-2. **Android:** Manifest `adjustResize` + keyboard height inset / hide tab bar while IME open. Avoid `KeyboardAvoidingView behavior="height"` on Android.
-3. **IME height fallback (320)** when emulator reports show with empty metrics — keeps lift deterministic on Pixel AVD.
-4. **Shared checkbox control for list rows:** `ChecklistRow`. Tasks Pack / Home V4 rows stay until a dedicated UI milestone.
+1. **Bottom safe area belongs to bottom chrome** (M1).
+2. **Android:** Manifest `adjustResize` + keyboard inset / hide tab bar while IME open (M1).
+3. **Task schedule SoT on row:** `planned_start_at` / `planned_end_at` must be written when `plan_patch=set` (and for flexible `saveTaskPlans`); day_plan remains the day-board mirror, not a substitute for Task fields.
+4. **Fixed vs flexible in saveTaskPlans:** fixed → `due_*` only; flexible → `planned_*` only (deadline ≠ schedule).
 5. **No Push/Deploy** during the fix program unless requested.
 6. **Handoff-before-commit** is mandatory.
 
 ---
 
-## M0 baseline archive (summary)
+## M1 / M0 archive (summary)
 
-- HEAD at M0: `83b05e335d649bfeccf9dc5831a90b6cba5f5bdf`, clean tree.
-- Smoke PASS for main tabs; keyboard/safe-area issues recorded as M1 targets.
-- 7 failing tests pre-existing.
+- M1 commit: `356c326…` — layout, keyboard, nav.
+- M0: clean baseline; 7 failing tests pre-existing; smoke tabs PASS with layout debt → M1.

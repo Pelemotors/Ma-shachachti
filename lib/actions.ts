@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { inspectActions } from "./action-schema.ts";
 import { exactTaskFields, isExactOpenDuplicate } from "./task-identity.ts";
-import { DATE_RE, TIME_RE, dueTimeFromDueAt, jerusalemDateTimeToUtc, resolveTaskDeadline } from "./time.ts";
+import { DATE_RE, TIME_RE, dueTimeFromDueAt, jerusalemDateTimeToUtc, jerusalemParts, resolveTaskDeadline } from "./time.ts";
 import type {
   ActionResult,
   ActionType,
@@ -208,6 +208,9 @@ export async function executeAction(
           notes: fields.notes,
           due_on: fields.due_on,
           due_at: fields.due_at,
+          // Scheduled/execution time is independent of deadline (due_*).
+          planned_start_at: plannedWindow?.start ?? null,
+          planned_end_at: plannedWindow?.end ?? null,
           reminder_at: reminderAt,
           reminder_enabled: reminderEnabled,
           reminder_opted_in_at: reminderEnabled ? now : null,
@@ -282,8 +285,14 @@ export async function executeAction(
       }
       if (action.plan_patch === "clear") {
         nextPlannedStart = null;
+        patch.planned_start_at = null;
+        patch.planned_end_at = null;
         if (action.planned_date) {
           await removeDayPlanItem(db, userId, action.planned_date, action.id);
+        } else if (current.planned_start_at) {
+          // Clear day_plan row for the previously scheduled Jerusalem date.
+          const priorDate = jerusalemParts(current.planned_start_at).date;
+          await removeDayPlanItem(db, userId, priorDate, action.id);
         }
       } else if (action.plan_patch === "set") {
         const planned = resolvePlannedWindow(
@@ -293,6 +302,9 @@ export async function executeAction(
         );
         if (!planned.ok) return fail(action.type, planned.error);
         nextPlannedStart = planned.start;
+        // Persist scheduled time on the Task row itself (separate from due_*).
+        patch.planned_start_at = planned.start;
+        patch.planned_end_at = planned.end;
         if (action.planned_date) {
           await upsertDayPlanItem(db, userId, action.planned_date, {
             task_id: action.id,
@@ -302,9 +314,11 @@ export async function executeAction(
             source: "manual",
           });
           const priorDates = new Set<string>();
-          if (current.due_on && current.due_on !== action.planned_date) {
-            priorDates.add(current.due_on);
+          if (current.planned_start_at) {
+            const priorPlanned = jerusalemParts(current.planned_start_at).date;
+            if (priorPlanned !== action.planned_date) priorDates.add(priorPlanned);
           }
+          // Do not remove day_plan by due_on — deadline date ≠ schedule date.
           for (const prior of priorDates) {
             await removeDayPlanItem(db, userId, prior, action.id);
           }
@@ -1108,5 +1122,19 @@ export async function saveTaskPlans(
     });
   }
   await updateDayPlan(db, userId, date, planItems);
+  const now = new Date().toISOString();
+  for (const item of planItems) {
+    if (item.kind === "fixed") continue;
+    // Flexible schedule lives on Task.planned_* separately from due_*.
+    await db
+      .from("tasks")
+      .update({
+        planned_start_at: item.start_at,
+        planned_end_at: item.end_at,
+        updated_at: now,
+      })
+      .eq("user_id", userId)
+      .eq("id", item.task_id);
+  }
   return loadTasks(db, userId);
 }
