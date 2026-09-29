@@ -10,7 +10,11 @@ import type {
   TaskRow,
 } from "./types.ts";
 import { mutateChecklist, mutateShopping } from "./lists.ts";
-import { removeDayPlanItem, upsertDayPlanItem } from "./day-plan.ts";
+import {
+  removeDayPlanItem,
+  upsertDayPlanItem,
+  type DayPlanItemInput,
+} from "./day-plan.ts";
 import {
   applyRoutineException,
   createRoutine,
@@ -1080,13 +1084,7 @@ export async function saveTaskPlans(
     confidence: null,
     silent: null,
   };
-  const incoming: Array<{
-    task_id: string;
-    start_at: string;
-    end_at: string | null;
-    kind: "fixed" | "flexible";
-    source: "manual";
-  }> = [];
+  const incoming: DayPlanItemInput[] = [];
   for (const item of items.slice(0, 20)) {
     let taskId = item.task_id || "";
     if (taskId) {
