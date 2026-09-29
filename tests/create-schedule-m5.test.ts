@@ -166,6 +166,51 @@ test("gap fill places a task into a free hour before later blocks", () => {
   assert.ok(Date.parse(gapped!.start_at) < Date.parse(existing[1]!.start_at));
 });
 
+test("explicit replan reschedules an existing flexible item but keeps fixed items locked", () => {
+  const existing: DayPlanItemInput[] = [
+    {
+      task_id: "fixed-qa",
+      start_at: jerusalemDateTimeToUtc("2026-10-06", "12:00").toISOString(),
+      end_at: jerusalemDateTimeToUtc("2026-10-06", "12:30").toISOString(),
+      kind: "fixed",
+      source: "manual",
+    },
+    {
+      task_id: "flex-qa",
+      start_at: jerusalemDateTimeToUtc("2026-10-06", "13:00").toISOString(),
+      end_at: jerusalemDateTimeToUtc("2026-10-06", "13:45").toISOString(),
+      kind: "flexible",
+      source: "replan",
+    },
+  ];
+  const baseline = mergeDayPlanItems(
+    existing,
+    ["fixed-qa", "flex-qa"],
+    "2026-10-06",
+    [],
+    "07:00",
+    "19:00",
+  );
+  const contextual = mergeDayPlanItems(
+    existing,
+    ["fixed-qa", "flex-qa"],
+    "2026-10-06",
+    [],
+    "07:00",
+    "19:00",
+    { fillGaps: true, gapMinutes: 5 },
+  );
+  const baselineFixed = baseline.find((item) => item.task_id === "fixed-qa");
+  const contextualFixed = contextual.find((item) => item.task_id === "fixed-qa");
+  const baselineFlexible = baseline.find((item) => item.task_id === "flex-qa");
+  const contextualFlexible = contextual.find((item) => item.task_id === "flex-qa");
+  assert.ok(baselineFixed && contextualFixed && baselineFlexible && contextualFlexible);
+  assert.equal(contextualFixed.start_at, baselineFixed.start_at);
+  assert.notEqual(contextualFlexible.start_at, baselineFlexible.start_at);
+  assert.ok(Date.parse(contextualFlexible.start_at) < Date.parse(baselineFlexible.start_at));
+  assert.equal(contextual.filter((item) => item.task_id === "flex-qa").length, 1);
+});
+
 test("narrow window from context prevents packing past end", () => {
   const existing: DayPlanItemInput[] = [
     {

@@ -15,7 +15,7 @@ test("replan keeps only due-that-day and already planned ids", () => {
   );
 });
 
-test("merge preserves fixed items and only appends new ids", () => {
+test("merge preserves fixed items and reschedules flexible items before adding new ids", () => {
   const existing = [
     {
       task_id: "doctor",
@@ -38,6 +38,6 @@ test("merge preserves fixed items and only appends new ids", () => {
   assert.equal(doctor?.start_at, "2026-09-21T14:00:00.000Z");
   assert.equal(doctor?.kind, "fixed");
   const lunch = merged.find((item) => item.task_id === "lunch");
-  assert.equal(lunch?.start_at, "2026-09-21T10:00:00.000Z");
+  assert.equal(lunch?.start_at, "2026-09-21T15:15:00.000Z");
   assert.ok(merged.some((item) => item.task_id === "new-task" && item.kind === "flexible"));
 });

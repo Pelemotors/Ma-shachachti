@@ -465,9 +465,15 @@ export function mergeDayPlanItems(
   windowEnd?: string,
   mergeOptions?: { fillGaps?: boolean; gapMinutes?: number },
 ) {
-  const kept = existing.filter((item) => item.task_id);
-  const keptIds = new Set(kept.map((item) => item.task_id));
-  const toAdd = incomingIds.filter((id) => id && !keptIds.has(id));
+  const kept = existing.filter(
+    (item) => item.task_id && (item.kind === "fixed" || item.occurrence_key),
+  );
+  const lockedIds = new Set(kept.map((item) => item.task_id));
+  const flexibleExistingIds = existing
+    .filter((item) => item.task_id && !lockedIds.has(item.task_id))
+    .map((item) => item.task_id);
+  const toAdd = Array.from(new Set([...flexibleExistingIds, ...incomingIds]))
+    .filter((id) => id && !lockedIds.has(id));
   const gapMs = Math.max(0, (mergeOptions?.gapMinutes ?? 15) * 60 * 1000);
   const slotMs = 45 * 60 * 1000;
   const windowStartMs = jerusalemDateTimeToUtc(date, windowStart ?? "07:00").getTime();
@@ -547,7 +553,8 @@ export function mergeDayPlanItems(
 
 /**
  * Explicit rebuild intent only (e.g. „צור לי לו״ז”).
- * Preserves existing fixed/flexible/routine items; appends newly allowed task ids.
+ * Preserves existing fixed/routine items; reschedules existing flexible items and
+ * appends newly allowed task ids.
  * Applies planning_context to the working window before merge.
  * Never called from Home/Schedule open — only from an explicit replan action.
  */
