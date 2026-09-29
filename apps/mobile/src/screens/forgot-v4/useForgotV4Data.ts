@@ -30,11 +30,14 @@ export function useForgotV4Data() {
       return;
     }
     const results = await Promise.allSettled([getForgotten(), getProfile(), listNotifications(), listTasks()]);
-    const surface = settled(results[0], { date: "", sections: [] as ForgottenSection[] });
+    const surfaceResult = results[0];
+    const surface = settled(surfaceResult, { date: "", sections: [] as ForgottenSection[] });
     const profile = settled(results[1], { profile: { user_id: "", display_name: null } });
     const notes = settled(results[2], { notifications: [] });
     const tasks = settled(results[3], { tasks: [] });
-    setSections(surface.sections.length ? surface.sections : forgottenFromTasks(tasks.tasks));
+    setSections(
+      surfaceResult.status === "fulfilled" ? surface.sections : forgottenFromTasks(tasks.tasks),
+    );
     setDisplayName(greetingName(profile.profile.display_name));
     setUnread(notes.notifications.some((item) => !item.opened_at));
     try {

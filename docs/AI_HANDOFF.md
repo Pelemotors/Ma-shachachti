@@ -8,12 +8,12 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD:** `f29d0ad0b7319d82c0cf61820c5f5f28fa28c9c2` לפני commit M7
-- **Last completed milestone:** **M7 — Free Time**
+- **HEAD:** `09b71242d76c3727b439fdbe856dc0852b8d671a` לפני commit M8
+- **Last completed milestone:** **M8 — What Did I Forget / Attention Queue**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
-- **Stop gate:** Do **not** start M8 until human approval
+- **Stop gate:** Do **not** start M9 until human approval
 
 ---
 
@@ -47,6 +47,14 @@
 **Root cause addressed:** The existing Free Time screen listed broad task results without excluding routines, already planned items, urgent near-term work, or closed tasks, and had no selection mutation. The candidate task was not lost in the data chain; it ranked ninth and appeared after two deterministic “משהו אחר” rotations.
 
 **Verified:** Candidate filtering and rotation, no mutation before selection, exact QA task selection, one flexible canonical placement, task/day-plan persistence after app cold restart, and no duplicate placement. QA task and placement were deleted by exact IDs; leftovers were zero.
+
+### M8 — What Did I Forget / Attention Queue ✅
+
+**Root cause:** The existing `/api/forgot` flow used the generic task ranking and treated most open tasks as attention candidates. It did not exclude active routine tasks or tasks already on today's canonical plan, did not elevate missed reminders, and allowed undated/far-deadline tasks to enter merely because they existed. The mobile fallback could also replace an authoritative empty API result with a broad task-derived list.
+
+**Fix:** The existing Attention layer now filters to meaningful attention signals: overdue/near deadlines, missed reminders, rescheduled tasks, or recorded consequences. It excludes completed/cancelled tasks, active routines, and today's planned items; it ranks very-near deadlines and missed reminders explicitly and caps the result at six. The mobile fallback is used only when the API request fails, so an authoritative empty result remains empty. No Planner, Free Time, Tasks, or day-plan architecture changed.
+
+**Verified:** Local backend + Android Emulator showed a focused six-item feed with overdue and missed-reminder QA items, while undated, far-deadline, routine, completed, and already-planned QA items were excluded. Opening/reloading did not mutate state. Explicitly completing one QA item changed only that item. All QA tasks, the routine, and placement were removed by exact IDs; leftovers were zero. Production was not marked verified because the backend change was not deployed.
 
 ### M6 — Home connected to canonical Day Plan ✅
 
@@ -119,7 +127,7 @@ state is reserved for a genuinely empty canonical plan.
 | Check | Result |
 | --- | --- |
 | `apps/mobile` `npm run typecheck` | **PASS** |
-| M7/M6/M4/M5/Task targeted tests | **84 pass / 1 baseline fail** |
+| M8/M7/M6/M5/M4/Task/Reminder targeted tests | **97 pass / 1 baseline fail** |
 | `npm test` | **471 pass / 7 fail** — same 7 baseline; no new fails |
 | Android Emulator Home canonical plan | **PASS** — count/items visible; no false empty state |
 | Point update → day_plan + `planned_*` sync | **PASS** |
@@ -179,7 +187,7 @@ state is reserved for a genuinely empty canonical plan.
 
 ### DO NOT TOUCH until later milestone
 - „צור לי לו״ז” UI / „מה שונה היום” / full planning algorithm (M5).
-- Free Time / What Did I Forget / Agent / Notifications.
+- Agent / Notifications.
 - Production deploy / Play upload.
 - Home V4 flower geometry redesign.
 
@@ -187,14 +195,14 @@ state is reserved for a genuinely empty canonical plan.
 
 ## Next milestone
 
-**M8 — next milestone.** Do not start until explicitly approved.
+**M9 — next milestone.** Do not start until explicitly approved.
 
 ---
 
 ## Next first action
 
-1. Wait for human approval of M8.
-2. On approval, read this handoff and the M8 brief.
+1. Wait for human approval of M9.
+2. On approval, read this handoff and the M9 brief.
 
 ---
 

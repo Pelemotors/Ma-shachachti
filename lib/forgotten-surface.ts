@@ -110,21 +110,57 @@ export function buildForgottenSurface(input: {
   tasks: TaskRow[];
   consequences?: ConsequenceRow[];
   planTaskIds?: string[];
+  routineTaskIds?: string[];
   now?: Date;
 }): ForgottenSurface {
   const now = input.now ?? productNow();
   const { date: today } = todayContext(now);
   const weekEnd = jerusalemSaturdayOnOrAfter(today);
-  const open = input.tasks.filter((task) => task.status === "open");
+  const planTaskIds = new Set(input.planTaskIds ?? []);
+  const routineTaskIds = new Set(input.routineTaskIds ?? []);
+  const consequenceByTask = new Map(
+    (input.consequences ?? []).map((row) => [row.task_id, row]),
+  );
+  const open = input.tasks.filter((task) => {
+    if (task.status !== "open") return false;
+    if (planTaskIds.has(task.id) || routineTaskIds.has(task.id)) return false;
+    const due = forgottenDueDate(task);
+    const hasMissedReminder = Boolean(
+      task.reminder_enabled &&
+        task.reminder_at &&
+        Date.parse(task.reminder_at) <= now.getTime(),
+    );
+    const hasConsequence = (consequenceByTask.get(task.id)?.severity ?? "none") !== "none";
+    const hasAttentionSignal = (task.reschedule_count ?? 0) > 0 || hasMissedReminder || hasConsequence;
+    const dueSoon = Boolean(due && due <= addJerusalemDays(today, 7));
+    return Boolean(dueSoon || hasAttentionSignal);
+  });
   const ranked = rankTaskCandidates({
     tasks: open,
     consequences: input.consequences,
     now,
   });
+  for (const row of ranked) {
+    const task = row.task;
+    const due = forgottenDueDate(task);
+    if (due && due > today && due <= addJerusalemDays(today, 2)) {
+      row.score += 2;
+      row.reasons.push("near_deadline");
+    }
+    if (
+      task.reminder_enabled &&
+      task.reminder_at &&
+      Date.parse(task.reminder_at) <= now.getTime()
+    ) {
+      row.score += 5;
+      row.reasons.push("missed_reminder");
+    }
+  }
+  ranked.sort((a, b) => b.score - a.score || a.task.created_at.localeCompare(b.task.created_at) || a.task.id.localeCompare(b.task.id));
   const ids = stabilizeForgottenSelection({
     selectedIds: input.planTaskIds ?? [],
     ranked,
-    targetMin: Math.min(5, ranked.length),
+    targetMin: Math.min(6, ranked.length),
     targetMax: 6,
   });
   const byId = new Map(open.map((task) => [task.id, task]));

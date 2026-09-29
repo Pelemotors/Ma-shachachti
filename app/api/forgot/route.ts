@@ -3,6 +3,7 @@ import { loadTasks } from "@/lib/actions";
 import { loadConsequences } from "@/lib/consequences";
 import { buildForgottenSurface } from "@/lib/forgotten-surface";
 import { loadDayPlan } from "@/lib/day-plan";
+import { loadRoutines } from "@/lib/routines";
 import { todayContext } from "@/lib/time";
 
 export const runtime = "nodejs";
@@ -11,6 +12,7 @@ export async function GET(req: Request) {
   try {
     const { db, userId } = await authorize(req);
     const tasks = await loadTasks(db, userId);
+    const routines = await loadRoutines(db, userId);
     const consequences = await loadConsequences(
       db,
       userId,
@@ -29,6 +31,9 @@ export async function GET(req: Request) {
       tasks,
       consequences: [...consequences.values()],
       planTaskIds,
+      routineTaskIds: routines
+        .filter((routine) => routine.active)
+        .map((routine) => String(routine.task_id)),
     });
     return Response.json(surface);
   } catch (error) {
