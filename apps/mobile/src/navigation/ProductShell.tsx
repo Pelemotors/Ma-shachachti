@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { BackHandler, Dimensions, View } from "react-native";
-import { AppScreen, SuccessState, TabShell, type ProductTab } from "../components/ui";
+import { TabShell, type ProductTab } from "../components/ui";
 import { markNotificationOpened } from "../api/notifications";
 import { BankScreen } from "../screens/BankScreen";
 import { CalendarScreen } from "../screens/CalendarScreen";
@@ -32,7 +32,6 @@ type Overlay =
   | "schedule"
   | "checklists"
   | "checklist"
-  | "planSuccess"
   | "bank"
   | "privacy"
   | "calendar"
@@ -212,7 +211,8 @@ export function ProductShell() {
       <PlanComposerScreen
         mode="plan"
         onBack={() => setOverlay(null)}
-        onDone={() => setOverlay("planSuccess")}
+        // M5: stay on Create/Change Schedule after commit — no success overlay / Home jump.
+        onDone={() => {}}
       />
     );
   }
@@ -281,20 +281,6 @@ export function ProductShell() {
       />
     );
   }
-  if (overlay === "planSuccess") {
-    return (
-      <AppScreen scroll={false}>
-        <SuccessState
-          title="הלו״ז מוכן!"
-          onHome={() => {
-            setOverlay(null);
-            setTab("home");
-          }}
-        />
-      </AppScreen>
-    );
-  }
-
   if (tab === "home" && !overlay) {
     return (
       <View style={{ flex: 1, backgroundColor: V4.page }}>

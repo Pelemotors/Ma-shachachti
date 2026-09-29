@@ -31,6 +31,59 @@ export type ReplanOptions = {
   planUpdatedAt?: string | null;
 };
 
+export type ResolvedPlanningWindow = {
+  windowStart: string;
+  windowEnd: string;
+  fillGaps: boolean;
+  gapMinutes: number;
+  contextApplied: boolean;
+};
+
+/**
+ * Turns free-text „מה חשוב / שונה היום” into concrete replan window knobs.
+ * Must change scheduling outcomes — not just echo the string.
+ */
+export function resolvePlanningContext(
+  windowStart?: string,
+  windowEnd?: string,
+  planningContext?: string | null,
+): ResolvedPlanningWindow {
+  let start = windowStart && /^\d{2}:\d{2}$/.test(windowStart) ? windowStart : "07:00";
+  let end = windowEnd && /^\d{2}:\d{2}$/.test(windowEnd) ? windowEnd : "19:00";
+  const text = (planningContext ?? "").trim();
+  let fillGaps = false;
+  let gapMinutes = 15;
+  if (!text) {
+    return { windowStart: start, windowEnd: end, fillGaps, gapMinutes, contextApplied: false };
+  }
+
+  // „אני רוצה לסיים מוקדם” → clamp day end earlier.
+  if (/לסיים מוקדם|סיים מוקדם|לגמור מוקדם|לסיים יותר מוקדם/.test(text) || (/מוקדם/.test(text) && /סיים|לסיים|גמור/.test(text))) {
+    if (end > "15:00") end = "15:00";
+  }
+
+  // „יש לי אורחים בערב” → leave the evening free.
+  if (/אורחים/.test(text) || (/בערב/.test(text) && /אורח|ביקור|משפחה|חברים/.test(text)) || /אורחים בערב/.test(text)) {
+    if (end > "17:00") end = "17:00";
+  }
+  if (/בערב/.test(text) && !/בוקר|צהריים/.test(text) && end > "17:00") {
+    end = "17:00";
+  }
+
+  // „החוג בוטל… שעה פנויה” → pack into gaps instead of only appending after the last slot.
+  if (/בוטל|שעה פנויה|זמן פנוי|פנויה|יש לי שעה/.test(text)) {
+    fillGaps = true;
+    gapMinutes = 5;
+  }
+
+  if (start >= end) {
+    start = "07:00";
+    end = end > start ? end : "19:00";
+  }
+
+  return { windowStart: start, windowEnd: end, fillGaps, gapMinutes, contextApplied: true };
+}
+
 export async function resolveUserScope(
   db: SupabaseClient,
   userId: string,
@@ -410,28 +463,74 @@ export function mergeDayPlanItems(
   constraints: CalendarConstraint[],
   windowStart?: string,
   windowEnd?: string,
+  mergeOptions?: { fillGaps?: boolean; gapMinutes?: number },
 ) {
   const kept = existing.filter((item) => item.task_id);
   const keptIds = new Set(kept.map((item) => item.task_id));
   const toAdd = incomingIds.filter((id) => id && !keptIds.has(id));
-  let cursor = kept.reduce((max, item) => {
-    const end = item.end_at ? Date.parse(item.end_at) : Date.parse(item.start_at);
-    return Number.isNaN(end) ? max : Math.max(max, end + 15 * 60 * 1000);
-  }, jerusalemDateTimeToUtc(date, windowStart ?? "09:00").getTime());
+  const gapMs = Math.max(0, (mergeOptions?.gapMinutes ?? 15) * 60 * 1000);
+  const slotMs = 45 * 60 * 1000;
+  const windowStartMs = jerusalemDateTimeToUtc(date, windowStart ?? "07:00").getTime();
   const endLimit = windowEnd ? jerusalemDateTimeToUtc(date, windowEnd).getTime() : null;
+  const fillGaps = Boolean(mergeOptions?.fillGaps);
+
+  const blocked = [
+    ...kept.map((item) => ({
+      start: Date.parse(item.start_at),
+      end: item.end_at ? Date.parse(item.end_at) : Date.parse(item.start_at) + slotMs,
+    })),
+    ...constraints.map((event) => ({
+      start: Date.parse(event.start_at),
+      end: Date.parse(event.end_at),
+    })),
+  ]
+    .filter((block) => Number.isFinite(block.start) && Number.isFinite(block.end))
+    .sort((a, b) => a.start - b.start);
+
+  function placeAfterLast(): number {
+    return kept.reduce((max, item) => {
+      const end = item.end_at ? Date.parse(item.end_at) : Date.parse(item.start_at);
+      return Number.isNaN(end) ? max : Math.max(max, end + gapMs);
+    }, windowStartMs);
+  }
+
+  function nextGapStart(fromMs: number): number | null {
+    let cursor = Math.max(fromMs, windowStartMs);
+    for (const block of blocked) {
+      if (block.end <= cursor) continue;
+      if (block.start - cursor >= slotMs) return cursor;
+      cursor = Math.max(cursor, block.end + gapMs);
+    }
+    if (endLimit !== null && cursor + slotMs > endLimit) return null;
+    return cursor;
+  }
+
+  let cursor = fillGaps ? windowStartMs : placeAfterLast();
   const added: DayPlanItemInput[] = [];
   for (const taskId of toAdd) {
-    let start = cursor;
-    let end = start + 45 * 60 * 1000;
+    let start = fillGaps ? nextGapStart(cursor) : cursor;
+    if (start === null) break;
+    let end = start + slotMs;
     for (const event of constraints) {
       const eStart = Date.parse(event.start_at);
       const eEnd = Date.parse(event.end_at);
       if (start < eEnd && end > eStart) {
-        start = eEnd;
-        end = start + 45 * 60 * 1000;
+        start = eEnd + gapMs;
+        end = start + slotMs;
+      }
+    }
+    for (const block of blocked) {
+      if (start < block.end && end > block.start) {
+        start = block.end + gapMs;
+        end = start + slotMs;
       }
     }
     if (endLimit !== null && end > endLimit) break;
+    if (start < windowStartMs) {
+      start = windowStartMs;
+      end = start + slotMs;
+      if (endLimit !== null && end > endLimit) break;
+    }
     added.push({
       task_id: taskId,
       start_at: new Date(start).toISOString(),
@@ -439,7 +538,9 @@ export function mergeDayPlanItems(
       kind: "flexible",
       source: "replan",
     });
-    cursor = end + 15 * 60 * 1000;
+    blocked.push({ start, end });
+    blocked.sort((a, b) => a.start - b.start);
+    cursor = end + gapMs;
   }
   return [...kept, ...added];
 }
@@ -447,6 +548,7 @@ export function mergeDayPlanItems(
 /**
  * Explicit rebuild intent only (e.g. „צור לי לו״ז”).
  * Preserves existing fixed/flexible/routine items; appends newly allowed task ids.
+ * Applies planning_context to the working window before merge.
  * Never called from Home/Schedule open — only from an explicit replan action.
  */
 export async function replanDay(
@@ -483,9 +585,31 @@ export async function replanDay(
   } else {
     allowed = existing.map((item) => item.task_id);
   }
-  const slots = mergeDayPlanItems(existing, allowed, date, constraints, options.windowStart, options.windowEnd);
+  const resolved = resolvePlanningContext(
+    options.windowStart,
+    options.windowEnd,
+    options.planningContext,
+  );
+  const slots = mergeDayPlanItems(
+    existing,
+    allowed,
+    date,
+    constraints,
+    resolved.windowStart,
+    resolved.windowEnd,
+    { fillGaps: resolved.fillGaps, gapMinutes: resolved.gapMinutes },
+  );
   const saved = await updateDayPlan(db, userId, date, slots, household);
-  return { ...saved, conflicts: detectConflicts(slots, constraints) };
+  return {
+    ...saved,
+    conflicts: detectConflicts(slots, constraints),
+    planning: {
+      window_start: resolved.windowStart,
+      window_end: resolved.windowEnd,
+      fill_gaps: resolved.fillGaps,
+      context_applied: resolved.contextApplied,
+    },
+  };
 }
 
 export function itemFromExplicitCalendarAction(input: {

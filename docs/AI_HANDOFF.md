@@ -8,12 +8,12 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD (pre-M4):** `7ba50e107c817f20e615fbb506bad0f43a83ca4d` (M1.1) — after M4 commit this file matches the new SHA
-- **Last completed milestone:** **M4 — Day Plan Core / Single Source of Truth**
+- **HEAD:** `49c1fb1c0d0dab506c852316ceca6789c98b42a1`
+- **Last completed milestone:** **M5 — Create / Change Schedule**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
-- **Local mobile `.env`:** LAN Next for emulator (gitignored)
-- **Stop gate:** Do **not** start M5 until human approval
+- **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
+- **Stop gate:** Do **not** start M6 until human approval
 
 ---
 
@@ -22,6 +22,23 @@
 ### M4 — Day Plan Core / Single Source of Truth ✅
 
 **Scope:** Canonical day plan per user-scope + date; clear `updateDayPlan` vs `replanDay`; sync flexible `tasks.planned_*` with day_plan; no Create Schedule UI / Free Time / What Did I Forget / Agent rebuild.
+
+### M5 — Create / Change Schedule ✅
+
+**Scope:** Select today/tomorrow/other date; load the existing canonical plan; configure planning inputs and `07:00–19:00` defaults; submit explicit `replanDay`; validate before reporting success; commit and reload the canonical plan; remain on PlanComposer.
+
+**Verified:**
+
+- Production existing plans render routine, fixed, and flexible items.
+- Date picker, today/tomorrow/other date, default and changed windows work.
+- Hebrew planning context changes local planner output, including cancelled activity/free-hour behavior.
+- Fixed and routine items are preserved during replan.
+- Android Back with keyboard open dismisses/blur the keyboard; the next Back exits normally.
+- Success is reported only after API response, DB commit, and canonical reload; the user remains on PlanComposer.
+- Runtime stale `planUpdatedAt` returns `HttpError 409` without overwriting the newer plan.
+- Production persistence E2E used an existing Task, confirmed the exact Task and `day_plan_item` by service-role read, then removed only those QA rows.
+
+**Known M5 limitation:** planning-context behavior and stale/409 are locally verified; the Production backend was not deployed with the M5 backend changes during the emulator run.
 
 ### Root cause
 
@@ -77,7 +94,8 @@
 | Check | Result |
 | --- | --- |
 | `apps/mobile` `npm run typecheck` | **PASS** |
-| `npm test` | **456 pass / 7 fail** — same 7 baseline; +M4 tests; no new fails |
+| M5/M4/actions targeted tests | **55 pass / 0 fail** |
+| `npm test` | **467 pass / 7 fail** — same 7 baseline; no new fails |
 | Android Emulator Home/Tasks consistency | **PASS** |
 | Point update → day_plan + `planned_*` sync | **PASS** |
 | reload/restart | **PASS** |
@@ -109,7 +127,7 @@
 - Root Next `typecheck` noise in `.next/types` (unrelated).
 - User-scope vs household-scope can both exist for the same calendar date (by design of `scope_*`).
 - `classifyScheduleDay` / web `buildHomeDisplay` still task-based for some legacy web surfaces — mobile Home/Schedule use day_plan.
-- Create Schedule UI / planning algorithm / Free Time / What Did I Forget / Agent deferred to M5+.
+- Production backend deploy of M5 behavior remains a manual VPS action.
 
 ### Baseline failing tests
 1. memory selector prefers user source and keyword overlap  
@@ -141,15 +159,15 @@
 
 ## Next milestone
 
-**M5 — Create / Change Schedule.** Do not start until explicitly approved.
+**M6 — Home.** Do not start until explicitly approved.
 
 ---
 
 ## Next first action
 
-1. Wait for human approval of M4.
-2. On approval, read this handoff and the M5 brief.
-3. First M5 action: wire Create/Change Schedule UI to explicit `replanDay` + context field — without breaking the M4 SoT invariants.
+1. Wait for human approval of M6.
+2. On approval, read this handoff and the M6 brief.
+3. First M6 action: inspect Home filtering/rendering against canonical `day_plans` without changing M5 invariants.
 
 ---
 
