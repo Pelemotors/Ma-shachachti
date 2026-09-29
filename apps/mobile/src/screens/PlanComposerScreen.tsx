@@ -13,6 +13,7 @@ import {
 import { listTasks, type MobileTask } from "../api/tasks";
 import { useKeyboardOpen } from "../layout/keyboard";
 import { FREETIME_DEFAULT_MINUTES } from "../product/surfaceCommit";
+import type { FreeTimeEnergy } from "../product/freeTimeCandidates";
 import { colors as baseColors, rtlText, type as baseType } from "../theme";
 
 const colors = {
@@ -65,6 +66,7 @@ export function PlanComposerScreen({
     kind: "success" | "schedule" | "freetime";
     minutes: number;
     date: string;
+    energy?: FreeTimeEnergy | null;
   }) => void;
 }) {
   const [selectedDate, setSelectedDate] = useState(jerusalemDateFromNow());
@@ -77,6 +79,8 @@ export function PlanComposerScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [savedNotice, setSavedNotice] = useState("");
+  const [freeMinutes, setFreeMinutes] = useState(FREETIME_DEFAULT_MINUTES);
+  const [energy, setEnergy] = useState<FreeTimeEnergy | null>(null);
   const planMode = mode === "plan";
   const keyboardOpen = useKeyboardOpen();
   const contextInputRef = useRef<TextInput>(null);
@@ -130,7 +134,7 @@ export function PlanComposerScreen({
 
   async function submit() {
     if (!planMode) {
-      onDone({ kind: "freetime", minutes: FREETIME_DEFAULT_MINUTES, date: selectedDate });
+      onDone({ kind: "freetime", minutes: freeMinutes, date: selectedDate, energy });
       return;
     }
     if (minutesBetween(start, end) <= 0) {
@@ -178,7 +182,9 @@ export function PlanComposerScreen({
         <View style={styles.footer}>
           <PrimaryActionButton
             label={
-              busy
+              !planMode
+                ? "הצג הצעות"
+                : busy
                 ? "מסדר לך את היום..."
                 : plan?.items.length
                   ? "שנה לי את הלו״ז"
@@ -196,10 +202,46 @@ export function PlanComposerScreen({
         icon="calendar-outline"
       />
       <Text style={styles.subtitle}>
-        בוחרים תאריך, רואים מה כבר קיים, ואז בונים מחדש על ה־day_plan השמור.
+        {planMode
+          ? "בוחרים תאריך, רואים מה כבר קיים, ואז בונים מחדש על ה־day_plan השמור."
+          : "כמה זמן יש לך עכשיו? נציע כמה משימות מתאימות בלי לשנות את הלו״ז."}
       </Text>
 
-      <Text style={styles.heading}>לאיזה יום?</Text>
+      {!planMode ? (
+        <>
+          <Text style={styles.heading}>כמה זמן פנוי יש לך?</Text>
+          <View style={styles.dateRow}>
+            {[15, 30, 60].map((minutes) => (
+              <Pressable
+                key={minutes}
+                style={[styles.dateCard, freeMinutes === minutes && styles.selected]}
+                onPress={() => setFreeMinutes(minutes)}
+              >
+                <Text style={styles.dateTitle}>{minutes} דקות</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.heading}>רמת אנרגיה (אופציונלי)</Text>
+          <View style={styles.dateRow}>
+            {([
+              ["low", "נמוכה"],
+              ["medium", "בינונית"],
+              ["high", "גבוהה"],
+            ] as const).map(([value, label]) => (
+              <Pressable
+                key={value}
+                style={[styles.dateCard, energy === value && styles.selected]}
+                onPress={() => setEnergy(energy === value ? null : value)}
+              >
+                <Text style={styles.dateTitle}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      {planMode ? <Text style={styles.heading}>לאיזה יום?</Text> : null}
+      {planMode ? (
       <View style={styles.dateRow}>
         {chips.map((chip) => (
           <Pressable
@@ -221,8 +263,10 @@ export function PlanComposerScreen({
           </Text>
         </Pressable>
       </View>
+      ) : null}
 
-      <Text style={styles.heading}>מה כבר ביום הזה?</Text>
+      {planMode ? <Text style={styles.heading}>מה כבר ביום הזה?</Text> : null}
+      {planMode ? (
       <View style={styles.card}>
         {plan?.items.length ? (
           plan.items.map((item) => (
@@ -236,8 +280,10 @@ export function PlanComposerScreen({
           <Text style={styles.empty}>אין עדיין פריטים ביום הזה</Text>
         )}
       </View>
+      ) : null}
 
-      <Text style={styles.heading}>שעות היום</Text>
+      {planMode ? <Text style={styles.heading}>שעות היום</Text> : null}
+      {planMode ? (
       <View style={styles.card}>
         <View style={styles.timeRow}>
           <Pressable style={styles.timeBox} onPress={() => setPicker("end")}>
@@ -253,6 +299,7 @@ export function PlanComposerScreen({
           ◷ טווח לתכנון: {available > 0 ? `${(available / 60).toFixed(1)} שעות` : "טווח לא תקין"}
         </Text>
       </View>
+      ) : null}
 
       {planMode ? (
         <>

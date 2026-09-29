@@ -8,12 +8,12 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD (before M6 commit):** `7a32901691ed36f24932ba44c84e931037b06b48`
-- **Last completed milestone:** **M6 — Home connected to canonical Day Plan**
+- **HEAD:** `f29d0ad0b7319d82c0cf61820c5f5f28fa28c9c2` לפני commit M7
+- **Last completed milestone:** **M7 — Free Time**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
-- **Stop gate:** Do **not** start M7 until human approval
+- **Stop gate:** Do **not** start M8 until human approval
 
 ---
 
@@ -38,7 +38,15 @@
 - Runtime stale `planUpdatedAt` returns `HttpError 409` without overwriting the newer plan.
 - Production persistence E2E used an existing Task, confirmed the exact Task and `day_plan_item` by service-role read, then removed only those QA rows.
 
-**Known M5 limitation:** planning-context behavior and stale/409 are locally verified; the Production backend was not deployed with the M5 backend changes during the emulator run.
+**M5 production note:** planning-context behavior and stale/409 were subsequently verified against the deployed Production backend using isolated QA data.
+
+### M7 — Free Time ✅
+
+**Scope:** Read-only contextual candidate selection for 15/30/60 minutes with optional energy. Opening the flow and requesting “משהו אחר” do not mutate Tasks or day plans. Selecting a candidate uses the existing task point-mutation API and only then creates the canonical placement.
+
+**Root cause addressed:** The existing Free Time screen listed broad task results without excluding routines, already planned items, urgent near-term work, or closed tasks, and had no selection mutation. The candidate task was not lost in the data chain; it ranked ninth and appeared after two deterministic “משהו אחר” rotations.
+
+**Verified:** Candidate filtering and rotation, no mutation before selection, exact QA task selection, one flexible canonical placement, task/day-plan persistence after app cold restart, and no duplicate placement. QA task and placement were deleted by exact IDs; leftovers were zero.
 
 ### M6 — Home connected to canonical Day Plan ✅
 
@@ -111,8 +119,8 @@ state is reserved for a genuinely empty canonical plan.
 | Check | Result |
 | --- | --- |
 | `apps/mobile` `npm run typecheck` | **PASS** |
-| M6 Home/M4/M5 targeted tests | **55 pass / 1 baseline fail** |
-| `npm test` | **468 pass / 7 fail** — same 7 baseline; no new fails |
+| M7/M6/M4/M5/Task targeted tests | **84 pass / 1 baseline fail** |
+| `npm test` | **471 pass / 7 fail** — same 7 baseline; no new fails |
 | Android Emulator Home canonical plan | **PASS** — count/items visible; no false empty state |
 | Point update → day_plan + `planned_*` sync | **PASS** |
 | reload/restart | **PASS** |
@@ -146,7 +154,7 @@ state is reserved for a genuinely empty canonical plan.
 - Root Next `typecheck` noise in `.next/types` (unrelated).
 - User-scope vs household-scope can both exist for the same calendar date (by design of `scope_*`).
 - `classifyScheduleDay` / web `buildHomeDisplay` still task-based for some legacy web surfaces — mobile Home/Schedule use day_plan.
-- Production backend deploy of M5 behavior remains a manual VPS action.
+- Production deployment remains a manual VPS action.
 - Home complete-task and schedule-time mutation scenarios were not run against historical Production data; the M6 change is read-only and refresh behavior is covered by local regression tests.
 
 ### Baseline failing tests
@@ -179,14 +187,14 @@ state is reserved for a genuinely empty canonical plan.
 
 ## Next milestone
 
-**M7 — next milestone.** Do not start until explicitly approved.
+**M8 — next milestone.** Do not start until explicitly approved.
 
 ---
 
 ## Next first action
 
-1. Wait for human approval of M7.
-2. On approval, read this handoff and the M7 brief.
+1. Wait for human approval of M8.
+2. On approval, read this handoff and the M8 brief.
 
 ---
 

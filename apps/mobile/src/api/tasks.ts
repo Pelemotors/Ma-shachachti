@@ -13,6 +13,8 @@ export type MobileTask = {
   planned_end_at?: string | null;
   notes?: string | null;
   estimate_minutes?: number | null;
+  reschedule_count?: number | null;
+  created_at?: string;
   checklist_id?: string | null;
 };
 

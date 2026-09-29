@@ -23,6 +23,7 @@ import { HelpSettingsScreen } from "../screens/settings/HelpSettingsScreen";
 import { SettingsHubScreen } from "../screens/settings/SettingsHubScreen";
 import { V4 } from "../screens/home-v4/homeV4Theme";
 import { FREETIME_DEFAULT_MINUTES, resolveFreetimeMinutes } from "../product/surfaceCommit";
+import type { FreeTimeEnergy } from "../product/freeTimeCandidates";
 
 type Overlay =
   | "forgot"
@@ -64,6 +65,7 @@ export function ProductShell() {
   const [checklistOccurrence, setChecklistOccurrence] = useState<string | undefined>(undefined);
   const [checklistReturnTo, setChecklistReturnTo] = useState<"tasks" | "checklists">("checklists");
   const [freetimeMinutes, setFreetimeMinutes] = useState(FREETIME_DEFAULT_MINUTES);
+  const [freetimeEnergy, setFreetimeEnergy] = useState<FreeTimeEnergy | null>(null);
   const width = Dimensions.get("window").width;
 
   const backFromSettingsChild = useCallback(() => {
@@ -130,6 +132,7 @@ export function ProductShell() {
     }
     if (screen === "freetime") {
       setFreetimeMinutes(FREETIME_DEFAULT_MINUTES);
+      setFreetimeEnergy(null);
     }
     // Chat legacy onAvatar("privacy") → Settings hub entry.
     if (screen === "privacy") {
@@ -223,6 +226,7 @@ export function ProductShell() {
         onBack={() => setOverlay(null)}
         onDone={(payload) => {
           setFreetimeMinutes(resolveFreetimeMinutes(payload.minutes));
+          setFreetimeEnergy(payload.energy ?? null);
           setOverlay("freetimeResults");
         }}
       />
@@ -232,6 +236,7 @@ export function ProductShell() {
     return (
       <FreeTimeResultsScreen
         minutes={freetimeMinutes}
+        energy={freetimeEnergy}
         onBack={() => {
           // Close Free Time fully so Chat/tabs/Home are reachable (RF-08).
           setFreetimeMinutes(FREETIME_DEFAULT_MINUTES);
