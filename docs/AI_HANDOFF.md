@@ -8,12 +8,12 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD:** `49c1fb1c0d0dab506c852316ceca6789c98b42a1`
-- **Last completed milestone:** **M5 — Create / Change Schedule**
+- **HEAD (before M6 commit):** `7a32901691ed36f24932ba44c84e931037b06b48`
+- **Last completed milestone:** **M6 — Home connected to canonical Day Plan**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
-- **Stop gate:** Do **not** start M6 until human approval
+- **Stop gate:** Do **not** start M7 until human approval
 
 ---
 
@@ -39,6 +39,23 @@
 - Production persistence E2E used an existing Task, confirmed the exact Task and `day_plan_item` by service-role read, then removed only those QA rows.
 
 **Known M5 limitation:** planning-context behavior and stale/409 are locally verified; the Production backend was not deployed with the M5 backend changes during the emulator run.
+
+### M6 — Home connected to canonical Day Plan ✅
+
+**Root cause:** Home progress count was derived from the canonical `day_plan`, but the
+"עכשיו אצלך" rows applied a second filter that removed open items whose start time was
+more than 15 minutes in the past. When all three canonical items were already past,
+Home therefore showed `3` in the count and an incorrect empty state.
+
+**Fix:** `buildHomeNow` still uses the canonical day plan for count and rows. It keeps
+near/upcoming open items when available, and falls back to all open canonical items
+when the near/upcoming set is empty. No planner, replan, persistence, navigation,
+Home geometry, or design behavior changed.
+
+**Verified:** Production canonical plan for the test user/date contained three open
+items (routine, fixed, flexible). Android Home displayed the count and item titles,
+then displayed the same state after pull-to-refresh and app cold restart. The empty
+state is reserved for a genuinely empty canonical plan.
 
 ### Root cause
 
@@ -94,9 +111,9 @@
 | Check | Result |
 | --- | --- |
 | `apps/mobile` `npm run typecheck` | **PASS** |
-| M5/M4/actions targeted tests | **55 pass / 0 fail** |
-| `npm test` | **467 pass / 7 fail** — same 7 baseline; no new fails |
-| Android Emulator Home/Tasks consistency | **PASS** |
+| M6 Home/M4/M5 targeted tests | **55 pass / 1 baseline fail** |
+| `npm test` | **468 pass / 7 fail** — same 7 baseline; no new fails |
+| Android Emulator Home canonical plan | **PASS** — count/items visible; no false empty state |
 | Point update → day_plan + `planned_*` sync | **PASS** |
 | reload/restart | **PASS** |
 | Duplicate plan per date | **PASS** (count=1) |
@@ -118,6 +135,8 @@
 | One `day_plans` row for user+today | PASS |
 | Routine `occurrence_key` on today | PASS |
 | Tomorrow item only on tomorrow plan | PASS |
+| Home pull-to-refresh | PASS |
+| Home app cold restart | PASS |
 
 ---
 
@@ -128,6 +147,7 @@
 - User-scope vs household-scope can both exist for the same calendar date (by design of `scope_*`).
 - `classifyScheduleDay` / web `buildHomeDisplay` still task-based for some legacy web surfaces — mobile Home/Schedule use day_plan.
 - Production backend deploy of M5 behavior remains a manual VPS action.
+- Home complete-task and schedule-time mutation scenarios were not run against historical Production data; the M6 change is read-only and refresh behavior is covered by local regression tests.
 
 ### Baseline failing tests
 1. memory selector prefers user source and keyword overlap  
@@ -159,15 +179,14 @@
 
 ## Next milestone
 
-**M6 — Home.** Do not start until explicitly approved.
+**M7 — next milestone.** Do not start until explicitly approved.
 
 ---
 
 ## Next first action
 
-1. Wait for human approval of M6.
-2. On approval, read this handoff and the M6 brief.
-3. First M6 action: inspect Home filtering/rendering against canonical `day_plans` without changing M5 invariants.
+1. Wait for human approval of M7.
+2. On approval, read this handoff and the M7 brief.
 
 ---
 

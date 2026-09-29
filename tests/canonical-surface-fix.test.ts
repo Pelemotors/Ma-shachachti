@@ -98,6 +98,25 @@ test("HOME canonical plan shows progress and next open items", () => {
   assert.equal(view.rows.some((row) => row.title === "ביטול"), false);
 });
 
+test("HOME keeps open canonical items visible when all scheduled times already passed", () => {
+  const view = buildHomeNow({
+    plan: {
+      plan: { id: "p1", plan_date: "2026-09-21" },
+      items: [
+        { task_id: "t1", start_at: "2026-09-21T07:00:00.000Z" },
+        { task_id: "t4", start_at: "2026-09-21T08:00:00.000Z" },
+        { task_id: "t1", start_at: "2026-09-21T09:00:00.000Z" },
+      ],
+    },
+    tasks,
+    nowMs: Date.parse("2026-09-21T18:00:00.000Z"),
+    formatTime: (iso) => iso.slice(11, 16),
+  });
+  assert.equal(view.total, 3);
+  assert.equal(view.rows.length, 2);
+  assert.deepEqual(view.rows.map((row) => row.title), ["רופא ילדים", "ארוחת ערב"]);
+});
+
 test("HOME completed item is not treated as open", () => {
   const view = buildHomeNow({
     plan: {

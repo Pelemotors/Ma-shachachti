@@ -60,13 +60,18 @@ export function buildHomeNow(input: {
     return !task || task.status !== "cancelled";
   });
   const done = actionable.filter((item) => byId.get(item.task_id)?.status === "done").length;
-  const allRows = items
+  const openItems = items
     .filter((item) => {
       const task = byId.get(item.task_id);
       if (!task || task.status !== "open") return false;
-      return new Date(item.start_at).getTime() >= input.nowMs - 15 * 60 * 1000;
+      return true;
     })
     .sort((a, b) => a.start_at.localeCompare(b.start_at))
+  const nearOrUpcoming = openItems.filter(
+    (item) => new Date(item.start_at).getTime() >= input.nowMs - 15 * 60 * 1000,
+  );
+  const visibleItems = nearOrUpcoming.length ? nearOrUpcoming : openItems;
+  const allRows = visibleItems
     .map((item) => {
       const task = byId.get(item.task_id);
       const title = task?.title ?? "פריט בלו״ז";
