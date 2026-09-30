@@ -2,10 +2,12 @@ import { apiRequest } from "./client";
 import { getMobileApiBaseUrl } from "../utils/env";
 import { readStoredAccessToken } from "./supabase";
 import { ApiError } from "./client";
+import type { RecordingStatus } from "../utils/recordingStatus";
+export { recordingStatusLabel } from "../utils/recordingStatus";
 
 export type MobileRecording = {
   id: string;
-  status: string;
+  status: RecordingStatus;
   origin: string;
   created_at: string;
 };

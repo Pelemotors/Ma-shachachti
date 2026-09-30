@@ -13,7 +13,8 @@
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
-- **Stop gate:** Do **not** start M11 until human approval
+- **STOP GATE 1:** **DEFERRED TO FINAL REGRESSION**. This is neither a product PASS nor a product failure; the remaining manual cross-domain/Production verification is intentionally deferred.
+- **QA workflow (M11–M16):** Each milestone uses Audit/Root Cause, implementation, targeted tests, relevant regressions, typecheck, and full `npm test`. Production/Emulator E2E, cleanup loops, and cross-domain manual verification are deferred to M16 Final Regression. No deploy between milestones.
 
 ---
 
@@ -71,6 +72,14 @@
 **Fix:** The creation modal tracks keyboard visibility and consumes Android Back while the keyboard is open. Items are created server-first and moved to the top after confirmed creation; drag/reorder persists `order_index`; delete requires explicit confirmation. Template completion remains separate from the reusable template, reset clears execution only, and duplicate remains independent.
 
 **Verified:** Local targeted tests, M3 task-linked checklist regression, mobile typecheck, and Android Emulator E2E. A new QA Task with a real linked Checklist was created through the Tasks flow; one item remained checked after reload and cold restart. Only the exact QA records created for this run were deleted. The historical checklist `יציאה מהבית עם מיראל` was not touched.
+
+### M11 — Recording Bank ✅ local verification
+
+**Root cause:** The native Bank screen generated upload IDs with a direct `crypto.randomUUID()` call. That is not available in every native runtime/build target and was the source of the `Property 'crypto' doesn't exist` risk. The existing backend already persisted recording claims and background jobs, but the client exposed raw storage statuses instead of the M11 labels.
+
+**Fix:** Added a platform-safe client ID helper with a UUID fallback, mapped `uploading/processing` to **Processing**, `ready` to **Completed**, and `error` to **Needs Review**, and added server-confirmed manual transcript correction for Needs Review. Existing private playback and retry/rerecord paths remain in place. The upload → recording processing → background job → transcription/extraction/classification/commit chain remains idempotent and persisted in Supabase, so leaving the screen or restarting does not discard work.
+
+**Verified locally:** M11 recording-bank/recording/transcription/privacy targeted tests (40/40), root typecheck, mobile typecheck, and full `npm test` (483 pass / 7 unchanged baseline failures). Production and Emulator E2E are intentionally deferred to M16 Final Regression under the revised QA workflow.
 
 ### M6 — Home connected to canonical Day Plan ✅
 
@@ -211,16 +220,20 @@ state is reserved for a genuinely empty canonical plan.
 
 ---
 
+## STOP GATE 1 disposition
+
+The Tasks portion was independently verified through UI/API/Production DB evidence, but repeated final navigation was limited by emulator automation. Shopping, Checklists, Day Plan, and cross-domain manual verification are not being repeated per the revised QA workflow. The entire gate is therefore **DEFERRED TO FINAL REGRESSION**.
+
 ## Next milestone
 
-**M11 — next milestone.** Do not start until explicitly approved.
+**M12 — next milestone.**
 
 ---
 
 ## Next first action
 
-1. Wait for human approval of M11.
-2. On approval, read this handoff and the M11 brief.
+1. Read this handoff and the M12 brief.
+2. Keep Production/Emulator E2E deferred until M16 Final Regression.
 
 ---
 

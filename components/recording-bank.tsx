@@ -6,10 +6,10 @@ import type { RecordingRow } from "@/lib/recordings";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui-states";
 
 const STATUS_HE: Record<RecordingRow["status"], string> = {
-  uploading: "מעלה",
-  processing: "מתמלל",
-  ready: "מוכן",
-  error: "שגיאה",
+  uploading: "Processing",
+  processing: "Processing",
+  ready: "Completed",
+  error: "Needs Review",
 };
 
 function formatDuration(seconds: number) {
@@ -23,6 +23,8 @@ export function RecordingBank() {
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftTranscript, setDraftTranscript] = useState("");
 
   async function load() {
     setLoading(true);
@@ -69,6 +71,27 @@ export function RecordingBank() {
       setRecordings((current) =>
         current.map((item) => (item.id === id ? body.recording : item)),
       );
+    }
+    setBusyId(null);
+  }
+
+  async function saveCorrection(id: string) {
+    setBusyId(id);
+    setError("");
+    const response = await authFetch(`/api/recordings/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript: draftTranscript }),
+    }).catch(() => null);
+    const body = await response?.json().catch(() => ({}));
+    if (!response?.ok || !body?.recording) {
+      setError(body?.error ?? "לא הצלחנו לשמור את התיקון.");
+    } else {
+      setRecordings((current) =>
+        current.map((item) => (item.id === id ? body.recording : item)),
+      );
+      setEditingId(null);
+      setDraftTranscript("");
     }
     setBusyId(null);
   }
@@ -144,7 +167,23 @@ export function RecordingBank() {
                 <span>{formatDuration(recording.duration_seconds)}</span>
                 <span>{Math.max(1, Math.round(recording.size / 1024))} KB</span>
               </div>
-              {recording.transcript ? (
+              {editingId === recording.id ? (
+                <div>
+                  <textarea
+                    value={draftTranscript}
+                    onChange={(event) => setDraftTranscript(event.target.value)}
+                    aria-label="תיקון תמלול"
+                  />
+                  <button
+                    className="settings-action"
+                    type="button"
+                    disabled={busyId === recording.id}
+                    onClick={() => void saveCorrection(recording.id)}
+                  >
+                    שמור תיקון
+                  </button>
+                </div>
+              ) : recording.transcript ? (
                 <p className="recording-card__transcript">
                   {recording.transcript}
                 </p>
@@ -164,6 +203,19 @@ export function RecordingBank() {
                 />
               ) : null}
               <div className="recording-card__actions">
+                {recording.status === "error" ? (
+                  <button
+                    className="settings-action"
+                    type="button"
+                    disabled={busyId === recording.id}
+                    onClick={() => {
+                      setDraftTranscript(recording.transcript ?? "");
+                      setEditingId(recording.id);
+                    }}
+                  >
+                    תיקון ידני
+                  </button>
+                ) : null}
                 {recording.storage_path && !audioUrls[recording.id] ? (
                   <button
                     className="text-button"

@@ -67,6 +67,37 @@ export function recordingDuration(value: string | null) {
   return Math.round(duration * 1000) / 1000;
 }
 
+export async function correctRecordingTranscript(
+  db: SupabaseClient,
+  userId: string,
+  id: string,
+  transcript: string,
+) {
+  const value = transcript.trim().slice(0, 6000);
+  if (!value) throw new HttpError(400, "התמלול המתוקן ריק.");
+  const times = readyTimes();
+  const { data, error } = await db
+    .from("recordings")
+    .update({
+      status: "ready",
+      transcript: value,
+      error_code: null,
+      error_message: null,
+      processed_at: times.processed_at,
+      delete_after: times.delete_after,
+      processing_token: null,
+      updated_at: times.processed_at,
+    })
+    .eq("user_id", userId)
+    .eq("id", id)
+    .in("status", ["error", "ready"])
+    .select(RECORDING_SELECT)
+    .maybeSingle();
+  if (error) throw new HttpError(503, "לא הצלחנו לשמור את התמלול המתוקן.");
+  if (!data) throw new HttpError(404, "ההקלטה לא נמצאה או אינה ניתנת לתיקון.");
+  return data as RecordingRow;
+}
+
 function safeFailure(error: unknown) {
   if (error instanceof HttpError && error.status === 503) {
     return {

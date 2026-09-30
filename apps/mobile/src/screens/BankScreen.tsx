@@ -8,9 +8,15 @@ import {
   useAudioRecorderState,
 } from "expo-audio";
 import { sendChat } from "../api/chat";
-import { listBankRecordings, uploadBankRecording, type MobileRecording } from "../api/recordings";
+import {
+  listBankRecordings,
+  recordingStatusLabel,
+  uploadBankRecording,
+  type MobileRecording,
+} from "../api/recordings";
 import { useMicDisclosureGate } from "../privacy/micDisclosure";
 import { ErrorText, Field, Hint, PrimaryButton, ScreenShell } from "../ui/chrome";
+import { newClientId } from "../utils/clientId";
 
 export function BankScreen({ onBack }: { onBack: () => void }) {
   const mic = useMicDisclosureGate();
@@ -58,7 +64,7 @@ export function BankScreen({ onBack }: { onBack: () => void }) {
       );
       const blob = await (await fetch(uri)).blob();
       await uploadBankRecording({
-        id: crypto.randomUUID(),
+        id: newClientId(),
         durationSec,
         body: blob,
         contentType: blob.type || "audio/mp4",
@@ -101,7 +107,7 @@ export function BankScreen({ onBack }: { onBack: () => void }) {
       <ErrorText message={error} />
       {items.map((item) => (
         <Text key={item.id} style={styles.line}>
-          {item.status} · {new Date(item.created_at).toLocaleString("he-IL")}
+          {recordingStatusLabel(item.status)} · {new Date(item.created_at).toLocaleString("he-IL")}
         </Text>
       ))}
     </ScreenShell>
