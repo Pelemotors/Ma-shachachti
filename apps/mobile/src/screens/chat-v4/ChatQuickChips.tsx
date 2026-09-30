@@ -3,7 +3,7 @@ import { HomeV4Icon, type HomeV4IconName } from "../home-v4/homeV4Icons";
 import { CHAT, heebo } from "./chatV4Theme";
 
 const CHIPS: Array<{ id: "task" | "plan" | "shopping"; label: string; icon: HomeV4IconName }> = [
-  { id: "task", label: "הוסף משימה", icon: "tasks" },
+  { id: "task", label: "משימה מהירה", icon: "tasks" },
   { id: "plan", label: "בנה לי לו״ז", icon: "calendar" },
   { id: "shopping", label: "קניות", icon: "cart" },
 ];

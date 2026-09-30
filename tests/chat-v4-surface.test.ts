@@ -37,7 +37,7 @@ test("CHAT V4 shell mounts the V4 screen on the chat tab", () => {
 test("CHAT V4 chips map to real product actions", () => {
   const chips = read("apps/mobile/src/screens/chat-v4/ChatQuickChips.tsx");
   const screen = read("apps/mobile/src/screens/chat-v4/ChatV4Screen.tsx");
-  assert.match(chips, /הוסף משימה/);
+  assert.match(chips, /משימה מהירה/);
   assert.match(chips, /בנה לי לו״ז/);
   assert.match(chips, /קניות/);
   assert.match(screen, /createTask/);

@@ -8,8 +8,8 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD:** `8398f9534df26294c01d5c897e87ec19a04429c8`
-- **Last completed milestone:** **M11 — Recording Bank**
+- **HEAD:** `7bb32ab809876fedff48c7409b7b88b379093198`
+- **Last completed milestone:** **M12 — Notifications + Deep Links**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
@@ -88,6 +88,14 @@
 **Fix:** Added an additive notification lifecycle (`active`, `missed`, `snoozed`, `handled`, `cancelled`) and authenticated PATCH actions. Reminder actions update only the notification state and never complete the linked Task. Added exact entity deep-link mapping for Task, Shopping, Checklist, and standalone Notification, and changed reminder payloads/routes to target the exact Task. Existing `(user_id, logical_key)` upsert dedupe and claim locks remain the push-loop protection.
 
 **Verified locally:** M12 targeted tests, reminder/push, task-time, mobile platform, and checklist deep-link regressions; root/mobile typecheck; and full `npm test` (487 pass / 7 unchanged baseline failures). Real Android notification-tray Push E2E is explicitly deferred to M16 Final Regression.
+
+### M13 — Chat UI / Shortcuts ✅ local verification
+
+**Audit/root cause:** The native Chat V4 shortcuts already use the canonical domain boundaries: Quick Task calls `createTask`, and Build Schedule opens the existing `PlanComposer` overlay. The existing add modal closes only after the awaited Task API succeeds; failures keep the modal open and show an error. Conversations, new conversation, and history use the existing session APIs. No duplicate Task or Planner implementation was added.
+
+**Fix:** Renamed the Quick Task chip to `משימה מהירה` and added targeted contract tests covering canonical Task API routing, PlanComposer routing, server-confirmed success/error behavior, conversations, new conversation, and the existing add modal.
+
+**Verified locally:** M13 targeted + Task/Planner/Chat regressions (73/73), root/mobile typecheck, and full `npm test` (491 pass / 7 unchanged baseline failures). Production/Emulator E2E remains deferred to M16 Final Regression.
 
 ### M6 — Home connected to canonical Day Plan ✅
 
@@ -234,13 +242,13 @@ The Tasks portion was independently verified through UI/API/Production DB eviden
 
 ## Next milestone
 
-**M13 — next milestone: Chat UI / Shortcuts.**
+**M14 — next milestone: Settings + הבית שלי.**
 
 ---
 
 ## Next first action
 
-1. Read this handoff and the M13 brief.
+1. Read this handoff and the M14 brief.
 2. Keep Production/Emulator E2E deferred until M16 Final Regression.
 
 ---
