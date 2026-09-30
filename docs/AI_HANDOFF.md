@@ -8,13 +8,14 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD:** `b77510fa4643d6e11584525d38d3838f456cad8a`
+- **HEAD (code under final regression):** `d1b2b51593a7891711de010f1f0ffe574c82bbc7`
 - **Last completed milestone:** **M15 — Agent Integration**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
 - **STOP GATE 1:** **DEFERRED TO FINAL REGRESSION**. This is neither a product PASS nor a product failure; the remaining manual cross-domain/Production verification is intentionally deferred.
 - **QA workflow (M11–M16):** Each milestone uses Audit/Root Cause, implementation, targeted tests, relevant regressions, typecheck, and full `npm test`. Production/Emulator E2E, cleanup loops, and cross-domain manual verification are deferred to M16 Final Regression. No deploy between milestones.
+- **Production deployment known at M16 start:** `444fcaa535cc4c522fb879f1a456eac48fce1299` (M9). `origin/main` is `01f460fbbb1838d6cbabf8665a0828e9821f187f`; local M10–M15 commits are not yet deployed.
 
 ---
 
@@ -112,6 +113,19 @@
 **Fix:** No parallel domain implementation was added. Added targeted contract coverage for canonical Task/Reminder/Day Plan/Shopping/Checklist action mapping, validation, server-confirmed failure/success wording, idempotent retries, stale/CAS safety, explicit replan boundaries, and multi-turn entity continuity.
 
 **Verified locally:** M15 targeted plus Task, Day Plan, Reminder/Notification, Shopping, Checklist, and Chat regressions (81/81), root/mobile typecheck, `git diff --check`, and full `npm test` (502 pass / 7 unchanged baseline failures). Production/Emulator E2E remains deferred to M16 Final Regression.
+
+### M16 — Final Regression ⏳ pre-production gate passed
+
+**Deployment manifest:** Production is documented at M9 SHA `444fcaa535cc4c522fb879f1a456eac48fce1299`; M10–M15 are local-only commits through `d1b2b51593a7891711de010f1f0ffe574c82bbc7`. Apply the following additive migrations through the existing migration procedure, in filename order, before deploying that code:
+
+1. `database/migrations/20260930_household_context.sql`
+2. `database/migrations/20260930_m12_notification_lifecycle.sql`
+
+**Automated final matrix:** 153 cross-domain targeted tests passed, covering Task→Schedule→Home, Chat canonical actions, notification/reminder lifecycle, recording processing, Shopping, reusable Checklists, Free Time, Attention ranking, Household context, and Agent multi-turn continuity. Root and mobile typechecks passed; `git diff --check` passed; full `npm test` reports only the same seven documented baseline failures.
+
+**Production/Android gate:** Metro is available locally, but this Codex environment cannot attach its ADB client to the host-managed daemon; no ADB restart or app mutation was attempted. More importantly, Production has not yet received M10–M15 or the two required migrations, so an M16 final E2E matrix against it would not verify the code under test. This is a deployment/tooling precondition, not a product failure.
+
+**Next required action:** Manually deploy the local M10–M15 code and apply the two migrations above. Then run one controlled Production/Android M16 matrix, with QA-only records and the historical checklist `יציאה מהבית עם מיראל` off limits. Do not start a new feature milestone before this gate is completed.
 
 ### M6 — Home connected to canonical Day Plan ✅
 
@@ -258,14 +272,14 @@ The Tasks portion was independently verified through UI/API/Production DB eviden
 
 ## Next milestone
 
-**M16 — next milestone: Final Regression.**
+**M16 — Production/Android final matrix pending manual deploy and migrations.**
 
 ---
 
 ## Next first action
 
-1. Read this handoff and the M16 Final Regression brief.
-2. Keep Production/Emulator E2E deferred until M16 Final Regression.
+1. Apply the two listed additive migrations and deploy the local M10–M15 code manually.
+2. Run the one controlled M16 Production/Android final matrix with QA-only records.
 
 ---
 
