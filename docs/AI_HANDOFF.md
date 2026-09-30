@@ -15,7 +15,7 @@
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
 - **STOP GATE 1:** **DEFERRED TO FINAL REGRESSION**. This is neither a product PASS nor a product failure; the remaining manual cross-domain/Production verification is intentionally deferred.
 - **QA workflow (M11–M16):** Each milestone uses Audit/Root Cause, implementation, targeted tests, relevant regressions, typecheck, and full `npm test`. Production/Emulator E2E, cleanup loops, and cross-domain manual verification are deferred to M16 Final Regression. No deploy between milestones.
-- **Production deployment known at M16 start:** `444fcaa535cc4c522fb879f1a456eac48fce1299` (M9). `origin/main` is `01f460fbbb1838d6cbabf8665a0828e9821f187f`; local M10–M15 commits are not yet deployed.
+- **Production deployment for M16:** `bb21c20ab795a156d4dabc9196a398836805a08f`; M9, M12, and M14 migrations are applied. Build, service, and supplied health checks passed. Production verification uses the canonical Production user and QA-only records.
 
 ---
 
@@ -116,16 +116,13 @@
 
 ### M16 — Final Regression ⏳ pre-production gate passed
 
-**Deployment manifest:** Production is documented at M9 SHA `444fcaa535cc4c522fb879f1a456eac48fce1299`; M10–M15 are local-only commits through `d1b2b51593a7891711de010f1f0ffe574c82bbc7`. Apply the following additive migrations through the existing migration procedure, in filename order, before deploying that code:
-
-1. `database/migrations/20260930_household_context.sql`
-2. `database/migrations/20260930_m12_notification_lifecycle.sql`
+**Production readiness:** Production now runs `bb21c20ab795a156d4dabc9196a398836805a08f`; migrations M9, M12, and M14 are applied. The supplied VPS build, service, internal/external health checks, and clean working tree passed.
 
 **Automated final matrix:** 153 cross-domain targeted tests passed, covering Task→Schedule→Home, Chat canonical actions, notification/reminder lifecycle, recording processing, Shopping, reusable Checklists, Free Time, Attention ranking, Household context, and Agent multi-turn continuity. Root and mobile typechecks passed; `git diff --check` passed; full `npm test` reports only the same seven documented baseline failures.
 
-**Production/Android gate:** Metro is available locally, but this Codex environment cannot attach its ADB client to the host-managed daemon; no ADB restart or app mutation was attempted. More importantly, Production has not yet received M10–M15 or the two required migrations, so an M16 final E2E matrix against it would not verify the code under test. This is a deployment/tooling precondition, not a product failure.
+**Production/Android gate:** Production is ready for the controlled final matrix. This Codex environment cannot resolve a host bridge to Cursor's host-managed ADB daemon, and must not start or restart that daemon. Therefore the Android matrix must be run once from Cursor Local against `emulator-5554`; no app mutation or QA data was created from Codex. This is a tooling limitation, not a product failure.
 
-**Next required action:** Manually deploy the local M10–M15 code and apply the two migrations above. Then run one controlled Production/Android M16 matrix, with QA-only records and the historical checklist `יציאה מהבית עם מיראל` off limits. Do not start a new feature milestone before this gate is completed.
+**Next required action:** Run one controlled Cursor Local Production/Android M16 matrix, with QA-only records and the historical checklist `יציאה מהבית עם מיראל` off limits. Do not start a new feature milestone before this gate is completed.
 
 ### M6 — Home connected to canonical Day Plan ✅
 
@@ -272,14 +269,14 @@ The Tasks portion was independently verified through UI/API/Production DB eviden
 
 ## Next milestone
 
-**M16 — Production/Android final matrix pending manual deploy and migrations.**
+**M16 — Production/Android final matrix pending Cursor Local execution.**
 
 ---
 
 ## Next first action
 
-1. Apply the two listed additive migrations and deploy the local M10–M15 code manually.
-2. Run the one controlled M16 Production/Android final matrix with QA-only records.
+1. Run the one controlled Cursor Local M16 Production/Android final matrix with QA-only records.
+2. Record QA IDs and clean only those records at the end.
 
 ---
 
