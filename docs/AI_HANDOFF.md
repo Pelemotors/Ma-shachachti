@@ -8,8 +8,8 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD:** `f946239f3282f00f0c03bfba523264682a1681b9`
-- **Last completed milestone:** **M14 — Settings + הבית שלי**
+- **HEAD:** `b77510fa4643d6e11584525d38d3838f456cad8a`
+- **Last completed milestone:** **M15 — Agent Integration**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
@@ -104,6 +104,14 @@
 **Fix:** Added additive `user_profiles.household_context` JSONB storage with bounded validation and partial-update merge semantics. Extended the existing Household screen with RTL household context fields, feature chips, pets, and free text. Saving uses the canonical profile API only; it does not create Tasks, Reminders, Routines, or day-plan items.
 
 **Verified locally:** M14 targeted and profile/household regressions, root/mobile typecheck, `git diff --check`, and full `npm test` (495 pass / 7 unchanged baseline failures). STOP GATE 2 and Production/Emulator manual verification are deferred to M16 Final Regression.
+
+### M15 — Agent Integration ✅ local verification
+
+**Audit/root cause:** The Agent already routes mutations through the existing idempotent boundary: standard actions use the authenticated `execute_lean_action_idempotent` RPC, while TS-backed actions use `executeAction`. Schedule surface mutations are suppressed unless an explicit schedule-save flow handles them. Conversation history is loaded from the same owned session, and turn receipts prevent duplicate execution.
+
+**Fix:** No parallel domain implementation was added. Added targeted contract coverage for canonical Task/Reminder/Day Plan/Shopping/Checklist action mapping, validation, server-confirmed failure/success wording, idempotent retries, stale/CAS safety, explicit replan boundaries, and multi-turn entity continuity.
+
+**Verified locally:** M15 targeted plus Task, Day Plan, Reminder/Notification, Shopping, Checklist, and Chat regressions (81/81), root/mobile typecheck, `git diff --check`, and full `npm test` (502 pass / 7 unchanged baseline failures). Production/Emulator E2E remains deferred to M16 Final Regression.
 
 ### M6 — Home connected to canonical Day Plan ✅
 
@@ -250,13 +258,13 @@ The Tasks portion was independently verified through UI/API/Production DB eviden
 
 ## Next milestone
 
-**M15 — next milestone: Agent Integration.**
+**M16 — next milestone: Final Regression.**
 
 ---
 
 ## Next first action
 
-1. Read this handoff and the M15 brief.
+1. Read this handoff and the M16 Final Regression brief.
 2. Keep Production/Emulator E2E deferred until M16 Final Regression.
 
 ---
