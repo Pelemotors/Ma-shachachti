@@ -8,12 +8,12 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD:** `09b71242d76c3727b439fdbe856dc0852b8d671a` לפני commit M8
-- **Last completed milestone:** **M8 — What Did I Forget / Attention Queue**
+- **HEAD:** `444fcaa535cc4c522fb879f1a456eac48fce1299`
+- **Last completed milestone:** **M9 — Shopping**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
-- **Stop gate:** Do **not** start M9 until human approval
+- **Stop gate:** Do **not** start M10 until human approval
 
 ---
 
@@ -55,6 +55,12 @@
 **Fix:** The existing Attention layer now filters to meaningful attention signals: overdue/near deadlines, missed reminders, rescheduled tasks, or recorded consequences. It excludes completed/cancelled tasks, active routines, and today's planned items; it ranks very-near deadlines and missed reminders explicitly and caps the result at six. The mobile fallback is used only when the API request fails, so an authoritative empty result remains empty. No Planner, Free Time, Tasks, or day-plan architecture changed.
 
 **Verified:** Local backend + Android Emulator showed a focused six-item feed with overdue and missed-reminder QA items, while undated, far-deadline, routine, completed, and already-planned QA items were excluded. Opening/reloading did not mutate state. Explicitly completing one QA item changed only that item. All QA tasks, the routine, and placement were removed by exact IDs; leftovers were zero. Production was not marked verified because the backend change was not deployed.
+
+### M9 — Shopping ✅ Production verified
+
+**Scope:** Complete Shopping lifecycle: create, inline rename, notes, auto category, Purchased, Undo Purchased, Delete, reload, and cold restart persistence. Server-confirmed responses are required before UI state changes.
+
+**Production verification:** Production runs `444fcaa535cc4c522fb879f1a456eac48fce1299`. The M9 database migration was applied successfully. Shopping E2E, persistence, and exact QA cleanup were verified against Production; the final query for all QA titles returned zero rows.
 
 ### M6 — Home connected to canonical Day Plan ✅
 
@@ -195,14 +201,14 @@ state is reserved for a genuinely empty canonical plan.
 
 ## Next milestone
 
-**M9 — next milestone.** Do not start until explicitly approved.
+**M10 — Checklists.** Do not start until explicitly approved.
 
 ---
 
 ## Next first action
 
-1. Wait for human approval of M9.
-2. On approval, read this handoff and the M9 brief.
+1. Wait for human approval of M10.
+2. On approval, read this handoff and the M10 brief.
 
 ---
 
