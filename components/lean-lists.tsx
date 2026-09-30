@@ -39,7 +39,7 @@ export function ShoppingView(props: {
     setTitle("");
     await props.mutations.run({
       key: `shopping:add:${value}`, current: () => items,
-      optimistic: (snapshot) => [...snapshot, { id: `local-${value}`, title: value, quantity: 1, purchased_at: null, order_index: snapshot.length, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }],
+      optimistic: (snapshot) => [...snapshot, { id: `local-${value}`, title: value, quantity: 1, purchased_at: null, notes: "", category: "bag", order_index: snapshot.length, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }],
       commit: () => post<ShoppingItem>("/api/shopping", { action: "add", title: value, quantity: 1 }, "shopping"),
       publish: setItems, errorMessage: "לא הצלחנו להוסיף את הפריט.",
     }, props.onFailure);
