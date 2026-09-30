@@ -21,7 +21,32 @@ export type UserProfile = {
   avatar_url?: string | null;
   created_at: string | null;
   updated_at: string | null;
+  household_context: HouseholdContext;
 };
+
+export type HouseholdContext = {
+  adults: number;
+  children: number;
+  babies: number;
+  rooms: number;
+  bathrooms: number;
+  floors: number;
+  features: string[];
+  pets: string[];
+  free_text: string;
+};
+
+export const emptyHouseholdContext = (): HouseholdContext => ({
+  adults: 0,
+  children: 0,
+  babies: 0,
+  rooms: 0,
+  bathrooms: 0,
+  floors: 0,
+  features: [],
+  pets: [],
+  free_text: "",
+});
 
 export type AgentProfileContext = Pick<
   UserProfile,
@@ -81,6 +106,20 @@ const profileFields = {
   address_style: z.enum(ADDRESS_STYLES),
   appearance_mode: z.enum(["auto", "season"]),
   appearance_season: z.enum(APPEARANCE_SEASONS).nullable(),
+  household_context: z
+    .object({
+      adults: z.number().int().min(0).max(20).optional(),
+      children: z.number().int().min(0).max(20).optional(),
+      babies: z.number().int().min(0).max(20).optional(),
+      rooms: z.number().int().min(0).max(100).optional(),
+      bathrooms: z.number().int().min(0).max(50).optional(),
+      floors: z.number().int().min(0).max(50).optional(),
+      features: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
+      pets: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+      free_text: z.string().trim().max(2000).optional(),
+    })
+    .strict()
+    .optional(),
 };
 
 export const profileUpdateSchema = z
@@ -126,6 +165,7 @@ export function emptyUserProfile(userId: string): UserProfile {
     avatar_url: null,
     created_at: null,
     updated_at: null,
+    household_context: emptyHouseholdContext(),
   };
 }
 

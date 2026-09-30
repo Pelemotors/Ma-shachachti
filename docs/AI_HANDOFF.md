@@ -8,8 +8,8 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD:** `7bb32ab809876fedff48c7409b7b88b379093198`
-- **Last completed milestone:** **M12 — Notifications + Deep Links**
+- **HEAD:** `f946239f3282f00f0c03bfba523264682a1681b9`
+- **Last completed milestone:** **M14 — Settings + הבית שלי**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
@@ -96,6 +96,14 @@
 **Fix:** Renamed the Quick Task chip to `משימה מהירה` and added targeted contract tests covering canonical Task API routing, PlanComposer routing, server-confirmed success/error behavior, conversations, new conversation, and the existing add modal.
 
 **Verified locally:** M13 targeted + Task/Planner/Chat regressions (73/73), root/mobile typecheck, and full `npm test` (491 pass / 7 unchanged baseline failures). Production/Emulator E2E remains deferred to M16 Final Regression.
+
+### M14 — Settings + הבית שלי ✅ local verification
+
+**Audit/root cause:** Settings navigation and profile persistence already existed, as did a `HouseholdScreen` for household membership and invites. There was no canonical household-context payload for adults, children, babies, rooms, bathrooms, floors, home features, pets, or free text.
+
+**Fix:** Added additive `user_profiles.household_context` JSONB storage with bounded validation and partial-update merge semantics. Extended the existing Household screen with RTL household context fields, feature chips, pets, and free text. Saving uses the canonical profile API only; it does not create Tasks, Reminders, Routines, or day-plan items.
+
+**Verified locally:** M14 targeted and profile/household regressions, root/mobile typecheck, `git diff --check`, and full `npm test` (495 pass / 7 unchanged baseline failures). STOP GATE 2 and Production/Emulator manual verification are deferred to M16 Final Regression.
 
 ### M6 — Home connected to canonical Day Plan ✅
 
@@ -242,13 +250,13 @@ The Tasks portion was independently verified through UI/API/Production DB eviden
 
 ## Next milestone
 
-**M14 — next milestone: Settings + הבית שלי.**
+**M15 — next milestone: Agent Integration.**
 
 ---
 
 ## Next first action
 
-1. Read this handoff and the M14 brief.
+1. Read this handoff and the M15 brief.
 2. Keep Production/Emulator E2E deferred until M16 Final Regression.
 
 ---

@@ -6,11 +6,16 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getHousehold, householdAction, type HouseholdPayload } from "../api/household";
-import { getProfile } from "../api/profile";
+import {
+  getProfile,
+  updateProfile,
+  type HouseholdContext,
+} from "../api/profile";
 import { useAuth } from "../auth/AuthContext";
 import { UserAvatar } from "../components/UserAvatar";
 import { heebo } from "./home-v4/homeV4Theme";
@@ -25,6 +30,19 @@ export function HouseholdScreen({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [invite, setInvite] = useState("");
+  const [context, setContext] = useState<HouseholdContext>({
+    adults: 0,
+    children: 0,
+    babies: 0,
+    rooms: 0,
+    bathrooms: 0,
+    floors: 0,
+    features: [],
+    pets: [],
+    free_text: "",
+  });
+  const [contextBusy, setContextBusy] = useState(false);
+  const featureOptions = ["מרפסת", "גינה", "מעלית", "ממ״ד", "מדרגות", "חניה"];
 
   const reload = useCallback(async () => {
     setData(await getHousehold());
@@ -36,6 +54,7 @@ export function HouseholdScreen({ onBack }: { onBack: () => void }) {
       .then((p) => {
         if (p.profile.display_name) setMyName(p.profile.display_name);
         if (p.profile.avatar_url) setMyAvatar(p.profile.avatar_url);
+        if (p.profile.household_context) setContext(p.profile.household_context);
       })
       .catch(() => undefined);
   }, [reload]);
@@ -54,6 +73,24 @@ export function HouseholdScreen({ onBack }: { onBack: () => void }) {
     }
   }
 
+  function setCount(key: "adults" | "children" | "babies" | "rooms" | "bathrooms" | "floors", value: string) {
+    const parsed = Number(value.replace(/[^0-9]/g, ""));
+    setContext((current) => ({ ...current, [key]: Number.isFinite(parsed) ? parsed : 0 }));
+  }
+
+  async function saveContext() {
+    setContextBusy(true);
+    setError("");
+    try {
+      const result = await updateProfile({ household_context: context });
+      if (result.profile.household_context) setContext(result.profile.household_context);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שמירת פרטי הבית נכשלה");
+    } finally {
+      setContextBusy(false);
+    }
+  }
+
   const others = (data?.members ?? []).filter((m) => m.user_id !== user?.id);
 
   return (
@@ -67,6 +104,80 @@ export function HouseholdScreen({ onBack }: { onBack: () => void }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
+        <Text style={styles.sectionTitle}>הבית שלי</Text>
+        <Text style={styles.note}>המידע משמש להקשר אישי בלבד ואינו יוצר משימות או תזכורות.</Text>
+        <View style={styles.card}>
+          {([
+            ["adults", "מבוגרים"],
+            ["children", "ילדים"],
+            ["babies", "תינוקות"],
+            ["rooms", "חדרים"],
+            ["bathrooms", "חדרי רחצה"],
+            ["floors", "קומות"],
+          ] as const).map(([key, label]) => (
+            <View key={key} style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>{label}</Text>
+              <TextInput
+                value={String(context[key])}
+                onChangeText={(value) => setCount(key, value)}
+                keyboardType="number-pad"
+                style={styles.countInput}
+                textAlign="center"
+                maxLength={2}
+              />
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.label}>מאפייני הבית</Text>
+        <View style={styles.chips}>
+          {featureOptions.map((feature) => {
+            const selected = context.features.includes(feature);
+            return (
+              <Pressable
+                key={feature}
+                onPress={() => setContext((current) => ({
+                  ...current,
+                  features: selected
+                    ? current.features.filter((item) => item !== feature)
+                    : [...current.features, feature],
+                }))}
+                style={[styles.chip, selected && styles.chipSelected]}
+              >
+                <Text style={styles.chipText}>{feature}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={styles.label}>חיות מחמד</Text>
+        <TextInput
+          value={context.pets.join(", ")}
+          onChangeText={(value) => setContext((current) => ({
+            ...current,
+            pets: value.split(",").map((item) => item.trim()).filter(Boolean),
+          }))}
+          placeholder="למשל: כלב, חתול"
+          placeholderTextColor={S.muted}
+          style={styles.textInput}
+          textAlign="right"
+        />
+
+        <Text style={styles.label}>עוד משהו שחשוב לדעת</Text>
+        <TextInput
+          value={context.free_text}
+          onChangeText={(value) => setContext((current) => ({ ...current, free_text: value }))}
+          placeholder="פרטים על הבית והמשפחה"
+          placeholderTextColor={S.muted}
+          style={[styles.textInput, styles.multiline]}
+          textAlign="right"
+          multiline
+          maxLength={2000}
+        />
+        <Pressable style={styles.save} disabled={contextBusy} onPress={() => void saveContext()}>
+          <Text style={styles.secondaryText}>{contextBusy ? "שומר…" : "שמירת פרטי הבית"}</Text>
+        </Pressable>
+
         <Text style={styles.sub}>האנשים והחברים בבית</Text>
 
         <View style={styles.card}>
@@ -150,6 +261,69 @@ const styles = StyleSheet.create({
     color: S.muted,
     textAlign: "right",
     marginBottom: 16,
+  },
+  sectionTitle: {
+    fontFamily: heebo("700"),
+    fontSize: 21,
+    color: S.text,
+    textAlign: "right",
+    marginBottom: 4,
+  },
+  fieldRow: {
+    minHeight: 56,
+    paddingHorizontal: 16,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: S.divider,
+  },
+  fieldLabel: { fontFamily: heebo("600"), fontSize: 15, color: S.text },
+  countInput: {
+    width: 52,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: S.beige2,
+    color: S.text,
+    fontFamily: heebo("600"),
+  },
+  label: {
+    marginTop: 18,
+    marginBottom: 7,
+    fontFamily: heebo("600"),
+    fontSize: 14,
+    color: S.text,
+    textAlign: "right",
+  },
+  chips: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
+  chip: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: S.beige2,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    backgroundColor: S.surface,
+  },
+  chipSelected: { backgroundColor: S.beige, borderColor: S.camel },
+  chipText: { fontFamily: heebo("600"), fontSize: 13, color: S.darkBrown },
+  textInput: {
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: S.beige2,
+    backgroundColor: S.surface,
+    paddingHorizontal: 12,
+    color: S.text,
+    fontFamily: heebo("400"),
+  },
+  multiline: { minHeight: 96, textAlignVertical: "top", paddingTop: 12 },
+  save: {
+    marginTop: 16,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: S.camel,
+    alignItems: "center",
+    justifyContent: "center",
   },
   card: {
     borderRadius: S.radiusCard,

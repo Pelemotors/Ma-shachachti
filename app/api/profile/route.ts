@@ -1,6 +1,7 @@
 import { authorize, HttpError } from "@/lib/server-auth";
 import {
   emptyUserProfile,
+  emptyHouseholdContext,
   onboardingUpdateSchema,
   profileUpdateSchema,
   type UserProfile,
@@ -10,7 +11,7 @@ import { normalizePhoneE164 } from "@/lib/phone";
 export const runtime = "nodejs";
 
 const PROFILE_COLUMNS =
-  "user_id,display_name,phone_e164,address_style,onboarding_completed_at,appearance_mode,appearance_season,created_at,updated_at";
+  "user_id,display_name,phone_e164,address_style,onboarding_completed_at,appearance_mode,appearance_season,household_context,created_at,updated_at";
 
 function jsonError(error: unknown) {
   if (error instanceof HttpError) {
@@ -21,7 +22,7 @@ function jsonError(error: unknown) {
 }
 
 const PROFILE_COLUMNS_WITHOUT_PHONE =
-  "user_id,display_name,address_style,onboarding_completed_at,appearance_mode,appearance_season,created_at,updated_at";
+  "user_id,display_name,address_style,onboarding_completed_at,appearance_mode,appearance_season,household_context,created_at,updated_at";
 
 async function readProfile(
   db: Awaited<ReturnType<typeof authorize>>["db"],
@@ -33,7 +34,7 @@ async function readProfile(
     .eq("user_id", userId)
     .maybeSingle();
   if (!first.error) {
-    return (first.data as UserProfile | null) ?? emptyUserProfile(userId);
+    return normalizeProfile((first.data as UserProfile | null) ?? emptyUserProfile(userId), userId);
   }
   if (!/phone_e164/i.test(first.error.message ?? "")) throw first.error;
   const { data, error } = await db
@@ -46,6 +47,15 @@ async function readProfile(
     ...emptyUserProfile(userId),
     ...((data as UserProfile | null) ?? {}),
     phone_e164: null,
+    household_context: (data as UserProfile | null)?.household_context ?? emptyHouseholdContext(),
+  };
+}
+
+function normalizeProfile(profile: UserProfile, userId: string) {
+  return {
+    ...emptyUserProfile(userId),
+    ...profile,
+    household_context: profile.household_context ?? emptyHouseholdContext(),
   };
 }
 
@@ -76,12 +86,18 @@ export async function PUT(req: Request) {
         throw new HttpError(400, "מספר הטלפון אינו תקין.");
       }
     }
+    const existing = await readProfile(db, userId);
+    const { household_context: contextPatch, ...rest } = parsed.data;
+    const household_context = contextPatch
+      ? { ...existing.household_context, ...contextPatch }
+      : existing.household_context;
     const { data, error } = await db
       .from("user_profiles")
       .upsert(
         {
           user_id: userId,
-          ...parsed.data,
+          ...rest,
+          household_context,
           ...(phone !== undefined ? { phone_e164: phone } : {}),
           updated_at: new Date().toISOString(),
         },
@@ -125,6 +141,7 @@ export async function PATCH(req: Request) {
           address_style: parsed.data.address_style ?? existing.address_style,
           appearance_mode: appearanceMode,
           appearance_season: appearanceSeason,
+          household_context: existing.household_context,
           onboarding_completed_at: existing.onboarding_completed_at ?? now,
           updated_at: now,
         },
