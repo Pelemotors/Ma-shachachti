@@ -22,7 +22,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     package: BUNDLE_ID,
-    versionCode: 4,
+    versionCode: 5,
     softwareKeyboardLayoutMode: "resize",
     adaptiveIcon: {
       foregroundImage: "./assets/android-icon-foreground.png",
