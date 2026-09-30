@@ -9,8 +9,8 @@ import {
 } from "./checklist-runs.ts";
 
 export const shoppingMutationSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("add"), title: z.string().trim().min(1).max(200), quantity: z.number().int().min(1).max(999).default(1) }).strict(),
-  z.object({ action: z.literal("update"), id: z.string().uuid(), title: z.string().trim().min(1).max(200).optional(), quantity: z.number().int().min(1).max(999).optional() }).strict(),
+  z.object({ action: z.literal("add"), title: z.string().trim().min(1).max(200), quantity: z.number().int().min(1).max(999).default(1), notes: z.string().trim().max(1000).optional() }).strict(),
+  z.object({ action: z.literal("update"), id: z.string().uuid(), title: z.string().trim().min(1).max(200).optional(), quantity: z.number().int().min(1).max(999).optional(), notes: z.string().trim().max(1000).optional() }).strict(),
   z.object({ action: z.literal("toggle"), id: z.string().uuid(), purchased: z.boolean() }).strict(),
   z.object({ action: z.literal("remove"), id: z.string().uuid() }).strict(),
   z.object({ action: z.literal("clear_purchased") }).strict(),
@@ -33,6 +33,7 @@ export const checklistMutationSchema = z.discriminatedUnion("action", [
 
 export type ShoppingItem = {
   id: string; title: string; quantity: number; purchased_at: string | null;
+  notes: string; category: string;
   order_index: number; created_at: string; updated_at: string;
 };
 export type ChecklistItem = {
@@ -48,7 +49,7 @@ type Db = SupabaseClient;
 
 export async function loadShopping(db: Db, userId: string): Promise<ShoppingItem[]> {
   const { data, error } = await db.from("shopping_items")
-    .select("id,title,quantity,purchased_at,order_index,created_at,updated_at")
+    .select("id,title,quantity,purchased_at,notes,category,order_index,created_at,updated_at")
     .eq("user_id", userId).order("order_index").order("created_at");
   if (error) throw error;
   return (data ?? []) as ShoppingItem[];
@@ -56,9 +57,20 @@ export async function loadShopping(db: Db, userId: string): Promise<ShoppingItem
 
 export async function mutateShopping(db: Db, userId: string, input: z.infer<typeof shoppingMutationSchema>) {
   const now = new Date().toISOString();
+  const categoryForTitle = (title: string) => {
+    const value = title.toLowerCase();
+    if (/גן|ילד|תיק|חיתול|בקבוק/.test(value)) return "kids";
+    if (/קני|סופר|שוק/.test(value)) return "shopping";
+    if (/ניקוי|כביסה|בית/.test(value)) return "cleaning";
+    if (/אוכל|ארוחה|מטבח/.test(value)) return "food";
+    if (/רכב|נסיעה/.test(value)) return "car";
+    if (/טיול|מזוודה/.test(value)) return "travel";
+    if (/כלב|חתול|פלא/.test(value)) return "pet";
+    return "bag";
+  };
   if (input.action === "add") {
     const { data: last } = await db.from("shopping_items").select("order_index").eq("user_id", userId).order("order_index", { ascending: false }).limit(1).maybeSingle();
-    const { error } = await db.from("shopping_items").insert({ user_id: userId, title: input.title, quantity: input.quantity, order_index: Number(last?.order_index ?? -1) + 1 });
+    const { error } = await db.from("shopping_items").insert({ user_id: userId, title: input.title, quantity: input.quantity, notes: input.notes ?? "", category: categoryForTitle(input.title), order_index: Number(last?.order_index ?? -1) + 1 });
     if (error) throw error;
   } else if (input.action === "clear_purchased") {
     const { error } = await db.from("shopping_items").delete().eq("user_id", userId).not("purchased_at", "is", null);
@@ -69,7 +81,7 @@ export async function mutateShopping(db: Db, userId: string, input: z.infer<type
   } else {
     const patch = input.action === "toggle"
       ? { purchased_at: input.purchased ? now : null, updated_at: now }
-      : { ...(input.title !== undefined ? { title: input.title } : {}), ...(input.quantity !== undefined ? { quantity: input.quantity } : {}), updated_at: now };
+      : { ...(input.title !== undefined ? { title: input.title, category: categoryForTitle(input.title) } : {}), ...(input.quantity !== undefined ? { quantity: input.quantity } : {}), ...(input.notes !== undefined ? { notes: input.notes } : {}), updated_at: now };
     const { data, error } = await db.from("shopping_items").update(patch).eq("user_id", userId).eq("id", input.id).select("id").maybeSingle();
     if (error) throw error;
     if (!data) throw new Error("shopping_item_not_found");

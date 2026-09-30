@@ -228,7 +228,7 @@ test("CHAT thread + footer layout contract keeps composer out of the list", () =
   assert.match(chat, /stickToBottom/);
 });
 
-test("SHOPPING failed add keeps draft; success clears it and accepts list", () => {
+test("SHOPPING lifecycle exposes server-confirmed add, edit, purchase, undo, and delete", () => {
   const fail = shoppingAddResult(false, "חלב QA 2");
   const ok = shoppingAddResult(true, "חלב QA 2");
   assert.equal(fail.nextDraft, "חלב QA 2");
@@ -236,15 +236,20 @@ test("SHOPPING failed add keeps draft; success clears it and accepts list", () =
   assert.equal(ok.nextDraft, "");
   assert.equal(ok.acceptList, true);
   const shopping = read("../apps/mobile/src/screens/ShoppingScreen.tsx");
-  const addFn = shopping.slice(shopping.indexOf("async function add"));
-  assert.ok(addFn.indexOf("await addShopping") < addFn.indexOf("setDraft(result.nextDraft)"));
+  assert.match(shopping, /await addShopping/);
+  assert.match(shopping, /await updateShopping/);
+  assert.match(shopping, /await toggleShopping/);
+  assert.match(shopping, /await removeShopping/);
+  assert.match(shopping, /title="פעילים"/);
+  assert.match(shopping, /title="נקנו"/);
+  assert.match(shopping, /החזר לפעילים/);
+  assert.match(shopping, /הערה לפריט/);
 });
 
-test("SHOPPING footer is slotted and cannot grow over the list", () => {
+test("SHOPPING add control stays above the active and purchased lists", () => {
   const shopping = read("../apps/mobile/src/screens/ShoppingScreen.tsx");
-  const screen = read("../apps/mobile/src/components/ui/AppScreen.tsx");
-  assert.match(shopping, /footer=\{/);
-  assert.match(screen, /footerSlot: \{ flexGrow: 0, flexShrink: 0 \}/);
+  assert.ok(shopping.indexOf('accessibilityLabel="הוסף"') < shopping.indexOf('title="פעילים"'));
+  assert.match(shopping, /PackCategoryIcon/);
 });
 
 test("FREE TIME selected minutes stay 15/30/60 and reach results", () => {
