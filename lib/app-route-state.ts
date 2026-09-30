@@ -7,6 +7,7 @@ export const APP_VIEWS = [
   "shopping",
   "checklists",
   "recordings",
+  "notifications",
   "forgotten",
   "deep-check",
   "focus",
@@ -21,6 +22,9 @@ export type AppRouteState = {
   date: string | null;
   sessionId: string | null;
   checklistId?: string | null;
+  taskId?: string | null;
+  shoppingId?: string | null;
+  notificationId?: string | null;
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -48,11 +52,16 @@ export function decodeAppRoute(input: URLSearchParams | string): AppRouteState {
     : null;
   const checklistId =
     view === "checklists" && isSessionId(params.get("checklist"))
-      ? params.get("checklist")
-      : null;
-  return view === "checklists"
-    ? { view, date, sessionId, checklistId }
-    : { view, date, sessionId };
+    ? params.get("checklist")
+    : null;
+  const taskId = view === "tasks" && isSessionId(params.get("task")) ? params.get("task") : null;
+  const shoppingId = view === "shopping" && isSessionId(params.get("shopping")) ? params.get("shopping") : null;
+  const notificationId = view === "notifications" && isSessionId(params.get("notification")) ? params.get("notification") : null;
+  if (view === "checklists") return { view, date, sessionId, checklistId };
+  if (view === "tasks") return { view, date, sessionId, taskId };
+  if (view === "shopping") return { view, date, sessionId, shoppingId };
+  if (view === "notifications") return { view, date, sessionId, notificationId };
+  return { view, date, sessionId };
 }
 
 export function encodeAppRoute(state: AppRouteState) {
@@ -67,6 +76,9 @@ export function encodeAppRoute(state: AppRouteState) {
   if (state.view === "checklists" && isSessionId(state.checklistId)) {
     params.set("checklist", state.checklistId);
   }
+  if (state.view === "tasks" && isSessionId(state.taskId)) params.set("task", state.taskId);
+  if (state.view === "shopping" && isSessionId(state.shoppingId)) params.set("shopping", state.shoppingId);
+  if (state.view === "notifications" && isSessionId(state.notificationId)) params.set("notification", state.notificationId);
   const query = params.toString();
   return query ? `/app?${query}` : "/app";
 }

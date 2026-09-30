@@ -1,11 +1,18 @@
 import * as Application from "expo-application";
 import { AppState, Linking, Platform } from "react-native";
 import { registerNativePushDevice } from "./registerDevice";
+import { parseNotificationRoute } from "../deep-links/notification";
 
 type NotificationsMod = typeof import("expo-notifications");
 
 let handlerReady = false;
 let responseSub: { remove: () => void } | null = null;
+
+export function routeFromPushData(data: unknown) {
+  if (!data || typeof data !== "object") return null;
+  const route = (data as { route?: unknown }).route;
+  return typeof route === "string" ? parseNotificationRoute(route) : null;
+}
 
 async function loadNotifications(): Promise<NotificationsMod> {
   return import("expo-notifications");
@@ -91,8 +98,8 @@ async function ensureNotificationRuntime(Notifications: NotificationsMod) {
     });
   }
   if (!responseSub) {
-    responseSub = Notifications.addNotificationResponseReceivedListener(() => {
-      /* default tap already foregrounds the app */
+    responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      routeFromPushData(response.notification.request.content.data);
     });
   }
 }

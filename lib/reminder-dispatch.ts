@@ -210,11 +210,11 @@ export async function dispatchDueReminders(
     const payload = JSON.stringify({
       title: "מה שכחתי?",
       body: lockBody,
-      url: "/app",
+      url: `/app?view=tasks&task=${task.id}`,
       tag: `task-${task.id}`,
       icon: "/icon-192.png",
       badge: "/badge-72.png",
-      data: { taskId: task.id, url: "/app" },
+      data: { taskId: task.id, url: `/app?view=tasks&task=${task.id}` },
     });
     await recordAppNotification(db, {
       userId: task.user_id,
@@ -222,7 +222,7 @@ export async function dispatchDueReminders(
       subject: `${task.id}:${task.reminder_at ?? task.due_at ?? "none"}`,
       title: "מה שכחתי?",
       body: lockBody,
-      route: "/app",
+      route: `/app?view=tasks&task=${task.id}`,
       payload: { taskId: task.id },
     });
     let result: PushDeliveryResult;
@@ -233,7 +233,7 @@ export async function dispatchDueReminders(
         targets: nativeTargets,
         title: "מה שכחתי?",
         body: lockBody,
-        route: "/app",
+        route: `/app?view=tasks&task=${task.id}`,
       });
     } catch (error) {
       failed += 1;

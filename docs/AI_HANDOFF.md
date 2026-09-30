@@ -8,8 +8,8 @@
 ## Current state
 
 - **Branch:** `main`
-- **HEAD:** `444fcaa535cc4c522fb879f1a456eac48fce1299`
-- **Last completed milestone:** **M10 — Checklists**
+- **HEAD:** `8398f9534df26294c01d5c897e87ec19a04429c8`
+- **Last completed milestone:** **M11 — Recording Bank**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
@@ -80,6 +80,14 @@
 **Fix:** Added a platform-safe client ID helper with a UUID fallback, mapped `uploading/processing` to **Processing**, `ready` to **Completed**, and `error` to **Needs Review**, and added server-confirmed manual transcript correction for Needs Review. Existing private playback and retry/rerecord paths remain in place. The upload → recording processing → background job → transcription/extraction/classification/commit chain remains idempotent and persisted in Supabase, so leaving the screen or restarting does not discard work.
 
 **Verified locally:** M11 recording-bank/recording/transcription/privacy targeted tests (40/40), root typecheck, mobile typecheck, and full `npm test` (483 pass / 7 unchanged baseline failures). Production and Emulator E2E are intentionally deferred to M16 Final Regression under the revised QA workflow.
+
+### M12 — Notifications + Deep Links ✅ local verification
+
+**Audit/root cause:** Task reminders were represented by Task reminder fields, while `app_notifications` was only an opened/unopened inbox. Reminder dispatch recorded notifications but used a generic `/app` route; native push response handling did not resolve entity payloads. There was no independent handled/snooze/change/cancel lifecycle, and no explicit guarantee that reminder handling leaves the linked Task open.
+
+**Fix:** Added an additive notification lifecycle (`active`, `missed`, `snoozed`, `handled`, `cancelled`) and authenticated PATCH actions. Reminder actions update only the notification state and never complete the linked Task. Added exact entity deep-link mapping for Task, Shopping, Checklist, and standalone Notification, and changed reminder payloads/routes to target the exact Task. Existing `(user_id, logical_key)` upsert dedupe and claim locks remain the push-loop protection.
+
+**Verified locally:** M12 targeted tests, reminder/push, task-time, mobile platform, and checklist deep-link regressions; root/mobile typecheck; and full `npm test` (487 pass / 7 unchanged baseline failures). Real Android notification-tray Push E2E is explicitly deferred to M16 Final Regression.
 
 ### M6 — Home connected to canonical Day Plan ✅
 
@@ -226,13 +234,13 @@ The Tasks portion was independently verified through UI/API/Production DB eviden
 
 ## Next milestone
 
-**M12 — next milestone.**
+**M13 — next milestone: Chat UI / Shortcuts.**
 
 ---
 
 ## Next first action
 
-1. Read this handoff and the M12 brief.
+1. Read this handoff and the M13 brief.
 2. Keep Production/Emulator E2E deferred until M16 Final Regression.
 
 ---
