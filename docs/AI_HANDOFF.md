@@ -9,11 +9,11 @@
 
 - **Branch:** `main`
 - **HEAD:** `444fcaa535cc4c522fb879f1a456eac48fce1299`
-- **Last completed milestone:** **M9 — Shopping**
+- **Last completed milestone:** **M10 — Checklists**
 - **Last Play AAB:** versionCode **4** · versionName `0.1.0` · upload-key-v2  
   SHA1 `9D:0C:24:DE:FA:A6:B6:7B:F1:C4:07:6B:95:25:77:44:D1:AD:B5:01`
 - **Local mobile `.env`:** Production API/Supabase for emulator (gitignored)
-- **Stop gate:** Do **not** start M10 until human approval
+- **Stop gate:** Do **not** start M11 until human approval
 
 ---
 
@@ -61,6 +61,16 @@
 **Scope:** Complete Shopping lifecycle: create, inline rename, notes, auto category, Purchased, Undo Purchased, Delete, reload, and cold restart persistence. Server-confirmed responses are required before UI state changes.
 
 **Production verification:** Production runs `444fcaa535cc4c522fb879f1a456eac48fce1299`. The M9 database migration was applied successfully. Shopping E2E, persistence, and exact QA cleanup were verified against Production; the final query for all QA titles returned zero rows.
+
+### M10 — Checklists ✅
+
+**Scope:** Reusable Checklist lifecycle: create, add-at-top, checkbox execution, reset, drag/reorder, duplicate, archive, delete confirmation, and task-linked checklist execution.
+
+**Root causes addressed:** The create modal closed when Android Back dismissed the keyboard because modal close was not separated from keyboard dismissal. Checklist item creation was footer-bound and did not provide add-at-top behavior, while drag/reorder and delete confirmation were missing from the screen flow.
+
+**Fix:** The creation modal tracks keyboard visibility and consumes Android Back while the keyboard is open. Items are created server-first and moved to the top after confirmed creation; drag/reorder persists `order_index`; delete requires explicit confirmation. Template completion remains separate from the reusable template, reset clears execution only, and duplicate remains independent.
+
+**Verified:** Local targeted tests, M3 task-linked checklist regression, mobile typecheck, and Android Emulator E2E. A new QA Task with a real linked Checklist was created through the Tasks flow; one item remained checked after reload and cold restart. Only the exact QA records created for this run were deleted. The historical checklist `יציאה מהבית עם מיראל` was not touched.
 
 ### M6 — Home connected to canonical Day Plan ✅
 
@@ -134,7 +144,7 @@ state is reserved for a genuinely empty canonical plan.
 | --- | --- |
 | `apps/mobile` `npm run typecheck` | **PASS** |
 | M8/M7/M6/M5/M4/Task/Reminder targeted tests | **97 pass / 1 baseline fail** |
-| `npm test` | **471 pass / 7 fail** — same 7 baseline; no new fails |
+| `npm test` | **480 pass / 7 fail** — same 7 baseline; no new fails |
 | Android Emulator Home canonical plan | **PASS** — count/items visible; no false empty state |
 | Point update → day_plan + `planned_*` sync | **PASS** |
 | reload/restart | **PASS** |
@@ -142,6 +152,8 @@ state is reserved for a genuinely empty canonical plan.
 | Unscheduled / tomorrow not on today’s plan | **PASS** |
 | Routine materialized on today | **PASS** |
 | M1–M3 regression (tabs, keyboard, nav hide) | **PASS** |
+| M10 targeted + M3 task-checklist regression | **27 pass** |
+| M10 QA Task + linked Checklist reload/cold restart | **PASS** |
 
 ---
 
@@ -201,14 +213,14 @@ state is reserved for a genuinely empty canonical plan.
 
 ## Next milestone
 
-**M10 — Checklists.** Do not start until explicitly approved.
+**M11 — next milestone.** Do not start until explicitly approved.
 
 ---
 
 ## Next first action
 
-1. Wait for human approval of M10.
-2. On approval, read this handoff and the M10 brief.
+1. Wait for human approval of M11.
+2. On approval, read this handoff and the M11 brief.
 
 ---
 

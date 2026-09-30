@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   AppScreen,
   BotanicalBackdrop,
@@ -78,8 +78,39 @@ export function ChecklistDetailScreen({
   function addItem() {
     const text = draft.trim();
     if (!list || !text) return;
-    setDraft("");
-    void apply(addChecklistItem(list.id, text));
+    void (async () => {
+      try {
+        const data = await addChecklistItem(list.id, text);
+        const next = data.checklists.find((item) => item.id === list.id);
+        if (!next) throw new Error("הפריט לא נשמר.");
+        const added = next.items.find((item) => !list.items.some((existing) => existing.id === item.id));
+        if (added) {
+          await reorderChecklistItems(list.id, [added.id, ...next.items.filter((item) => item.id !== added.id).map((item) => item.id)]);
+        }
+        setDraft("");
+        await reload();
+        setError("");
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "הפריט לא נשמר.");
+      }
+    })();
+  }
+
+  function dragResponder(itemId: string) {
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 10,
+      onPanResponderRelease: (_, gesture) => {
+        if (!list || Math.abs(gesture.dy) < 24) return;
+        const from = list.items.findIndex((item) => item.id === itemId);
+        if (from < 0) return;
+        const to = Math.max(0, Math.min(list.items.length - 1, from + (gesture.dy > 0 ? 1 : -1)));
+        if (from === to) return;
+        const ids = list.items.map((item) => item.id);
+        const [moved] = ids.splice(from, 1);
+        ids.splice(to, 0, moved!);
+        void apply(reorderChecklistItems(list.id, ids));
+      },
+    }).panHandlers;
   }
 
   return (
@@ -89,21 +120,6 @@ export function ChecklistDetailScreen({
       footerOwnsBottomInset
       footer={
         <View style={styles.footer}>
-          <View style={styles.addRow}>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="פריט חדש"
-              placeholderTextColor={CL.secondary}
-              style={styles.addInput}
-              textAlign="right"
-              returnKeyType="done"
-              onSubmitEditing={addItem}
-            />
-            <Pressable style={styles.add} onPress={addItem} accessibilityLabel="הוספה">
-              <Text style={styles.addText}>הוספה</Text>
-            </Pressable>
-          </View>
           <View style={styles.actions}>
             <Pressable onPress={() => list && void apply(resetChecklist(list.id, activeKey))} style={styles.action}>
               <PackActionIcon name="reset" size={18} />
@@ -117,7 +133,10 @@ export function ChecklistDetailScreen({
               <PackActionIcon name="archive" size={18} />
               <Text style={styles.link}>ארכיון</Text>
             </Pressable>
-            <Pressable onPress={() => list && void apply(deleteChecklist(list.id), onBack)} style={styles.action}>
+            <Pressable onPress={() => list && Alert.alert("למחוק את הצ׳קליסט?", "המחיקה אינה ניתנת לביטול.", [
+              { text: "ביטול", style: "cancel" },
+              { text: "מחיקה", style: "destructive", onPress: () => void apply(deleteChecklist(list.id), onBack) },
+            ])} style={styles.action}>
               <PackActionIcon name="trash" size={18} />
               <Text style={styles.danger}>מחיקה</Text>
             </Pressable>
@@ -152,10 +171,25 @@ export function ChecklistDetailScreen({
           style={styles.rename}
           textAlign="right"
         />
+        <View style={styles.addRow}>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="פריט חדש"
+            placeholderTextColor={CL.secondary}
+            style={styles.addInput}
+            textAlign="right"
+            returnKeyType="done"
+            onSubmitEditing={addItem}
+          />
+          <Pressable style={styles.add} onPress={addItem} accessibilityLabel="הוספה">
+            <Text style={styles.addText}>הוספה</Text>
+          </Pressable>
+        </View>
         {!list || list.items.length === 0 ? <EmptyState title="אין פריטים ברשימה" /> : (
           <View style={styles.list}>
             {list.items.map((item, index) => (
-              <View key={item.id} style={styles.row}>
+              <View key={item.id} style={styles.row} {...dragResponder(item.id)}>
                 <Pressable
                   onPress={() => void apply(toggleChecklistItem(list.id, item.id, !item.checked, activeKey))}
                   style={styles.checkRow}

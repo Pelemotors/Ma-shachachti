@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   AppScreen,
   BotanicalBackdrop,
@@ -27,6 +27,18 @@ export function ChecklistsScreen({
   const [title, setTitle] = useState("");
   const [items, setItems] = useState("");
   const [error, setError] = useState("");
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const shown = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hidden = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+    return () => {
+      shown.remove();
+      hidden.remove();
+      setKeyboardVisible(false);
+    };
+  }, [open]);
 
   const reload = useCallback(async () => {
     setLists((await listChecklists()).checklists);
@@ -134,12 +146,24 @@ export function ChecklistsScreen({
           )}
         </ScrollView>
       </View>
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+      <Modal
+        visible={open}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (keyboardVisible) {
+            Keyboard.dismiss();
+            setKeyboardVisible(false);
+            return;
+          }
+          setOpen(false);
+        }}
+      >
         <View style={styles.backdrop}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>צ׳קליסט חדש</Text>
-            <TextInput value={title} onChangeText={setTitle} placeholder="שם הצ׳קליסט" placeholderTextColor={CL.secondary} style={styles.input} textAlign="right" />
-            <TextInput value={items} onChangeText={setItems} placeholder="פריט אחד בכל שורה" placeholderTextColor={CL.secondary} style={[styles.input, styles.multiline]} multiline textAlign="right" />
+            <TextInput value={title} onChangeText={setTitle} onFocus={() => setKeyboardVisible(true)} placeholder="שם הצ׳קליסט" placeholderTextColor={CL.secondary} style={styles.input} textAlign="right" />
+            <TextInput value={items} onChangeText={setItems} onFocus={() => setKeyboardVisible(true)} placeholder="פריט אחד בכל שורה" placeholderTextColor={CL.secondary} style={[styles.input, styles.multiline]} multiline textAlign="right" />
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <View style={styles.actions}>
               <Pressable onPress={() => setOpen(false)}><Text style={styles.cancel}>ביטול</Text></Pressable>
