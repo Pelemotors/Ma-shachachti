@@ -124,6 +124,8 @@
 
 **Next required action:** Run one controlled Cursor Local Production/Android M16 matrix, with QA-only records and the historical checklist `יציאה מהבית עם מיראל` off limits. Do not start a new feature milestone before this gate is completed.
 
+**Mobile UI follow-up:** The Task editor save/cancel actions now live in a fixed footer above the Android navigation inset and outside the form `ScrollView`; the modal also uses keyboard avoidance. Mobile typecheck and the relevant Task lifecycle regression passed.
+
 ### M6 — Home connected to canonical Day Plan ✅
 
 **Root cause:** Home progress count was derived from the canonical `day_plan`, but the

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   AppScreen,
   BotanicalBackdrop,
@@ -479,9 +479,14 @@ export function TasksScreen({
       </View>
 
       <Modal visible={editorOpen} transparent animationType="slide" onRequestClose={() => setEditorOpen(false)}>
-        <View style={styles.backdrop}>
+        <KeyboardAvoidingView
+          style={styles.backdrop}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={0}
+        >
+          <View style={styles.modal}>
           <ScrollView
-            style={[styles.modal, { paddingBottom: bottomChromePad }]}
+            style={styles.modalScroll}
             contentContainerStyle={{ paddingBottom: 12 }}
             keyboardShouldPersistTaps="handled"
           >
@@ -585,13 +590,16 @@ export function TasksScreen({
                 ) : null}
               </View>
             ) : null}
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            <View style={styles.actions}>
-              <Pressable onPress={() => setEditorOpen(false)}><Text style={styles.cancel}>ביטול</Text></Pressable>
-              <Pressable onPress={() => void save()} style={styles.save}><Text style={styles.saveText}>שמירה</Text></Pressable>
-            </View>
           </ScrollView>
-        </View>
+            <View style={[styles.modalFooter, { paddingBottom: bottomChromePad }]}>
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+              <View style={styles.actions}>
+                <Pressable onPress={() => setEditorOpen(false)} hitSlop={8}><Text style={styles.cancel}>ביטול</Text></Pressable>
+                <Pressable onPress={() => void save()} style={styles.save} hitSlop={4}><Text style={styles.saveText}>שמירה</Text></Pressable>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={Boolean(menuTask)} transparent animationType="fade" onRequestClose={() => setMenuTask(null)}>
@@ -675,7 +683,9 @@ const styles = StyleSheet.create({
   previewItem: { fontFamily: heebo("400"), fontSize: 12, color: CL.secondary, textAlign: "right" },
   more: { paddingHorizontal: 6, paddingTop: 4 },
   backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(58,47,40,0.28)" },
-  modal: { maxHeight: "88%", backgroundColor: CL.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22 },
+  modal: { maxHeight: "88%", flexShrink: 1, backgroundColor: CL.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: "hidden" },
+  modalScroll: { flexShrink: 1, paddingHorizontal: 22, paddingTop: 22 },
+  modalFooter: { flexShrink: 0, paddingHorizontal: 22, paddingTop: 8, backgroundColor: CL.bg },
   modalTitle: { fontFamily: heebo("700"), fontSize: 24, color: CL.text, textAlign: "right", marginBottom: 12 },
   input: { minHeight: 52, borderRadius: 24, borderWidth: 1, borderColor: CL.border, paddingHorizontal: 16, color: CL.text, backgroundColor: CL.surface, marginBottom: 10, fontFamily: heebo("400"), fontSize: 15 },
   multiline: { minHeight: 80, textAlignVertical: "top", paddingTop: 12 },
